@@ -14,4 +14,16 @@ One file per module or feature, describing behavior — not implementation. A sp
 
 Function signatures, class hierarchies, pseudocode, library choices — those belong to the implementation phase, not the spec. If a spec needs a library choice to be legible, note the constraint that drives it and let implementation pick.
 
-No specs yet.
+## Index
+
+| Spec | Covers |
+|---|---|
+| [`data-model.md`](data-model.md) | Shared database schema and per-table write ownership |
+| [`research-agent.md`](research-agent.md) | Sentiment/news analyst |
+| [`opportunistic-identifier-agent.md`](opportunistic-identifier-agent.md) | Undervaluation scanner analyst |
+| [`portfolio-manager-agent.md`](portfolio-manager-agent.md) | The decision-maker |
+| [`assistant-agent.md`](assistant-agent.md) | Read-only Telegram Q&A |
+| [`risk-gate.md`](risk-gate.md) | Deterministic trade validation |
+| [`execution.md`](execution.md) | Deterministic order submission |
+| [`orchestrator.md`](orchestrator.md) | Scheduling, no authority |
+| [`ui-dashboard.md`](ui-dashboard.md) | Monitoring surface |

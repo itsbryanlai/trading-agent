@@ -16,6 +16,7 @@ trading-agent/
 │   ├── architecture/       — system design: components, data flow, boundaries
 │   ├── specs/              — per-module specs (what to build, inputs/outputs, edge cases)
 │   ├── adr/                — Architecture Decision Records (why we chose X over Y)
+│   ├── policy/             — rules for creating, granting, and retiring agents
 │   └── research/           — strategy research, market notes, backtesting findings
 ├── prompts/                — reusable prompt templates for recurring tasks
 └── .claude/
@@ -26,7 +27,8 @@ trading-agent/
 
 1. [`docs/architecture/overview.md`](docs/architecture/overview.md) — the system as a whole
 2. [`docs/adr/`](docs/adr/README.md) — key decisions and their rationale
-3. [`docs/specs/`](docs/specs/README.md) — module-level specs as they're written
+3. [`docs/specs/`](docs/specs/README.md) — per-agent/service specs
+4. [`docs/policy/agent-management.md`](docs/policy/agent-management.md) — how new agents get added, permissioned, and retired
 
 ## Contributing
 
