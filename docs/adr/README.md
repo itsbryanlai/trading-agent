@@ -36,3 +36,4 @@ What this makes easier, harder, or locks in going forward.
 | [0006](0006-autonomous-operation-with-daily-loss-breaker.md) | Fully autonomous operation; a daily-loss breaker is the sole automatic hard stop |
 | [0007](0007-assistant-is-separate-read-only-telegram.md) | The Assistant is a separate agent, read-only, reachable over Telegram |
 | [0008](0008-dashboard-stack-and-research-provider.md) | Dashboard stack and Research's news provider |
+| [0009](0009-implementation-phase-started.md) | Implementation phase started |
