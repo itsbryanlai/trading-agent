@@ -30,7 +30,7 @@ One analyst-agent run. Insert-only (R5); no stored status (R6).
 | `symbol` | text | NULL only when `direction = 'no_action'` |
 | `direction` | text | NOT NULL, `IN ('buy', 'sell', 'hold', 'no_action')` |
 | `conviction` | smallint | NULL when `no_action`, else NOT NULL `BETWEEN 1 AND 5` |
-| `suggested_size_pct` | numeric(6,3) | NULL when `no_action`, else `> 0 AND <= 100` |
+| `suggested_size_pct` | numeric(6,3) | must be NULL when `no_action`; otherwise optional (an agent may propose a direction without a size, e.g. `hold`), and `> 0 AND <= 100` when present |
 | `sources` | jsonb | NOT NULL, default `'[]'`; must be a JSON array; non-empty unless `no_action` |
 | `rationale_md` | text | NOT NULL |
 | `expires_at` | timestamptz | NOT NULL, `> generated_at` (R10) |

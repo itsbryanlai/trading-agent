@@ -61,6 +61,8 @@ psql "$ADMIN_DATABASE_URL" -c "\dp reports"                       # grants and R
 psql "$ADMIN_DATABASE_URL" -c "SELECT * FROM system_state_effective"
 ```
 
+No local `psql`? Use the container's: `docker exec ta-pg psql -U postgres -c "\dp reports"`.
+
 **Expected**: `trading_paused = f`, `daily_loss_halt_active = f`, baseline NULL on a fresh
 database.
 
