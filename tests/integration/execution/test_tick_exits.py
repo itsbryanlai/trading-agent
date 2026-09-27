@@ -31,9 +31,7 @@ def test_a_decision_sell_and_a_stop_loss_exit_on_one_day_get_distinct_orders(
     assert {r.order_type for r in broker.submissions} == {"market"}
 
 
-def test_an_exit_goes_out_under_the_loss_line_the_pause_and_a_broken_config(
-    conn, broker, tmp_path
-):
+def test_an_exit_goes_out_under_the_loss_line_the_pause_and_a_broken_config(conn, broker, tmp_path):
     seed_baseline(conn)
     set_paused(conn)
     broker.set_account(equity="70000", cash="10000")

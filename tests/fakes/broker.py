@@ -88,6 +88,9 @@ class FakeBroker:
     def reveal(self, client_order_id: str) -> None:
         self._hidden.discard(client_order_id)
 
+    def calls_named(self, name: str) -> list[str]:
+        return [call for call in self.calls if call == name]
+
     def orders_for(self, client_order_id: str) -> list[BrokerOrder]:
         return [self.orders[i] for i in self.by_client_id.get(client_order_id, [])]
 
@@ -183,6 +186,9 @@ class FakeBroker:
             reason, self._reject_next = self._reject_next, None
             raise OrderRejected(reason)
         if self.reject_duplicate_client_ids and request.client_order_id in self.by_client_id:
+            # Rejecting a duplicate means the broker knows the order: its lookup
+            # has caught up by now.
+            self._hidden.discard(request.client_order_id)
             raise OrderRejected("client_order_id must be unique")
         self.submissions.append(request)
         order = BrokerOrder(
