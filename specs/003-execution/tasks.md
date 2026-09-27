@@ -119,13 +119,13 @@ with equity below the line, the pause on, and a broken config path.
 
 ### Tests for User Story 2 ⚠️ write first, confirm they fail
 
-- [ ] T022 [P] [US2] Write `tests/unit/execution/test_exit_checks.py` for `check_exit(approval, live, today, now, market_open, id_clash)`: 50 held, sell 50 → `Submit` of a day market sell of 50, `limit_price` None; 30 held, sell 50 → `Refuse(SHARES_HELD_DIFFER)` with `held`, `open_sell_qty`, `qty`; 50 held with 50 already in an open sell, stop-loss exit of 50 → `SHARES_HELD_DIFFER`; yesterday's approval → `APPROVAL_EXPIRED`; before today's open → `Retry`; `id_clash` → `IDENTIFIER_CLASH`; the function takes no equity, baseline, pause or config input at all (assert its signature), so none can block an exit
-- [ ] T023 [P] [US2] Write `tests/integration/execution/test_tick_exits.py`: an approved decision sell and an approved stop-loss exit of the same symbol on the same day get two different order ids and are both submitted when enough shares are held (ADR 0012); with the fake's equity at 70,000 on a 100,000 baseline, `trading_paused = true`, and `config_path` pointing at a missing file, an approved sell is still submitted as a market order; no `account_snapshots` row is written for an exit (FR-004 applies to buys only)
+- [X] T022 [P] [US2] Write `tests/unit/execution/test_exit_checks.py` for `check_exit(approval, live, today, now, market_open, id_clash)`: 50 held, sell 50 → `Submit` of a day market sell of 50, `limit_price` None; 30 held, sell 50 → `Refuse(SHARES_HELD_DIFFER)` with `held`, `open_sell_qty`, `qty`; 50 held with 50 already in an open sell, stop-loss exit of 50 → `SHARES_HELD_DIFFER`; yesterday's approval → `APPROVAL_EXPIRED`; before today's open → `Retry`; `id_clash` → `IDENTIFIER_CLASH`; the function takes no equity, baseline, pause or config input at all (assert its signature), so none can block an exit
+- [X] T023 [P] [US2] Write `tests/integration/execution/test_tick_exits.py`: an approved decision sell and an approved stop-loss exit of the same symbol on the same day get two different order ids and are both submitted when enough shares are held (ADR 0012); with the fake's equity at 70,000 on a 100,000 baseline, `trading_paused = true`, and `config_path` pointing at a missing file, an approved sell is still submitted as a market order; no `account_snapshots` row is written for an exit (FR-004 applies to buys only)
 
 ### Implementation for User Story 2
 
-- [ ] T024 [US2] Implement `check_exit` in `src/trading_agent/execution/checks.py` (E6 exit table) and route sells and stop-loss exits to it in `service.py`, computing held qty from `broker.get_positions()` and open sell qty from Execution's own non-final sell orders for the symbol (joined to `approved_order` for symbol, side and qty, as in T020); exits read no pause, baseline, account or config
-- [ ] T025 [US2] Run the US2 tests; confirm T022 and T023 pass, and US1's still do
+- [X] T024 [US2] Implement `check_exit` in `src/trading_agent/execution/checks.py` (E6 exit table) and route sells and stop-loss exits to it in `service.py`, computing held qty from `broker.get_positions()` and open sell qty from Execution's own non-final sell orders for the symbol (joined to `approved_order` for symbol, side and qty, as in T020); exits read no pause, baseline, account or config
+- [X] T025 [US2] Run the US2 tests; confirm T022 and T023 pass, and US1's still do
 
 **Checkpoint**: exits are submitted under every stop, and only for shares held.
 
