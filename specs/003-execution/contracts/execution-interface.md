@@ -8,10 +8,13 @@ What other features call or rely on. Decisions: [research.md](../research.md) E1
 |---|---|---|
 | `python -m trading_agent.execution` | the worker service (hosting is the orchestrator feature's call, E13) | Runs `startup()`, then `tick()` every 60 seconds until stopped. |
 | `startup(broker, exec_conn)` | the runner | Paper-only guard (FR-013): raises `NotPaperTrading` and nothing else runs. Then one sync and reconciliation (FR-009). |
-| `tick(now, broker, exec_conn, gate_conn, config_path)` | the runner, or the orchestrator's scheduler | One pass of every duty that's due at `now`, in the order listed in E13. Returns a `TickReport` (counts of orders submitted, refusals, retries, fills applied, triggers recorded, snapshot taken) for logging. |
+| `tick(now, broker, exec_conn, evaluate_trigger, config_path)` | the runner, or the orchestrator's scheduler | One pass of every duty that's due at `now`, in the order listed in E13. Returns a `TickReport` (counts of orders submitted, refusals, retries, fills applied, triggers recorded, snapshot taken) for logging. |
 
-Connections: `exec_conn` is a login in `ta_execution`. `gate_conn` is a login in `ta_risk_gate`,
-used **only** to call `evaluate_stop_loss_trigger` (E13).
+`exec_conn` is a login in `ta_execution`. `evaluate_trigger(trigger_id, now) -> Verdict` is a
+callable the runner builds around `trading_agent.risk.service.evaluate_stop_loss_trigger` on a
+connection logged in as `ta_risk_gate` (E13). Execution never sees that connection, only the
+callable. The monitor commits each trigger before calling it, so a separate gate connection can
+read it.
 
 Guarantees:
 - **At most one order per approved verdict, ever**, across restarts and crashes at any point (E5,
@@ -32,7 +35,7 @@ Guarantees:
 - `approved_order` JSON exactly as in [002's data model](../../002-risk-gate/data-model.md):
   `symbol`, `side`, `qty`, `order_type`, `limit_price` (buys), `trading_day`, `exposure`,
   `source`, `time_in_force`.
-- `evaluate_stop_loss_trigger(gate_conn, trigger_id, now=...)` returns the verdict, idempotently.
+- `evaluate_stop_loss_trigger(conn, trigger_id, now=...)` returns the verdict, idempotently; the runner wraps it as `evaluate_trigger`.
 - The baseline rule (002 G8), which Execution re-derives itself (E11).
 
 ## What other components can rely on from Execution
@@ -45,7 +48,7 @@ Guarantees:
 
 ## What callers must *not* do
 
-- Pass `gate_conn` for anything but the stop-loss evaluation, or give any other component the
-  broker port or its keys.
+- Give Execution's code the gate's connection itself, or give any other component the broker port
+  or its keys.
 - Import `trading_agent.execution.alpaca` from outside `trading_agent.execution` (enforced by an
   import-scan test, E2).

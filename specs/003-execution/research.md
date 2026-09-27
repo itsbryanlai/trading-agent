@@ -265,12 +265,13 @@ No pause, halt, baseline, or config check on exits (FR-006, FR-018, FR-020).
 - **Hosting**: `python -m trading_agent.execution` runs the startup guard and then calls `tick`
   every 60 seconds. Whether it runs as its own process or is hosted by the orchestrator's scheduler
   in the worker service is the orchestrator feature's call; `tick` works the same either way.
-- **Stop-loss evaluation needs the gate's connection.** The monitor records a trigger as
-  `ta_execution`, then calls `evaluate_stop_loss_trigger` on a connection opened as
-  `ta_risk_gate`, the same way the Portfolio Manager's runner will. Both roles' connection strings
-  live in the same worker process, as they already do for the PM and the gate. The code keeps them
-  apart: Execution's service never runs a query on the gate's connection, and the gate never sees
-  the broker client.
+- **Stop-loss evaluation needs the gate's connection.** The monitor records and commits a trigger
+  as `ta_execution`, then calls an injected `evaluate_trigger(trigger_id, now)`. The runner builds
+  it around `evaluate_stop_loss_trigger` on a connection opened as `ta_risk_gate`, the same way the
+  Portfolio Manager's runner will. Both roles' connection strings live in the same worker process,
+  as they already do for the PM and the gate, but Execution's service only ever holds the callable,
+  never the gate's connection, and the gate never sees the broker client. (Tests pass a callable
+  that switches the shared test connection's role.)
 
 ## E14. Tests never touch the broker
 
