@@ -13,7 +13,7 @@
 
 ## Requirement Completeness
 
-- [ ] No [NEEDS CLARIFICATION] markers remain
+- [x] No [NEEDS CLARIFICATION] markers remain
 - [x] Requirements are testable and unambiguous
 - [x] Success criteria are measurable
 - [x] Success criteria are technology-agnostic (no implementation details)
@@ -31,6 +31,6 @@
 
 ## Notes
 
-- Three [NEEDS CLARIFICATION] markers are left deliberately for `/speckit-clarify`, at the user's request: FR-008 (order identifier scheme), FR-013 (paper-only guard mechanism), FR-018 (behaviour under the manual pause). Each carries a recommended answer.
+- The three [NEEDS CLARIFICATION] markers left for `/speckit-clarify` (FR-008 order identifier, FR-013 paper-only guard, FR-018 manual pause) were resolved in the 2026-09-27 clarification session, along with two further questions (buy retry after a price-ceiling refusal; stop-loss reference price).
 - The user's third open point (tests use a fake broker only) was settled as a requirement (FR-019) rather than left open.
 - The spec names existing repo artifacts (`config/risk.yaml`, `ta_execution`, the role-grants contract) and the `{trading_day}-{symbol}-{side}` identifier, to anchor it to features 001/002. These are references to settled design, not new implementation choices; the same convention as `specs/002-risk-gate/spec.md`.
