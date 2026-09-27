@@ -55,8 +55,10 @@ For Execution:
 | The id format and verdict-suffix `CHECK`s reject a malformed or mismatched `orders.id` | FR-008 |
 | An order and a refusal for the same verdict can't both exist; a refusal for a rejected verdict can't exist | E4 |
 | `ta_execution` can read `trading_paused` and no other `system_state` column | FR-018 |
-| A full tick: an approved buy becomes an order; a fill updates the order and the position; a stop-loss breach records a trigger, the gate approves, and a market sell goes out | US1, US5, US7 |
-| Crash at every step of a submission, then tick again: one broker order per verdict, every time | SC-002 |
+| A full tick: an approved buy becomes an order; a fill updates the order and the position; a stop-loss breach records a trigger, the gate's own runner approves it, and the next tick sends a market sell | US1, US5, US7 |
+| Two separate autocommit connections (Execution's and the gate's) on a committed database: trigger → gate runner → exit, all visible from a third connection | analyze S1 |
+| A buy is refused for the rest of the day once any snapshot since the open crossed the loss line, even after equity recovers | FR-004, Principle IV |
+| Crash at every step of a submission, then tick again: one broker order per verdict, every time; also a crash just before the close, and a duplicate-id rejection after a timeout | SC-002 |
 | Lapsed approvals from yesterday get `approval_expired`, and none reaches the broker | FR-002, SC-001 |
 | Positions that disagree with the broker are overwritten with the broker's figures and logged | FR-011, SC-007 |
 | Pre-open snapshot recorded once, before the open, and the gate then takes today's baseline from it; Execution's own baseline equals the gate's | US6, E11 |

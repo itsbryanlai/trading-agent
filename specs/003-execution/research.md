@@ -75,6 +75,13 @@ reference and the `alpaca-py` SDK docs on 2026-09-27; each is cited where it's u
   approved verdict with no outcome whose trading day is over (an earlier day, or today after the
   close). So every approval ends with exactly one row, either an order or a refusal, and "why
   didn't this trade?" always has an answer in the database.
+- **But only after asking the broker.** A crash between submission and commit just before the
+  close would otherwise leave a real order at the broker whose verdict the sweep then marks
+  `approval_expired`, and the exclusivity trigger would make that order unrecordable. So the sweep
+  goes through the same locked path as a submission (E5 steps 1–3): if the broker has an order
+  under the identifier, it is recorded as the outcome instead. If the broker can't be reached, the
+  sweep leaves the approval for the next tick; an unsubmittable approval waiting a little longer
+  for its outcome row is harmless.
 - **Transient conditions are not refusals**: broker unreachable, no valid live quote, a bad risk
   config (E12). They are logged and retried on the next tick while the approval is valid (FR-007).
 - **Alternatives considered**: a `not_submitted` status on `orders`. Rejected: `orders.id` is a
@@ -86,18 +93,38 @@ reference and the `alpaca-py` SDK docs on 2026-09-27; each is cited where it's u
 - **Decision**: each approval is processed inside one database transaction holding Execution's
   advisory lock (`pg_advisory_xact_lock`, a key distinct from the gate's):
   1. Skip if the verdict already has an order or a refusal.
-  2. Look the identifier up at the broker (`get_order_by_client_id`). If found, record it as the
-     order and stop. This is the crash-recovery path, and it runs on every submission, so recovery
-     isn't a separate code path that only runs after a crash (FR-009).
-  3. Run the checks (E6). Refuse, or submit.
-  4. Insert the `orders` row with what the broker returned, and commit.
+  2. If an `orders` row with this identifier already exists for a *different* verdict, refuse
+     `identifier_clash` and stop. This must come before step 3, or the lookup would return the
+     other verdict's broker order and recording it would fail on the primary key every tick.
+  3. Look the identifier up at the broker (`get_order_by_client_id`). If found, record it as the
+     order (including its limit price, E6) and stop. This is the crash-recovery path, and it runs on
+     every submission, so recovery isn't a separate code path that only runs after a crash (FR-009).
+  4. Run the checks (E6). Refuse, or submit.
+  5. Insert the `orders` row with what the broker returned, and commit.
 - **Crash windows**: a crash before step 3's submission leaves nothing anywhere, so the next tick
   starts over. A crash after submission but before commit leaves an order at the broker and none
   in the database; the next tick finds it in step 2. There's no window where a second order can be
   placed for the same verdict.
 - **A timeout on submission** is treated as "maybe placed": the broker's own guidance is to check
   rather than resubmit or assume it failed (docs.alpaca.markets/us/docs/working-with-orders). The
-  transaction rolls back and the next tick's step 2 settles it.
+  transaction rolls back and the next tick's step 3 settles it.
+- **A rejection is double-checked.** If the broker's lookup lags a "maybe placed" order, the next
+  tick could resubmit, and the broker might reject the duplicate client id. Recording that as a
+  final `rejected` order with no broker id would hide a live order from polling and from the
+  open-order cash check. So on `OrderRejected`, Execution calls `find_order` once more: if an order
+  exists under the identifier, that is recorded instead; only if none exists is the rejection
+  recorded.
+- **Real transactions, not savepoints.** Execution's connection runs with `autocommit=True`, so
+  each `conn.transaction()` block is a real transaction that commits at its end and releases the
+  advisory lock. The runner opens it that way and `startup` asserts `conn.autocommit`, refusing to run otherwise. (`tick` itself doesn't assert, so the rolled-back test harness can drive it inside savepoints.) The
+  shared `storage.db.connect` helper commits only when the connection closes, which would leave
+  every write of a long-running Execution uncommitted and invisible to other components. The
+  single-connection test harness can't show this, so one integration test uses two real committed
+  connections (Execution's and the gate's) against a database it cleans up itself.
+- **Failures are isolated per unit of work.** Each approval, each order sync, the reconciliation,
+  the monitor and the snapshot run in their own `try` block: an unexpected error in one is logged
+  with the verdict or order id and the tick carries on. **Exits are processed before buys**, so a
+  poisoned buy can never delay a stop-loss exit. A tick never aborts wholesale on one bad row.
 - **Serialization** also makes the open-order accounting in E6 exact: no second submission can
   happen between reading open orders and placing a new one.
 - **Alternatives considered**: write a "submitting" row first, then submit. Rejected: it needs a
@@ -118,16 +145,25 @@ All arithmetic is `Decimal`, as in the gate (002 G2).
 | 4 | risk config missing or invalid | retry (logged) |
 | 5 | manual pause is on | refuse `trading_paused` |
 | 6 | no baseline for today | refuse `no_daily_baseline` |
-| 7 | fetch account; **record a snapshot**; equity ≤ baseline × (1 − `daily_loss_halt_pct`/100) | refuse `daily_loss_line_crossed` |
+| 7 | fetch account; **record a snapshot**; that equity, *or any snapshot's equity since today's open*, ≤ baseline × (1 − `daily_loss_halt_pct`/100) | refuse `daily_loss_line_crossed` |
 | 8 | fetch latest ask; missing, zero, or older than 60 s | retry |
 | 9 | ask > the verdict's `limit_price` (the ceiling) | refuse `quote_above_ceiling` |
 | 10 | (held + open buy qty + qty) × ask > `max_position_pct`% × equity | refuse `max_position_pct` |
 | 11 | cash − open buy cost − qty × ask < `cash_reserve_pct`% × equity | refuse `cash_reserve_pct` |
 | 12 | — | submit a day limit buy of `qty` at the ask |
 
+- **Row 7 looks back over the day.** Once any snapshot since the open has been at or below the
+  line, no buy goes out for the rest of the day, even if equity has since recovered. That's
+  Principle IV ("new order submission halts for the remainder of the day"), and it matches the
+  gate, which records the halt from the same snapshots. Execution can't read the halt column, and
+  doesn't need to.
 - *held* is the broker's live position quantity. *Open buy qty* and *open buy cost* are the
   unfilled remainder of Execution's own non-final buy orders for that symbol (qty) and for all
-  symbols (cost, at their limit prices). The broker's `cash` doesn't fall until a fill, so without
+  symbols (cost, at their limit prices). `orders` has no symbol, side or quantity columns, so these
+  come from joining each order to its verdict's `approved_order` (`symbol`, `side`, `qty`);
+  remaining = `qty − coalesce(fill_qty, 0)`, cost = remaining × `orders.limit_price`. Every buy row
+  carries a limit price, enforced by a `CHECK` (data-model.md), including rows recorded by the
+  crash-recovery lookup, so the sum can never silently skip one. The broker's `cash` doesn't fall until a fill, so without
   this two unfilled buys could together breach a reserve each passes alone (spec Edge Cases).
 - The existing holding is valued at the live ask, the same conservative choice the gate makes at
   its ceiling (002 G3).
@@ -244,34 +280,54 @@ No pause, halt, baseline, or config check on exits (FR-006, FR-018, FR-020).
   fix lands by deploy) and **the stop-loss monitor** (without `stop_loss_pct` there's no line to
   compare against, and the gate would refuse to evaluate a trigger anyway). Approved **exits** are
   still submitted (FR-020).
+- **This state is loud.** A broken config switches off stop-loss protection, which Principle IV
+  relies on. Every tick in that state logs at **error** level, naming the failing setting and
+  saying the stop-loss monitor is off, not just a warning. Alerting the owner (e.g. Telegram) is
+  the Assistant's or the dashboard's job later; the log line is the contract they read.
 
 ## E13. Scheduling: Execution runs its own tick
 
 - **Decision**: Execution is driven by one entry point, `tick(now)`, meant to be called about once
   a minute. Each tick, in order: sync open orders and reconcile positions (E7, E8) → record
-  `approval_expired` for lapsed approvals (E4) → process today's approvals that have no outcome
-  (E5, E6) → run the stop-loss monitor if a 30-minute window has no check yet → record the
-  pre-open snapshot if it's due. A pure `schedule.py` answers "what's due at `now`" from the
+  `approval_expired` for lapsed approvals (E4) → process today's approvals that have no outcome,
+  **exits first, then buys** (E5, E6) → run the stop-loss monitor if a 30-minute window has no
+  successful check yet → record the pre-open snapshot if it's due. Each step is isolated (E5). A pure `schedule.py` answers "what's due at `now`" from the
   exchange calendar.
 - **Approvals are picked up, not handed over.** Execution finds new approvals itself each tick
   (spec Assumptions), so it doesn't depend on the orchestrator to call it after each gate verdict.
   An approval is submitted within about a minute.
 - **Stop-loss windows**: `[open + 30k min, open + 30(k+1) min)` clipped to the close, following the
-  calendar's early closes. A window with no check yet is due. The record of which windows ran is in
-  memory: a restart re-runs the current window's check, which is harmless.
+  calendar's early closes. That needs the session close, so `trading_agent.risk.calendar` gains
+  `close_time(day)` (early closes included), used also for "the market has closed" in E6 row 1 and
+  the lapsed-approval sweep. A window is marked done only when the price check for **every** held
+  position succeeded (a broker failure or a stale trade leaves it due, so the next tick retries
+  within the same window, SC-005). A position whose last trade has been stale for two consecutive
+  windows is logged at error level, since it is going unprotected. The record of which windows
+  succeeded is in memory: a restart re-runs the current window's check, which is harmless.
+- **Duplicate triggers are avoided**: no new trigger for a symbol with an open sell order, a trigger
+  from today not yet evaluated, or an approved exit from today with no outcome yet.
 - **Pre-open snapshot**: due from 60 minutes before the open until the open, on trading days, until
   one exists for today (checked in `account_snapshots`, so it survives restarts). A broker failure
   just means the next tick tries again (FR-015).
 - **Hosting**: `python -m trading_agent.execution` runs the startup guard and then calls `tick`
   every 60 seconds. Whether it runs as its own process or is hosted by the orchestrator's scheduler
   in the worker service is the orchestrator feature's call; `tick` works the same either way.
-- **Stop-loss evaluation needs the gate's connection.** The monitor records and commits a trigger
-  as `ta_execution`, then calls an injected `evaluate_trigger(trigger_id, now)`. The runner builds
-  it around `evaluate_stop_loss_trigger` on a connection opened as `ta_risk_gate`, the same way the
-  Portfolio Manager's runner will. Both roles' connection strings live in the same worker process,
-  as they already do for the PM and the gate, but Execution's service only ever holds the callable,
-  never the gate's connection, and the gate never sees the broker client. (Tests pass a callable
-  that switches the shared test connection's role.)
+- **The gate evaluates triggers in its own process** (owner decision after `/speckit-analyze`,
+  spec Clarifications 2026-09-28). Execution records and commits a trigger as `ta_execution`, and
+  that row *is* the hand-off. A small gate-side runner, `python -m trading_agent.risk`, holding only
+  `RISK_GATE_DATABASE_URL`, calls `evaluate_stop_loss_trigger` about once a minute for every
+  trigger observed on the current trading day that has no verdict yet. Execution then finds the
+  approved exit on its next tick like any other approval (exits first). Worst-case added delay is
+  about two minutes, small next to the 30-minute monitor interval.
+  - **Why**: the Execution process never holds the gate's credential, so it can't write a verdict,
+    even by a bug. Principle III wants that enforced by credentials, not by code discipline, and it
+    also keeps the gate from ever sharing a process with the broker client.
+  - **Alternatives considered**: an injected callable in Execution's process wrapping a gate
+    connection (rejected: Execution's process would hold `ta_risk_gate`); leaving evaluation to the
+    orchestrator (rejected: stop-losses wouldn't work until that feature exists).
+  - The runner is hosting only: it adds no logic to the gate and needs no new grant
+    (`ta_risk_gate` already reads `stop_loss_triggers` and writes `risk_verdicts`). Triggers from an
+    earlier trading day are never evaluated; they are logged and left alone.
 
 ## E14. Tests never touch the broker
 
@@ -299,7 +355,8 @@ No pause, halt, baseline, or config check on exits (FR-006, FR-018, FR-020).
   - `ALPACA_API_KEY_ID`, `ALPACA_API_SECRET_KEY`: the paper account's keys. Execution only.
   - `ALPACA_BASE_URL`: optional; if set, must equal the paper address or startup stops (E2).
   - `EXECUTION_DATABASE_URL`: a login in `ta_execution`.
-  - `RISK_GATE_DATABASE_URL`: a login in `ta_risk_gate`, for the stop-loss evaluation (E13).
+  - `RISK_GATE_DATABASE_URL`: a login in `ta_risk_gate`, used by the **gate's** trigger runner
+    (E13), never given to Execution's process.
 - **Open, and out of scope here**: the Portfolio Manager and Opportunistic Identifier need a price
   source that can't trade. They must not get these keys (Constitution I). Market data with the
   same Alpaca keys would put a trading-capable credential in an LLM agent's process.

@@ -18,7 +18,7 @@ change below is a plain `ALTER` with no backfill.
 | `id` format | **new** `CHECK (id ~ '^\d{4}-\d{2}-\d{2}-[A-Z][A-Z0-9.]*-(buy\|sell)-[0-9a-f]{8}$')` ([ADR 0012](../../docs/adr/0012-order-identifier-per-verdict.md)) |
 | `id` tied to its verdict | **new** `CHECK (right(id, 8) = left(risk_verdict_id::text, 8))`: the suffix can't name a different verdict than the row points at |
 | `status` | CHECK widened to `('submitted', 'partially_filled', 'filled', 'rejected', 'canceled', 'expired')`. `expired` is a day order the broker closed out at the end of the session, filled or not (the broker's `expired` and `done_for_day`, E7). |
-| `limit_price` | **new**, `numeric(14,4)`, nullable: the live ask a buy was actually submitted at (≤ the verdict's ceiling). `NULL` for market orders. |
+| `limit_price` | **new**, `numeric(14,4)`, `> 0`: the live ask a buy was actually submitted at (≤ the verdict's ceiling), also when the row is recorded by the crash-recovery lookup. **new** `CHECK ((id ~ '-buy-[0-9a-f]{8}$') = (limit_price IS NOT NULL))`: every buy has one, no sell does, so the open-buy cost sum can't skip a row (E6). |
 | `broker_reason` | **new**, `text`, nullable: the broker's stated reason when it rejects an order |
 | `submitted_at` | unchanged column; now always written explicitly with the submission time rather than left to the default |
 | grants | `UPDATE` for `ta_execution` narrowed from the whole row to `(broker_order_id, status, fill_qty, fill_price, broker_reason, updated_at)` (E10) |
@@ -26,6 +26,8 @@ change below is a plain `ALTER` with no backfill.
 Unchanged: `risk_verdict_id UNIQUE`, the always-`'approved'` `verdict` column and its composite
 foreign key to `risk_verdicts (id, verdict)` (001 research R12). An order for a rejected verdict
 stays structurally impossible.
+
+`orders` has no symbol, side or quantity columns; those come from the verdict's `approved_order` by joining on `risk_verdict_id` (E6).
 
 `fill_qty` and `fill_price` are the broker's cumulative filled quantity and average fill price. The
 difference between two successive readings is the fill that `positions` hasn't absorbed yet (E8).

@@ -16,7 +16,7 @@ All frozen dataclasses; every price and quantity is a `Decimal`, every time time
 | `Quote` | `symbol`, `ask`, `timestamp` (ask `0` means no active ask) |
 | `Trade` | `symbol`, `price`, `timestamp` |
 | `OrderRequest` | `client_order_id`, `symbol`, `side` (`buy` \| `sell`), `qty` (whole shares), `order_type` (`limit` \| `market`), `limit_price` (limit only), `time_in_force` (always `day`) |
-| `BrokerOrder` | `broker_order_id`, `client_order_id`, `symbol`, `side`, `qty`, `status` (the broker's raw status string), `filled_qty`, `filled_avg_price` (or none), `submitted_at`, `reason` (on rejection, or none) |
+| `BrokerOrder` | `broker_order_id`, `client_order_id`, `symbol`, `side`, `qty`, `order_type`, `limit_price` (limit orders; none for market), `status` (the broker's raw status string), `filled_qty`, `filled_avg_price` (or none), `submitted_at`, `reason` (on rejection, or none) |
 
 ## Calls
 
@@ -51,6 +51,7 @@ There is deliberately no cancel, replace, or close-position call: Execution neve
 Every behaviour a test relies on: scripted account values and positions; quotes and trades with
 timestamps (including stale and zero-ask cases); submissions recorded in order; `find_order` by
 client id; filling an order fully or partly on command, updating positions and cash the way the
-broker would; closing out day orders at "the close"; outright rejection; and raising
+broker would; closing out day orders at "the close"; outright rejection; optionally rejecting a
+duplicate client order id (to exercise the double-check in research E5); and raising
 `BrokerUnavailable` from any chosen call, including *after* recording a submission (the "maybe
 placed" timeout).
