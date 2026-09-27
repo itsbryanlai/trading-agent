@@ -130,3 +130,11 @@ def executor(conn, broker) -> Executor:
 def run_tick(conn, executor: Executor, now: datetime = NOW):
     with as_role(conn, "ta_execution"):
         return executor.tick(now)
+
+
+def gate_runner_pass(conn, now: datetime = NOW, config=REPO_CONFIG) -> int:
+    """One pass of the gate's own trigger runner, as ta_risk_gate (ADR 0013)."""
+    from trading_agent.risk.runner import evaluate_pending_triggers
+
+    with as_role(conn, "ta_risk_gate"):
+        return evaluate_pending_triggers(conn, now, config)

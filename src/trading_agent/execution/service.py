@@ -9,7 +9,7 @@ research.md E4, E5, E13.
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from decimal import ROUND_HALF_UP, Decimal
 from pathlib import Path
@@ -19,7 +19,7 @@ import psycopg
 from psycopg.rows import dict_row
 from psycopg.types.json import Jsonb
 
-from trading_agent.execution import checks, fills
+from trading_agent.execution import checks, fills, monitor
 from trading_agent.execution.broker import (
     Broker,
     BrokerOrder,
@@ -39,6 +39,7 @@ from trading_agent.execution.model import (
     Submit,
     TickReport,
 )
+from trading_agent.execution.schedule import monitor_window
 from trading_agent.risk import calendar
 from trading_agent.risk.config import RiskConfig, RiskConfigError, load_config
 from trading_agent.risk.model import ApprovedOrder
@@ -57,6 +58,10 @@ MAYBE_PLACED_WAIT = timedelta(minutes=2)
 
 _OPEN_STATUSES = ("submitted", "partially_filled")
 
+# A trigger without a verdict this long after it was recorded means the gate's
+# trigger runner isn't running (ADR 0013).
+UNEVALUATED_AFTER = timedelta(minutes=5)
+
 
 class NotAutocommit(Exception):
     """Execution needs each unit of work to be a real transaction (research E5)."""
@@ -66,7 +71,11 @@ class NotAutocommit(Exception):
 class _Held:
     """Per-process memory. Losing it on restart only repeats harmless work."""
 
-    maybe_placed: dict[UUID, datetime]
+    maybe_placed: dict[UUID, datetime] = field(default_factory=dict)
+    # Stop-loss windows whose check succeeded for every held position (E13).
+    windows_done: set[datetime] = field(default_factory=set)
+    # symbol -> the windows in which its last trade was stale.
+    stale_windows: dict[str, set[datetime]] = field(default_factory=dict)
 
 
 class Executor:
@@ -84,7 +93,7 @@ class Executor:
         self.conn = conn
         self.config_path = config_path
         self._allow_savepoints = _allow_savepoints
-        self._held = _Held(maybe_placed={})
+        self._held = _Held()
 
     # --- entry points ------------------------------------------------------
 
@@ -113,6 +122,10 @@ class Executor:
                 report,
                 lambda a=approval: self._process_approval(a, session, report),
             )
+        self._isolated("stop-loss monitor", report, lambda: self._run_monitor(session, report))
+        self._isolated(
+            "unevaluated triggers", report, lambda: self._check_unevaluated(session, report)
+        )
         return report
 
     # --- helpers shared by every duty ---------------------------------------
@@ -411,6 +424,95 @@ class Executor:
                 _write_position(cur, symbol, want)
                 report.reconciled += 1
 
+    # --- the stop-loss monitor (FR-014, E13) -------------------------------
+
+    def _run_monitor(self, session: Session, report: TickReport) -> None:
+        window = monitor_window(session.now)
+        if window is None:
+            return
+        config = self._load_config()
+        if config is None:
+            log.error(
+                "execution: STOP-LOSS MONITOR IS OFF: the risk config failed to load, so "
+                "no position is being checked against its stop-loss line"
+            )
+            return
+        start = window[0]
+        if start in self._held.windows_done:
+            return
+        with self._cursor() as cur:
+            cur.execute("SELECT symbol, qty, avg_entry_price FROM positions")
+            holdings = {
+                row["symbol"]: fills.Holding(row["qty"], row["avg_entry_price"])
+                for row in cur.fetchall()
+            }
+            skip = exits_on_their_way(cur, session.today)
+        trades = {}
+        for symbol in holdings:
+            if symbol in skip:
+                continue
+            try:
+                trades[symbol] = self.broker.get_latest_trade(symbol)
+            except BrokerUnavailable as exc:
+                log.warning("execution: no last trade for %s: %s", symbol, exc)
+                trades[symbol] = None
+        result = monitor.scan(holdings, trades, config.stop_loss_pct, session.now, skip)
+        for breach in result.breaches:
+            # Committed on its own, so the gate's process can see it (ADR 0013).
+            with self.conn.transaction(), self._cursor() as cur:
+                cur.execute(
+                    "INSERT INTO stop_loss_triggers (symbol, observed_price, observed_at) "
+                    "VALUES (%s, %s, %s)",
+                    (breach.symbol, breach.price, session.now),
+                )
+            report.triggers += 1
+            log.warning(
+                "execution: stop-loss trigger for %s at %s (line %s)",
+                breach.symbol,
+                breach.price,
+                breach.line,
+            )
+        for symbol in result.stale:
+            seen = self._held.stale_windows.setdefault(symbol, set())
+            seen.add(start)
+            if len(seen) >= 2:
+                log.error(
+                    "execution: %s has had no fresh trade for %d windows; it is going "
+                    "unprotected by the stop-loss monitor",
+                    symbol,
+                    len(seen),
+                )
+        for symbol in set(self._held.stale_windows) - set(result.stale):
+            if symbol not in result.failed:
+                del self._held.stale_windows[symbol]
+        if result.complete:
+            self._held.windows_done.add(start)
+
+    def _check_unevaluated(self, session: Session, report: TickReport) -> None:
+        """A trigger the gate hasn't evaluated within minutes means its runner isn't
+        running, and stop-loss exits are waiting (ADR 0013)."""
+        with self._cursor() as cur:
+            cur.execute(
+                """
+                SELECT t.id, t.symbol, t.observed_at FROM stop_loss_triggers t
+                WHERE (t.observed_at AT TIME ZONE 'America/New_York')::date = %s
+                  AND t.observed_at <= %s
+                  AND NOT EXISTS (SELECT 1 FROM risk_verdicts v
+                                  WHERE v.stop_loss_trigger_id = t.id)
+                """,
+                (session.today, session.now - UNEVALUATED_AFTER),
+            )
+            stuck = cur.fetchall()
+        for row in stuck:
+            log.error(
+                "execution: stop-loss trigger %s for %s (at %s) unevaluated; is the gate's "
+                "trigger runner running?",
+                row["id"],
+                row["symbol"],
+                row["observed_at"].isoformat(),
+            )
+        report.unevaluated_triggers = len(stuck)
+
     # --- lapsed approvals (E4) ---------------------------------------------
 
     def _sweep_lapsed(self, session: Session, report: TickReport) -> None:
@@ -573,6 +675,30 @@ def _open_orders(cur, side: str):
         (list(_OPEN_STATUSES), side),
     )
     return cur.fetchall()
+
+
+def exits_on_their_way(cur, today) -> frozenset[str]:
+    """Symbols with an open sell, a trigger from today the gate hasn't evaluated,
+    or an approved exit from today with no outcome yet (research E13)."""
+    cur.execute(
+        """
+        SELECT v.approved_order->>'symbol' AS symbol
+        FROM orders o JOIN risk_verdicts v ON v.id = o.risk_verdict_id
+        WHERE o.status = ANY(%(open)s) AND v.approved_order->>'side' = 'sell'
+        UNION
+        SELECT t.symbol FROM stop_loss_triggers t
+        WHERE (t.observed_at AT TIME ZONE 'America/New_York')::date = %(today)s
+          AND NOT EXISTS (SELECT 1 FROM risk_verdicts v WHERE v.stop_loss_trigger_id = t.id)
+        UNION
+        SELECT v.approved_order->>'symbol' FROM risk_verdicts v
+        WHERE v.verdict = 'approved' AND v.trading_day = %(today)s
+          AND v.approved_order->>'side' = 'sell'
+          AND NOT EXISTS (SELECT 1 FROM orders o WHERE o.risk_verdict_id = v.id)
+          AND NOT EXISTS (SELECT 1 FROM execution_refusals r WHERE r.risk_verdict_id = v.id)
+        """,
+        {"open": list(_OPEN_STATUSES), "today": today},
+    )
+    return frozenset(row["symbol"] for row in cur.fetchall())
 
 
 def open_buys(cur, symbol: str) -> tuple[Decimal, Decimal]:
