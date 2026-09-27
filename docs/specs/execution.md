@@ -36,6 +36,19 @@ price-improvement logic, no held/working orders across sessions — see
 [ADR 0005](../adr/0005-risk-gate-and-execution-are-deterministic.md) for why
 this fixed rule is sufficient at this trading pace.
 
+## Scheduled duties
+
+Added by [ADR 0010](../adr/0010-stop-loss-monitor-and-universe-reference-data.md):
+
+- **Stop-loss monitor**: every 30 minutes during market hours, check every held
+  position against its average entry price. For each one at or below the
+  configured stop-loss line (`stop_loss_pct`, 20%), record a stop-loss trigger
+  with the observed price and hand it to the Risk Gate. Submit the exit only if
+  the gate approves it. Execution never constructs an exit itself.
+- **Daily pre-open account snapshot**: record an `account_snapshots` row every
+  trading day before the market opens. The Risk Gate takes the daily-loss
+  baseline from it, and without it rejects all new exposure that day.
+
 ## Edge cases
 
 - **Re-derived limits disagree with the verdict it was handed** (e.g. a fill
@@ -54,7 +67,8 @@ this fixed rule is sufficient at this trading pace.
 ## Interfaces
 
 - Reads `risk_verdicts` (approved rows only), `positions`.
-- Writes only `orders` and updates to `positions` from confirmed fills.
+- Writes `orders`, updates to `positions` from confirmed fills,
+  `account_snapshots`, and stop-loss triggers.
 - The only role with Alpaca broker credentials in the entire system.
 
 ## Non-goals

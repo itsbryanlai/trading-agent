@@ -15,12 +15,15 @@ call and reads no environment beyond what its caller passes in.
 
 - One `decisions` row.
 - `config/risk.yaml` (see below for contents).
-- Whether the market is currently open — a boolean supplied by the caller
-  from the broker/exchange clock, never fetched by the gate itself.
-- Current `positions` and `system_state` (for cash reserve, daily order
-  count, and the daily-loss halt flag) — read directly, re-derived rather
-  than trusted from the `decisions` row, matching Execution's own
-  re-derivation discipline.
+- Or, instead of a decision, one stop-loss trigger recorded by Execution's
+  monitor ([ADR 0010](../adr/0010-stop-loss-monitor-and-universe-reference-data.md)).
+- Whether the market is currently open — a boolean the caller computes from an
+  exchange calendar, with no credential. The gate never fetches it itself.
+- Current `positions`, the latest `account_snapshots` row, and `system_state`
+  (for cash reserve, daily order count, the daily-loss halt, and the baseline).
+  These are read directly and re-derived rather than trusted from the
+  `decisions` row, matching Execution's own re-derivation discipline.
+- The daily universe reference data, for the universe re-check.
 
 ## `config/risk.yaml` contents
 
@@ -31,7 +34,8 @@ extended with this project's daily-loss breaker and universe filters
 ```yaml
 max_position_pct: 8          # per-symbol ceiling as a share of equity
 cash_reserve_pct: 20         # cash floor; buys trimmed or rejected below it
-stop_loss_pct: 8              # a position this far against entry exits in full
+stop_loss_pct: 20             # a position this far below avg entry exits in full
+                               # (raised from 8, ADR 0010); checked every 30 min
 max_orders_per_day: 5         # portfolio-wide cap on exposure-increasing orders;
                                # sells and stop-loss exits are exempt
 daily_loss_halt_pct: 20       # new orders blocked for the rest of the day past this
@@ -70,9 +74,17 @@ rule that fired.
   behavior — reject only when trimming to zero is the only option (e.g. the
   position is already at the ceiling).
 - **Decision's symbol fails the universe filter** (e.g. below the market-cap
-  floor): reject unconditionally — this should be rare in practice since
-  both analysts scan within the eligible universe, but the gate re-checks it
-  independently rather than trusting that upstream filtering held.
+  floor): reject unconditionally. This should be rare in practice, since both
+  analysts scan within the eligible universe, but the gate re-checks it
+  independently rather than trusting that upstream filtering held. A symbol
+  with no reference data from the current trading day fails too.
+- **Stop-loss trigger**: approve a full exit of the shares held only if the
+  trigger's observed price really is at or below the stop-loss line under the
+  position's average entry price. Otherwise reject, so a faulty monitor can't
+  force a sale. An approved stop-loss exit is exempt from the daily order cap
+  and the daily-loss halt.
+- **No pre-open account snapshot today**: no daily-loss baseline can be
+  recorded, so reject every exposure-increasing decision until one exists.
 
 ## Interfaces
 
