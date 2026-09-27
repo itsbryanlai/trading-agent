@@ -54,6 +54,9 @@ OBJECTS: dict[str, ObjectSpec] = {
         ),
     ),
     "system_state_effective": ObjectSpec("view", probe_column="trading_paused"),
+    # Feature 002
+    "stop_loss_triggers": ObjectSpec("table", probe_column="observed_price"),
+    "instrument_reference": ObjectSpec("table", probe_column="exchange_mic"),
 }
 
 

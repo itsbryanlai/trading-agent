@@ -1,0 +1,21 @@
+# Risk limits enforced by the Risk Gate.
+#
+# Schema and loading rules: specs/002-risk-gate/contracts/risk-config.md
+# Every key is required and unknown keys are rejected; a bad file approves nothing.
+#
+# Changed only through code review (docs/policy/agent-management.md →
+# "Changing risk limits"). No agent writes this file, and the Portfolio Manager
+# never reads it. Loosening a limit deserves a deliberate pause before merging.
+
+max_position_pct: 8                 # per-symbol ceiling, share of equity
+cash_reserve_pct: 20                # cash floor, share of equity
+stop_loss_pct: 20                   # exit a position this far below avg entry (ADR 0010)
+max_orders_per_day: 5               # exposure-increasing orders per trading day
+daily_loss_halt_pct: 20             # halt new exposure this far below the day's baseline (ADR 0006)
+max_buy_price_tolerance_pct: 1      # buy price ceiling above the PM's quote
+
+universe:
+  listing: us_common_equity         # common stock on XNYS, XNAS or XASE only
+  min_market_cap_usd: 500000000
+  min_avg_daily_dollar_volume_usd: 10000000
+  min_share_price_usd: 5

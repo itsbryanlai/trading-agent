@@ -63,18 +63,32 @@ APPROVED_ORDER = json.dumps(
 )
 
 
-def insert_verdict(conn: psycopg.Connection, decision_id: str, approved: bool = True) -> str:
+def insert_verdict(
+    conn: psycopg.Connection,
+    decision_id: str | None,
+    approved: bool = True,
+    trigger_id: str | None = None,
+) -> str:
+    """A verdict for a decision, or (with decision_id=None) for a stop-loss trigger."""
     if approved:
-        params = (decision_id, "approved", None, APPROVED_ORDER)
+        outcome = ("approved", None, APPROVED_ORDER)
     else:
-        params = (decision_id, "rejected", "max_position_pct", None)
+        outcome = ("rejected", "max_position_pct", None)
     return conn.execute(
         """
-        INSERT INTO risk_verdicts (decision_id, verdict, rejection_rule, approved_order)
-        VALUES (%s, %s, %s, %s::jsonb)
+        INSERT INTO risk_verdicts (decision_id, stop_loss_trigger_id, verdict, rejection_rule,
+                                   approved_order, trading_day, config_version)
+        VALUES (%s, %s, %s, %s, %s::jsonb, current_date, 'test')
         RETURNING id
         """,
-        params,
+        (decision_id, trigger_id, *outcome),
+    ).fetchone()["id"]
+
+
+def insert_trigger(conn: psycopg.Connection, symbol: str = "AAPL", observed: str = "160") -> str:
+    return conn.execute(
+        "INSERT INTO stop_loss_triggers (symbol, observed_price) VALUES (%s, %s) RETURNING id",
+        (symbol, observed),
     ).fetchone()["id"]
 
 

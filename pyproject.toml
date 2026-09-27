@@ -9,12 +9,15 @@ description = "Multi-agent day-trading system for US equities (paper trading)."
 requires-python = ">=3.12"
 dependencies = [
     "psycopg[binary]>=3.2,<3.3",
+    "PyYAML>=6.0,<7",
+    "exchange-calendars>=4.13,<5",
 ]
 
 [project.optional-dependencies]
 dev = [
     "pytest>=8",
     "ruff",
+    "hypothesis>=6",
 ]
 
 [tool.setuptools.packages.find]

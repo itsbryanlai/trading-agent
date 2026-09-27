@@ -18,6 +18,7 @@ ROLES = (
     "ta_assistant",
     "ta_dashboard",
     "ta_dashboard_control",
+    "ta_reference_data",
 )
 
 OPS = ("S", "I", "U", "D")
@@ -111,5 +112,20 @@ GRANTS: dict[str, dict[str, set[str]]] = {
         "ta_assistant": {"S"},
         "ta_dashboard": {"S"},
         "ta_dashboard_control": {"S"},
+    },
+    # Feature 002 (migration 0006). Execution records stop-loss observations; the
+    # Risk Gate evaluates them. The reference-data job writes universe data.
+    "stop_loss_triggers": {
+        "ta_execution": {"S", "I"},
+        "ta_risk_gate": {"S"},
+        "ta_journal": {"S"},
+        "ta_assistant": {"S"},
+        "ta_dashboard": {"S"},
+    },
+    "instrument_reference": {
+        "ta_reference_data": {"S", "I", "U"},
+        "ta_risk_gate": {"S"},
+        "ta_assistant": {"S"},
+        "ta_dashboard": {"S"},
     },
 }

@@ -62,8 +62,9 @@ def test_second_verdict_for_same_decision_rejected(conn):
     assert (
         sqlstate_of(
             conn,
-            "INSERT INTO risk_verdicts (decision_id, verdict, rejection_rule) "
-            "VALUES (%s, 'rejected', 'cash_reserve_pct')",
+            "INSERT INTO risk_verdicts "
+            "(trading_day, config_version, decision_id, verdict, rejection_rule) "
+            "VALUES (current_date, 't', %s, 'rejected', 'cash_reserve_pct')",
             (decision,),
         )
         == UNIQUE_VIOLATION
@@ -139,24 +140,30 @@ def test_decision_reports_cannot_cite_a_missing_report(conn):
     ("statement", "params"),
     [
         pytest.param(
-            "INSERT INTO risk_verdicts (decision_id, verdict) VALUES (%(d)s, 'rejected')",
+            "INSERT INTO risk_verdicts "
+            "(trading_day, config_version, decision_id, verdict) "
+            "VALUES (current_date, 't', %(d)s, 'rejected')",
             {},
             id="rejected-without-rule",
         ),
         pytest.param(
-            "INSERT INTO risk_verdicts (decision_id, verdict) VALUES (%(d)s, 'approved')",
+            "INSERT INTO risk_verdicts "
+            "(trading_day, config_version, decision_id, verdict) "
+            "VALUES (current_date, 't', %(d)s, 'approved')",
             {},
             id="approved-without-order",
         ),
         pytest.param(
-            "INSERT INTO risk_verdicts (decision_id, verdict, approved_order) "
-            "VALUES (%(d)s, 'approved', '[1, 2]'::jsonb)",
+            "INSERT INTO risk_verdicts "
+            "(trading_day, config_version, decision_id, verdict, approved_order) "
+            "VALUES (current_date, 't', %(d)s, 'approved', '[1, 2]'::jsonb)",
             {},
             id="approved-order-not-object",
         ),
         pytest.param(
-            "INSERT INTO risk_verdicts (decision_id, verdict, rejection_rule, approved_order) "
-            "VALUES (%(d)s, 'approved', 'x', %(order)s::jsonb)",
+            "INSERT INTO risk_verdicts "
+            "(trading_day, config_version, decision_id, verdict, rejection_rule, approved_order) "
+            "VALUES (current_date, 't', %(d)s, 'approved', 'x', %(order)s::jsonb)",
             {"order": APPROVED_ORDER},
             id="approved-with-rejection-rule",
         ),

@@ -26,7 +26,8 @@ Phase 0 decisions for `specs/002-risk-gate`. Numbered G1–G15 so they don't col
 
 ## G3. Size buys at the price ceiling, not the quote
 
-- **Decision**: a buy's price ceiling is `quote × (1 + max_buy_price_tolerance_pct/100)`. The
+- **Decision**: a buy's price ceiling is `quote × (1 + max_buy_price_tolerance_pct/100)`, rounded
+  down to the cent (a valid limit price that never exceeds the tolerance). The
   position-ceiling and cash-reserve arithmetic values the new shares *and the existing holding* at
   that ceiling price (FR-001a).
 - **Rationale**: Execution may fill anywhere up to the ceiling. Sizing at the quote would let a
@@ -104,8 +105,12 @@ sizing, so the named rule is the most fundamental reason. Exits skip every stop 
 
 - **Decision**: `choose_baseline(stored_baseline_for_today, snapshots_before_open)` returns the
   equity to use and whether to record it. If today's baseline is already stored (visible through
-  `system_state_effective`), use it. Otherwise use the latest snapshot with
-  `taken_at < today's open` and record it as today's baseline. With neither, `None`, and every buy
+  `system_state` for today's trading day), use it. Otherwise use the latest snapshot taken on
+  today's New York date with `taken_at < today's open`, and record it as today's baseline. An
+  earlier date's snapshot is never used: Execution records one before every open, so its absence
+  means that duty was missed, and failing closed beats measuring today's loss from a stale base.
+  The service reads `system_state` directly and applies the view's same-day rule itself, against
+  the evaluation's own `now`, so the database clock never enters the gate's inputs. With neither, `None`, and every buy
   is rejected with `no_daily_baseline`.
 - **Rationale**: this implements the Clarifications answer (the pre-open snapshot) and keeps the
   "which snapshot" logic unit-testable.

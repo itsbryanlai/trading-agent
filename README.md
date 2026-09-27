@@ -4,7 +4,12 @@ An autonomous trading agent: research, strategy, execution, and risk management,
 
 ## Status
 
-Implementation phase ([ADR 0009](docs/adr/0009-implementation-phase-started.md)). Built so far: the shared data model — the Postgres schema, per-component database roles, and the grants that enforce what each component may read and write ([`specs/001-data-model/`](specs/001-data-model/spec.md)). Features are built foundation-first, one spec-kit feature at a time.
+Implementation phase ([ADR 0009](docs/adr/0009-implementation-phase-started.md)). Built so far:
+
+- **Shared data model**: the Postgres schema, per-component database roles, and the grants that enforce what each component may read and write ([`specs/001-data-model/`](specs/001-data-model/spec.md)).
+- **Risk Gate**: the deterministic checkpoint every trade passes. It turns each Portfolio Manager decision, or each stop-loss trigger, into one recorded verdict: an order sized inside the limits, or a rejection naming the rule ([`specs/002-risk-gate/`](specs/002-risk-gate/spec.md)).
+
+Features are built foundation-first, one spec-kit feature at a time.
 
 ## Repo layout
 
@@ -19,8 +24,11 @@ trading-agent/
 │   ├── policy/             — rules for creating, granting, and retiring agents
 │   └── research/           — strategy research, market notes, backtesting findings
 ├── specs/                  — spec-kit features: spec, plan, contracts, tasks (one dir per feature)
+├── config/
+│   └── risk.yaml           — the risk limits the Risk Gate enforces (code-reviewed only)
 ├── src/trading_agent/      — application code
-│   └── storage/            — connection helper, migration runner, SQL migrations
+│   ├── storage/            — connection helper, migration runner, SQL migrations
+│   └── risk/               — the Risk Gate: pure core (gate, rules, config) + service
 ├── tests/
 │   ├── unit/               — no network, no database
 │   └── integration/        — against a disposable Postgres (TEST_DATABASE_URL)
@@ -55,6 +63,16 @@ python -m pytest tests/integration -m integration -q
 ```
 
 Unset `TEST_DATABASE_URL` and the suite reports *skipped*, not failed.
+
+The offline suite includes Hypothesis property tests over 10,000+ generated portfolio states
+each, so it takes about a minute and a half. A property failure is a real counterexample, not
+flakiness.
+
+**Risk limits** live in [`config/risk.yaml`](config/risk.yaml). Its schema and loading rules
+are in [`specs/002-risk-gate/contracts/risk-config.md`](specs/002-risk-gate/contracts/risk-config.md).
+Every key is required, unknown keys are errors, and a bad file stops all approvals. Change it
+only through code review ([`docs/policy/agent-management.md`](docs/policy/agent-management.md) →
+*Changing risk limits*). No agent writes it, and the Portfolio Manager never reads it.
 
 **Migrations** are forward-only numbered SQL files in `src/trading_agent/storage/migrations/`,
 applied as a deploy step with the admin credential — never on a component's startup, since no

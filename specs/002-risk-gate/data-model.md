@@ -70,7 +70,7 @@ Validated by the gate before insert; the database checks only that it is an obje
 | `side` | `"buy"` | `"sell"` |
 | `qty` | whole shares, ≥ 1 | whole shares, ≥ 1 |
 | `order_type` | `"limit"` | `"market"` |
-| `limit_price` | price ceiling (quote × (1 + tolerance)) | absent |
+| `limit_price` | price ceiling: quote × (1 + tolerance), **rounded down to the cent** so it never exceeds the tolerance; a decimal string | absent |
 | `time_in_force` | `"day"` | `"day"` |
 | `trading_day` | ISO date (duplicates the column for Execution's convenience) | same |
 | `exposure` | `"increase"` | `"decrease"` |
@@ -87,8 +87,8 @@ without inferring intent from `side`.
 | The request | `decisions` row, or `stop_loss_triggers` row | exactly one |
 | Current holding | `positions` for the symbol | absent means 0 shares |
 | Equity and cash | latest `account_snapshots` row whose `taken_at` is on today's NY trading day | none means `no_account_snapshot_today` (G9) |
-| Baseline | `system_state_effective.daily_starting_equity`, else the latest snapshot before today's open | recorded by the service (G8) |
-| Halt, pause | `system_state_effective` | |
+| Baseline | `system_state.daily_starting_equity` when `baseline_trading_day` is today, else the latest snapshot taken on today's New York date before today's open | recorded by the service (G8). A snapshot from an earlier date is not used: it means Execution missed its pre-open duty, and the gate fails closed |
+| Halt, pause | `system_state`, judged against the evaluation's own trading day | the same rule as `system_state_effective`, but computed from `now` rather than the database clock, so a verdict depends only on the gate's inputs (FR-002) |
 | Approvals so far today | `count(*)` of `risk_verdicts` where `trading_day = today`, `verdict = 'approved'`, `approved_order->>'exposure' = 'increase'` | read under the advisory lock (G10) |
 | Universe data | `instrument_reference` row for (symbol, today) | buys only |
 | Config | `config/risk.yaml` via `RiskConfig` | not a database read |
