@@ -11,7 +11,7 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass
 from datetime import datetime, timedelta
-from decimal import Decimal
+from decimal import ROUND_HALF_UP, Decimal
 from pathlib import Path
 from uuid import UUID
 
@@ -19,7 +19,7 @@ import psycopg
 from psycopg.rows import dict_row
 from psycopg.types.json import Jsonb
 
-from trading_agent.execution import checks
+from trading_agent.execution import checks, fills
 from trading_agent.execution.broker import (
     Broker,
     BrokerOrder,
@@ -93,12 +93,19 @@ class Executor:
         database (FR-013); then the connection check (research E5)."""
         self.broker.verify_paper()
         self._require_autocommit()
+        report = TickReport()
+        self._isolated("order sync", report, lambda: self._sync_orders(report))
+        self._isolated("reconciliation", report, lambda: self._reconcile_positions(report))
 
     def tick(self, now: datetime) -> TickReport:
         """One pass of every duty that is due at `now` (research E13)."""
         self._require_autocommit()
         report = TickReport()
         session = session_at(now)
+        # Positions first: the gate sizes from them and the monitor measures from
+        # them (research E8).
+        self._isolated("order sync", report, lambda: self._sync_orders(report))
+        self._isolated("reconciliation", report, lambda: self._reconcile_positions(report))
         self._isolated("sweep", report, lambda: self._sweep_lapsed(session, report))
         for approval in self._pending_approvals(session.today):
             self._isolated(
@@ -308,6 +315,102 @@ class Executor:
         report.submitted += 1
         log.info("execution: submitted %s", request.client_order_id)
 
+    # --- fills and positions (E7, E8) --------------------------------------
+
+    def _sync_orders(self, report: TickReport) -> None:
+        with self._cursor() as cur:
+            cur.execute(
+                """
+                SELECT o.id, o.broker_order_id, o.fill_qty, o.fill_price,
+                       v.approved_order->>'symbol' AS symbol,
+                       v.approved_order->>'side' AS side
+                FROM orders o JOIN risk_verdicts v ON v.id = o.risk_verdict_id
+                WHERE o.status = ANY(%s) AND o.broker_order_id IS NOT NULL
+                ORDER BY o.submitted_at, o.id
+                """,
+                (list(_OPEN_STATUSES),),
+            )
+            rows = cur.fetchall()
+        for row in rows:
+            self._isolated(f"order {row['id']}", report, lambda r=row: self._sync_one(r, report))
+
+    def _sync_one(self, row: dict, report: TickReport) -> None:
+        placed = self.broker.get_order(row["broker_order_id"])
+        try:
+            status = fills.map_status(placed.status, placed.filled_qty)
+        except fills.UnexpectedStatus:
+            log.error(
+                "execution: order %s has unexpected broker status %r; left unchanged",
+                row["id"],
+                placed.status,
+            )
+            return
+        delta = fills.fill_delta(
+            row["fill_qty"] or Decimal(0),
+            row["fill_price"],
+            placed.filled_qty,
+            placed.filled_avg_price,
+        )
+        # The order and the position it moves change together, or neither does.
+        with self.conn.transaction(), self._cursor() as cur:
+            if delta is not None:
+                self._apply_fill(cur, row["symbol"], row["side"], *delta)
+                report.fills_applied += 1
+            cur.execute(
+                "UPDATE orders SET status = %s, fill_qty = %s, fill_price = %s, updated_at = now() "
+                "WHERE id = %s",
+                (status, placed.filled_qty, placed.filled_avg_price, row["id"]),
+            )
+
+    def _apply_fill(self, cur, symbol: str, side: str, qty: Decimal, price: Decimal) -> None:
+        cur.execute(
+            "SELECT qty, avg_entry_price FROM positions WHERE symbol = %s FOR UPDATE", (symbol,)
+        )
+        current = cur.fetchone()
+        holding = fills.Holding(current["qty"], current["avg_entry_price"]) if current else None
+        try:
+            after = fills.apply_fill(holding, side, qty, price)
+        except ValueError as exc:
+            # The table was already out of step; reconciliation corrects it next.
+            log.warning("execution: fill for %s not applied to positions: %s", symbol, exc)
+            return
+        _write_position(cur, symbol, after)
+
+    def _reconcile_positions(self, report: TickReport) -> None:
+        """The broker is the record of what is held (FR-011)."""
+        broker_positions = {p.symbol: p for p in self.broker.get_positions()}
+        with self.conn.transaction(), self._cursor() as cur:
+            cur.execute("SELECT symbol, qty, avg_entry_price FROM positions FOR UPDATE")
+            ours = {row["symbol"]: row for row in cur.fetchall()}
+            for symbol in sorted(set(broker_positions) | set(ours)):
+                theirs = broker_positions.get(symbol)
+                mine = ours.get(symbol)
+                if theirs is not None and theirs.qty <= 0:
+                    log.error(
+                        "execution: broker reports %s %s of %s; long-only, left for the owner",
+                        "a short" if theirs.qty < 0 else "zero",
+                        theirs.qty,
+                        symbol,
+                    )
+                    continue
+                want = (
+                    None
+                    if theirs is None
+                    else fills.Holding(theirs.qty, _stored(theirs.avg_entry_price))
+                )
+                have = None if mine is None else fills.Holding(mine["qty"], mine["avg_entry_price"])
+                if want == have:
+                    continue
+                log.warning(
+                    "execution: position %s disagrees with the broker (ours %s, broker's %s); "
+                    "adopting the broker's",
+                    symbol,
+                    have,
+                    want,
+                )
+                _write_position(cur, symbol, want)
+                report.reconciled += 1
+
     # --- lapsed approvals (E4) ---------------------------------------------
 
     def _sweep_lapsed(self, session: Session, report: TickReport) -> None:
@@ -397,6 +500,28 @@ class Executor:
 
 
 # --- reads shared with tests -----------------------------------------------
+
+_FOUR_PLACES = Decimal("0.0001")
+
+
+def _stored(value: Decimal) -> Decimal:
+    """What a numeric(14,4) column would hold."""
+    return value.quantize(_FOUR_PLACES, rounding=ROUND_HALF_UP)
+
+
+def _write_position(cur, symbol: str, holding) -> None:
+    if holding is None:
+        cur.execute("DELETE FROM positions WHERE symbol = %s", (symbol,))
+        return
+    cur.execute(
+        """
+        INSERT INTO positions (symbol, qty, avg_entry_price, updated_at)
+        VALUES (%s, %s, %s, now())
+        ON CONFLICT (symbol) DO UPDATE
+        SET qty = EXCLUDED.qty, avg_entry_price = EXCLUDED.avg_entry_price, updated_at = now()
+        """,
+        (symbol, holding.qty, _stored(holding.avg_entry_price)),
+    )
 
 
 def session_at(now: datetime) -> Session:
