@@ -51,7 +51,7 @@ One row per Portfolio Manager decision.
 | `generated_at` | timestamptz | |
 | `symbol` | text | |
 | `direction` | enum (`buy`, `sell`, `hold`) | |
-| `size_pct` | numeric | PM's final sizing decision |
+| `size_pct` | numeric | PM's **target weight**: the share of equity the position should end up at (0 = exit fully). The Risk Gate orders the difference from the current weight (`specs/002-risk-gate`). |
 | `reasoning_md` | text (Markdown) | PM's own rationale, including how it weighed converging/conflicting reports |
 | `quote_at_decision` | numeric | the live quote the PM fetched itself, not trusted from a report |
 

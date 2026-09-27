@@ -30,11 +30,17 @@ position (same mechanism as `trading-bot`).
 
 ## Order construction rule
 
-A limit order at the current quote (fetched at submission time, not reused
-from an earlier step) with a day time-in-force. No order-splitting, no
-price-improvement logic, no held/working orders across sessions — see
-[ADR 0005](../adr/0005-risk-gate-and-execution-are-deterministic.md) for why
-this fixed rule is sufficient at this trading pace.
+- **Buys**: a day limit order at the live quote (fetched at submission time),
+  submitted only if that quote is at or under the price ceiling in the Risk
+  Gate's approved order. If the live quote is above the ceiling, the buy is
+  not submitted.
+- **Sells and stop-loss exits**: a day market order, so an exit is never left
+  unfilled behind a limit in a falling market.
+
+No order-splitting, no price-improvement logic, no held/working orders across
+sessions. See [ADR 0005](../adr/0005-risk-gate-and-execution-are-deterministic.md)
+for why fixed rules are sufficient at this trading pace, and
+`specs/002-risk-gate` Clarifications for the ceiling/market split.
 
 ## Scheduled duties
 
@@ -48,6 +54,12 @@ Added by [ADR 0010](../adr/0010-stop-loss-monitor-and-universe-reference-data.md
 - **Daily pre-open account snapshot**: record an `account_snapshots` row every
   trading day before the market opens. The Risk Gate takes the daily-loss
   baseline from it, and without it rejects all new exposure that day.
+- **Live check before every buy**: immediately before submitting an approved
+  buy, fetch live account equity from the broker, record it as an
+  `account_snapshots` row, and refuse to submit if equity is at or below the
+  daily-loss line under today's baseline. Recording the halt stays with the
+  Risk Gate, which does so from this snapshot at its next evaluation. Sells and
+  stop-loss exits skip this check (`specs/002-risk-gate` Clarifications).
 
 ## Edge cases
 
@@ -63,6 +75,9 @@ Added by [ADR 0010](../adr/0010-stop-loss-monitor-and-universe-reference-data.md
   broker order rather than resubmitting.
 - **Startup against a non-paper endpoint**: refuse to start at all — same
   hard requirement as `trading-bot`.
+- **Approval from an earlier trading day**: never submit it. An approval is
+  valid only on the trading day it was approved for; unsubmitted approvals
+  lapse at the close (`specs/002-risk-gate` FR-019).
 
 ## Interfaces
 

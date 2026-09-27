@@ -37,3 +37,7 @@
   It was routed through the gate to keep Constitution Principle I intact.
 - The stop-loss change loosens a risk limit; flagged to the owner per `CLAUDE.md`.
 - All items pass; ready for `/speckit-clarify` or `/speckit-plan`.
+- `/speckit-clarify` session 2026-09-27 settled four more decisions (live equity check by
+  Execution at purchase, target-weight sizing, buy price ceiling with market-order exits,
+  same-day approval validity) and raised a PM cadence question decided as ADR 0011. FR-020
+  (pause semantics) applied a default the owner can override. Still 16/16.

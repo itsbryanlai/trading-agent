@@ -34,7 +34,10 @@ does that, deliberately outside the PM's own judgment), or placing orders
 One `decisions` row per symbol it acts on (see `docs/specs/data-model.md`),
 carrying:
 - `direction` and `size_pct` — its own call, not a sum or average of the
-  analysts' suggestions
+  analysts' suggestions. `size_pct` is a **target weight**: the share of equity
+  the position should end up at, not an amount to add. A full exit is `sell` at
+  0. The direction must agree with the target (a buy targets more than the
+  current weight, a sell less), or the Risk Gate rejects it.
 - the report(s) this decision drew on, recorded as `decision_reports` rows in
   the same transaction, for per-agent attribution in the journal
 - `reasoning_md` — including, when both analysts converged on a symbol, how
@@ -46,12 +49,17 @@ not originate ideas of its own.
 
 ## Cadence
 
-Once per trading day, on a fixed schedule (mid-morning, after both agents'
-same-day reports exist). Event-triggered PM runs are explicitly out of scope
-for now (see Alternatives in
-[ADR 0003](../adr/0003-orchestrator-is-a-scheduler-not-an-authority.md)'s
-neighboring discussion) — revisit only if the daily cadence is observed to
-miss genuinely time-sensitive opportunities.
+A morning session plus event-driven intraday runs
+([ADR 0011](../adr/0011-event-driven-portfolio-manager-runs.md)):
+
+- **Morning session** at a fixed time after the open, deciding on everything
+  open, chiefly Research's pre-open reports.
+- **Event-driven runs** whenever at least one new report has been written since
+  the PM's last run, at least 30 minutes apart, and none after 15:30 ET.
+
+Every run considers all open reports and decides from fresh portfolio state.
+Because `size_pct` is a target weight, re-running on the same reports can't
+buy twice: a target already met produces no order.
 
 ## Edge cases
 
@@ -65,8 +73,11 @@ miss genuinely time-sensitive opportunities.
 - **`trading_paused` is set** (manual UI toggle): the orchestrator does not
   invoke the PM at all while paused — this is enforced upstream, not by the
   PM checking its own state.
-- **No open reports from either agent**: the PM's run produces no decisions
-  that day. This is a normal outcome, not an error.
+- **No open reports from either agent**: the PM's run produces no decisions.
+  This is a normal outcome, not an error.
+- **A report it already decided on is still open in a later run**: re-evaluate
+  it on current state like any other. Deciding the same target again is
+  harmless, and the Risk Gate turns a met target into no order.
 
 ## Interfaces
 

@@ -39,6 +39,9 @@ stop_loss_pct: 20             # a position this far below avg entry exits in ful
 max_orders_per_day: 5         # portfolio-wide cap on exposure-increasing orders;
                                # sells and stop-loss exits are exempt
 daily_loss_halt_pct: 20       # new orders blocked for the rest of the day past this
+max_buy_price_tolerance_pct: 1  # buy price ceiling = PM's quote + this; Execution
+                               # skips the buy if the live price is above it.
+                               # Sells and stop-loss exits are market orders.
 
 universe:
   listing: us_common_equity   # no OTC, no leveraged/inverse ETFs, no options

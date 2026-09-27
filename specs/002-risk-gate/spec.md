@@ -15,6 +15,11 @@
 - Q: Where does the universe reference data (market cap, average daily dollar volume, share price, listing type) come from? → A: A daily reference table, filled once per trading day by a separate deterministic job that uses a read-only data key (Finnhub) and cannot trade. The gate reads it. A symbol missing from it, or whose data isn't from the current trading day, fails the universe check (fail closed). The job is its own component ([ADR 0010](../../docs/adr/0010-stop-loss-monitor-and-universe-reference-data.md)).
 - Q: Which component detects a position crossing its stop-loss line and produces the exit? → A: A monitor inside Execution checks every held position twice an hour (every 30 minutes) during market hours. When one has fallen to or below the stop-loss line, it records a stop-loss trigger with the price it observed. Constitution Principle I requires every order to pass the gate, so the gate evaluates the trigger: it re-checks the drop from the recorded price and the position's entry price, and approves a full exit that no cap or halt can block.
 - Q: Stop-loss distance? → A: **20%** below the position's average entry price (raised from 8% at the owner's request; a loosened limit, flagged per `CLAUDE.md`).
+- Q: Where does the gate get today's *current* equity for the 20% daily-loss check, and how recent must it be? → A: The gate checks the halt against the latest account snapshot from the current trading day, with no freshness window. Just before submitting any approved buy, Execution fetches live equity from the broker and records it as an account snapshot. It refuses to submit if equity is at or below the daily-loss line under today's baseline. The gate records the halt at its next evaluation from that snapshot. Sells and stop-loss exits skip Execution's live check. A stale snapshot can therefore only cause a refused buy, never a breach.
+- Q: When the Portfolio Manager records a size on a decision, what does that number mean? → A: **Target weight**: where the position should end up, as a share of equity. The gate orders the difference between the target and the current weight, subject to every limit. A target of 0% exits fully. A target already met produces no order. The same decision evaluated twice has no additional effect.
+- Q: Who sets an order's price, and how do we stop an exit failing to fill in a falling market? → A: **Buys** carry a limit price that is a *ceiling*: the PM's recorded quote plus a configurable tolerance (`max_buy_price_tolerance_pct`, default 1%). Execution buys at the live quote if it is at or under the ceiling, and otherwise does not submit. **Sells and stop-loss exits** are market orders, so an exit is never left unfilled by a limit in a falling market.
+- Q: How long does an approved order stay valid? → A: Only on the trading day it was approved, and only while the market is open. Execution must not submit an approval from an earlier trading day. An approval not submitted by the close lapses, and the next PM run decides again from fresh state.
+- Q (raised during clarification; decided outside this feature): Is one mid-morning PM run a day right? → A: No. The PM runs as a morning session plus event-driven runs on new reports, at least 30 minutes apart and none after 15:30 ET ([ADR 0011](../../docs/adr/0011-event-driven-portfolio-manager-runs.md)). For the gate this means several evaluations per day on the same symbols, which target weights (no double-buying) and same-day approvals (FR-019) already make safe. No gate requirement changes.
 - Q: What is the source of the market-open signal, and which account snapshot defines the day's starting-equity baseline? → A: Market open is computed by the caller from an exchange calendar (regular hours, holidays, early closes), with no credential. The baseline is the last account snapshot taken before the current trading day's market open, recorded at the gate's first evaluation of the day. If none exists, every exposure-increasing decision is rejected until one does.
 
 ## User Scenarios & Testing *(mandatory)*
@@ -31,12 +36,14 @@ The Portfolio Manager decides to buy a symbol at some size. The Risk Gate turns 
 
 **Acceptance Scenarios**:
 
-1. **Given** equity of $100,000, no position in AAPL, ample cash, and a decision to buy AAPL at 5% of equity at a quote of $200, **When** the gate evaluates it, **Then** it approves an order for 25 shares with a limit price and a day time-in-force.
-2. **Given** an existing AAPL position worth 6% of equity, **When** a decision asks to buy another 5%, **Then** the gate approves a trimmed order that brings the position to exactly the 8% ceiling (rounded down to whole shares) and records that it was trimmed and by which rule.
-3. **Given** an AAPL position already at the 8% ceiling, **When** a decision asks to buy more, **Then** the gate rejects it, naming the position ceiling.
-4. **Given** cash that is already at the 20% reserve floor, **When** a buy decision arrives, **Then** the gate rejects it, naming the cash reserve; when only part of the buy fits above the floor, it trims to what fits.
-5. **Given** a decision to sell AAPL, **When** the gate evaluates it, **Then** it approves a sell of no more than the shares actually held, and rejects a sell of a symbol not held.
-6. **Given** a decision to hold, **When** it would be evaluated, **Then** no order and no verdict are produced — a hold is not an order request.
+1. **Given** equity of $100,000, no position in AAPL, ample cash, and a decision to buy AAPL with a target weight of 5% at a quote of $200, **When** the gate evaluates it, **Then** it approves a limit buy of 25 shares with a price ceiling of $202 (quote plus the 1% tolerance) and a day time-in-force.
+2. **Given** an existing AAPL position worth 6% of equity, **When** a decision targets 10%, **Then** the gate approves a trimmed buy that brings the position to exactly the 8% ceiling (rounded down to whole shares) and records that it was trimmed and by which rule.
+3. **Given** an AAPL position already at the 8% ceiling, **When** a decision targets a higher weight, **Then** the gate rejects it, naming the position ceiling.
+4. **Given** cash that is already at the 20% reserve floor, **When** a buy decision arrives, **Then** the gate rejects it, naming the cash reserve. When only part of the buy fits above the floor, it trims to what fits.
+5. **Given** 50 shares of AAPL held, **When** a sell decision targets 0%, **Then** the gate approves a sell of all 50 shares. A sell targeting a weight between 0 and the current one approves a sell of the difference, and a sell of a symbol not held is rejected.
+6. **Given** a position already at its target weight (within one whole share), **When** the decision is evaluated, **Then** no order is approved and the verdict names "target already met". The same decision submitted twice therefore never trades twice.
+7. **Given** a buy decision whose target is *below* the current weight, or a sell whose target is *above* it, **When** it is evaluated, **Then** it is rejected, naming "direction contradicts target", rather than trading in the opposite direction to what the Portfolio Manager said.
+8. **Given** a decision to hold, **When** it would be evaluated, **Then** no order and no verdict are produced. A hold is not an order request.
 
 ---
 
@@ -108,25 +115,26 @@ The owner tunes limits by editing one configuration file under code review. If t
 ### Edge Cases
 
 - **The same decision evaluated twice** (a retry, or two runs racing): the second evaluation returns the verdict already recorded; it never produces a second or different one.
-- **Stale or missing account state**: if there is no account snapshot recent enough to trust, the gate rejects new exposure rather than sizing against old equity or cash. Exits are still approved, sized against the shares actually held.
+- **Missing account state**: if there is no account snapshot from the current trading day, the gate rejects new exposure rather than sizing against a previous day's equity or cash. Exits are still approved, sized against the shares actually held. A snapshot from earlier today is used as-is. Execution's live re-check at submission is what stops a buy that equity has since moved against.
 - **A buy so small that it rounds to zero shares** at the quote: rejected, naming the sizing rule, rather than approved as an empty order.
 - **Several rules would reject the same decision**: the verdict names one rule, chosen by a fixed, documented precedence, so the same inputs always name the same rule.
-- **A sell decision larger than the holding**: approved for the shares held, not rejected; recorded as trimmed.
+- **The same decision submitted in two sessions**: because size is a target weight, the second evaluation sees the target already met (or nearly so) and orders nothing, or only the small remaining difference.
 - **Equity crosses the loss line between two decisions in the same session**: the decision evaluated after the crossing is rejected, even though the one before it was approved.
 
 ## Requirements *(mandatory)*
 
 ### Functional Requirements
 
-- **FR-001**: The gate MUST record exactly one verdict for every buy or sell decision and every stop-loss trigger it evaluates: approved with a fully-specified order (symbol, side, whole-share quantity, limit price, time-in-force), or rejected naming the single rule that stopped it. Hold decisions MUST produce no verdict and no order.
+- **FR-001**: The gate MUST record exactly one verdict for every buy or sell decision and every stop-loss trigger it evaluates: approved with a fully-specified order, or rejected naming the single rule that stopped it. An approved **buy** is a day limit order (symbol, whole-share quantity, price ceiling = the PM's recorded quote plus `max_buy_price_tolerance_pct`, default 1%). An approved **sell or stop-loss exit** is a day market order (symbol, whole-share quantity). Hold decisions MUST produce no verdict and no order.
+- **FR-001a**: The gate MUST size a buy using its price ceiling, not the quote, so the position ceiling and cash reserve hold even if the order fills at the top of the tolerance.
 - **FR-002**: The gate's judgement MUST be a deterministic function of its inputs: the decision, current positions, the latest account state, today's halt and baseline state, the configuration, whether the market is open, and the evaluation time. Identical inputs MUST always yield an identical verdict. The judgement MUST make no network call and consult no source it isn't given.
-- **FR-003**: The gate MUST size a buy from the decision's size and the quote the Portfolio Manager recorded with it, rounding down to whole shares.
+- **FR-003**: The gate MUST treat a decision's size as a **target weight** (the position's intended share of equity after the trade). It MUST order the difference between that target and the current weight, valued at the quote the Portfolio Manager recorded, in whole shares, rounding toward the smaller trade. A decision whose target is already met MUST produce no order. A decision whose direction contradicts its target MUST be rejected.
 - **FR-004**: The gate MUST cap every buy so the resulting position does not exceed the configured per-symbol ceiling (default 8% of equity), trimming a partially-fitting buy and rejecting one that fits not at all.
 - **FR-005**: The gate MUST cap every buy so that cash does not fall below the configured reserve (default 20% of equity), trimming or rejecting in the same way.
-- **FR-006**: The gate MUST approve a sell only for shares actually held, trimming an oversized sell to the holding and rejecting a sell of a symbol not held. The system is long-only.
+- **FR-006**: The gate MUST approve a sell only for shares actually held (a target of 0% sells all of them) and reject a sell of a symbol not held. The system is long-only; no target can be negative.
 - **FR-007**: The gate MUST reject every decision when the market is closed at evaluation time.
 - **FR-008**: While the daily-loss halt is active, the gate MUST reject every exposure-increasing decision and MUST still approve exposure-reducing ones.
-- **FR-009**: When its evaluation finds current equity at or below the configured loss line (default 20%) under today's baseline, the gate MUST record the halt against today before rejecting the decision. It MUST NOT sell or reduce any position as a consequence.
+- **FR-009**: When its evaluation finds the equity in the latest account snapshot from the current trading day at or below the configured loss line (default 20%) under today's baseline, the gate MUST record the halt against today before rejecting the decision. It MUST NOT sell or reduce any position as a consequence. The live, last-moment check before a buy is submitted belongs to Execution (see Assumptions).
 - **FR-010**: The gate MUST reject an exposure-increasing decision once the configured number of exposure-increasing orders (default 5) has already been approved that trading day. Exposure-reducing orders MUST NOT count toward or be blocked by the cap.
 - **FR-011**: The gate MUST independently re-check every buy's symbol against every universe rule (US common equity only; market cap, average daily dollar volume, and share price floors) using the daily universe reference data, and reject one that fails, whatever upstream components concluded. A symbol with no reference data from the current trading day MUST fail the check.
 - **FR-012**: The gate MUST evaluate stop-loss triggers recorded by Execution's monitor. It MUST approve a full exit of the shares held when the trigger's observed price is at or below the configured stop-loss distance (default 20%) under the position's average entry price. It MUST reject a trigger that doesn't meet the line or names a symbol not held. No hard stop in FR-008 to FR-010 may block an approved stop-loss exit. The market being closed (FR-007) still does.
@@ -135,7 +143,9 @@ The owner tunes limits by editing one configuration file under code review. If t
 - **FR-015**: Every verdict MUST record which configuration it was judged against and, for an approved order that was trimmed, which rule trimmed it.
 - **FR-016**: When several rules would reject a decision, the gate MUST name one, chosen by a fixed, documented precedence.
 - **FR-017**: Evaluating a decision or stop-loss trigger that already has a verdict MUST return the existing verdict and record nothing new.
-- **FR-018**: The gate MUST reject exposure-increasing decisions when no sufficiently recent account state is available, rather than size against stale equity or cash.
+- **FR-020**: While the manual pause is on, the gate MUST reject every exposure-increasing decision, naming the pause, even though the orchestrator should not have invoked the Portfolio Manager at all. Sells and stop-loss exits MUST still be approved; pausing trading never traps an exit.
+- **FR-019**: Every approved order MUST record the trading day it was approved for. It is valid only on that trading day while the market is open. Execution MUST NOT submit an approval from an earlier trading day; an unsubmitted approval lapses at the close.
+- **FR-018**: The gate MUST reject exposure-increasing decisions when no account snapshot from the current trading day exists, rather than size against a previous day's equity or cash.
 
 ### Key Entities
 
@@ -160,9 +170,9 @@ The owner tunes limits by editing one configuration file under code review. If t
 
 ## Assumptions
 
-- A decision's size is a share of *current* equity for buys, and a share of equity to divest for sells, capped at the holding.
+- A position's current weight is its share count times the decision's recorded quote, divided by the equity in the latest account snapshot from today.
 - The approved order's limit price is the quote the Portfolio Manager recorded with the decision. Whether Execution may re-price within a tolerance at submission is the Execution feature's decision.
-- "Sufficiently recent" account state means an account snapshot taken on the current trading day. The exact freshness window is a planning detail.
+- The gate sizes against the latest account snapshot from the current trading day, which may be hours old. Safety at the moment of purchase comes from Execution. Before submitting any approved buy, it fetches live equity, records it as a snapshot, and refuses to submit if the daily-loss line is crossed. It also re-derives the position ceiling and cash reserve with live numbers, per Constitution Principle I. So a snapshot that is out of date can cause a refused buy but never a breach. The halt is recorded by the gate at its next evaluation, so the dashboard may show it slightly after the moment equity crossed the line.
 - Hold decisions are not submitted to the gate. The Portfolio Manager's caller skips them.
 - Enforcing "the Portfolio Manager never reads the configuration" is a code-level rule verified by test. Both run in the same worker process, so an operating-system permission can't separate them.
 - The gate writes only verdicts and today's halt and baseline, within the grants already provided by feature 001. This feature adds the storage for universe reference data and stop-loss triggers, with a grant letting the gate read both.

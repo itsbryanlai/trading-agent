@@ -38,3 +38,4 @@ What this makes easier, harder, or locks in going forward.
 | [0008](0008-dashboard-stack-and-research-provider.md) | Dashboard stack and Research's news provider |
 | [0009](0009-implementation-phase-started.md) | Implementation phase started |
 | [0010](0010-stop-loss-monitor-and-universe-reference-data.md) | Stop-loss monitoring, universe reference data, and the daily baseline |
+| [0011](0011-event-driven-portfolio-manager-runs.md) | Portfolio Manager: a morning session plus event-driven intraday runs |

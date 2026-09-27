@@ -57,7 +57,7 @@ holds no database credentials and makes no model call — see
 |---|---|---|---|
 | Research | news/data sources, own credential | `reports` (own rows) | ~daily + news-triggered |
 | Opportunistic Identifier | market data | `reports` (own rows) | intraday polling |
-| Portfolio Manager | both agents' open reports, portfolio state, live quote, journal | `decisions` | once daily |
+| Portfolio Manager | both agents' open reports, portfolio state, live quote, journal | `decisions` | morning session + event-driven on new reports, ≥30 min apart, none after 15:30 ET ([ADR 0011](../adr/0011-event-driven-portfolio-manager-runs.md)) |
 | Assistant | everything | nothing | on-demand (Telegram) |
 
 Full behavior, inputs/outputs, and edge cases for each are in
