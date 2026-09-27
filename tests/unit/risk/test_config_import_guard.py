@@ -1,7 +1,9 @@
 """Structural guards (specs/002-risk-gate research G1, G15).
 
-1. Only trading_agent.risk may import the risk-config loader: the Portfolio
-   Manager, in particular, must never read the limits it is judged against.
+1. Only trading_agent.risk and trading_agent.execution may import the
+   risk-config loader (specs/003-execution E12): Execution re-derives the same
+   limits. The Portfolio Manager, in particular, must never read the limits it
+   is judged against.
 2. The pure core does no I/O: no database driver, no calendar, no environment,
    no clock, and no import of the service that does those things.
 """
@@ -13,6 +15,7 @@ from pathlib import Path
 
 SRC = Path(__file__).resolve().parents[3] / "src" / "trading_agent"
 RISK = SRC / "risk"
+EXECUTION = SRC / "execution"
 CORE_MODULES = ("gate.py", "model.py", "rules.py", "config.py")
 FORBIDDEN_IN_CORE = {
     "psycopg",
@@ -38,11 +41,12 @@ def _module_name(path: Path) -> str:
     return ".".join(path.relative_to(SRC.parent).with_suffix("").parts)
 
 
-def test_only_the_risk_package_imports_the_config_loader():
+def test_only_risk_and_execution_import_the_config_loader():
     offenders = [
         _module_name(path)
         for path in SRC.rglob("*.py")
         if RISK not in path.parents
+        and EXECUTION not in path.parents
         and any(name.startswith("trading_agent.risk.config") for name in _imports(path))
     ]
     assert offenders == []

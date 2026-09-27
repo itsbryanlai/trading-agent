@@ -49,3 +49,22 @@ def test_trading_day_uses_the_new_york_date():
 def test_naive_datetime_rejected():
     with pytest.raises(ValueError):
         calendar.market_open(datetime(2026, 9, 28, 14, 0))
+
+
+def test_close_time_is_1600_new_york_in_utc():
+    assert calendar.close_time(date(2026, 9, 28)) == utc(2026, 9, 28, 20, 0)
+
+
+def test_close_time_follows_an_early_close():
+    assert calendar.close_time(date(2026, 11, 27)) == utc(2026, 11, 27, 18, 0)
+
+
+def test_close_time_rejects_a_non_session_day():
+    with pytest.raises(ValueError):
+        calendar.close_time(date(2026, 9, 26))
+
+
+def test_is_session():
+    assert calendar.is_session(date(2026, 9, 28)) is True
+    assert calendar.is_session(date(2026, 9, 26)) is False
+    assert calendar.is_session(date(2026, 11, 26)) is False

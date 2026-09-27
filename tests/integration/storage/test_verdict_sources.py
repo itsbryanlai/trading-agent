@@ -63,8 +63,8 @@ def test_trading_day_and_config_version_required(conn, statement):
 def test_order_can_reference_a_triggers_approved_verdict(conn):
     verdict = insert_verdict(conn, None, approved=True, trigger_id=insert_trigger(conn))
     with as_role(conn, "ta_execution"):
-        order = insert_order(conn, verdict, order_id="2026-09-28-AAPL-sell")
-    assert order == "2026-09-28-AAPL-sell"
+        order = insert_order(conn, verdict, side="sell")
+    assert order == f"2026-09-28-AAPL-sell-{str(verdict)[:8]}"
 
 
 def test_invalid_trigger_and_reference_rows_rejected(conn):

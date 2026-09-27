@@ -36,7 +36,7 @@ that can.
 
 `S` = SELECT, `I` = INSERT, `U` = UPDATE, `D` = DELETE, `—` = no access.
 `I*` = INSERT restricted by row-level security to the role's own `agent` value.
-`U(cols)` = UPDATE on the named columns only.
+`U(cols)` = UPDATE on the named columns only. `S(cols)` = SELECT on the named columns only.
 
 | Object | research | opp_identifier | portfolio_mgr | risk_gate | execution | journal | orchestrator | assistant | dashboard | dashboard_control | reference_data |
 |---|---|---|---|---|---|---|---|---|---|---|---|
@@ -45,19 +45,25 @@ that can.
 | `decisions` | — | — | S, I | S | — | S | — | S | S | — | — |
 | `decision_reports` | — | — | S, I | — | — | S | — | S | S | — | — |
 | `risk_verdicts` | — | — | — | S, I | S | S | — | S | S | — | — |
-| `orders` | — | — | — | — | S, I, U | S | — | S | S | — | — |
+| `orders` ² | — | — | — | — | S, I, U(broker_order_id, status, fill_qty, fill_price, broker_reason, updated_at) | S | — | S | S | — | — |
 | `positions` | — | — | S | S | S, I, U, D | S | — | S | S | — | — |
 | `account_snapshots` | — | — | S | S | S, I | S | — | S | S | — | — |
 | `journal` | — | — | S | **—** | **—** | S, I, U | — | S | S | — | — |
-| `system_state` | — | — | — | S, U(halt_triggered_on, baseline_trading_day, daily_starting_equity, updated_at) | — | — | S | S | S | S, U(trading_paused, updated_at) | — |
+| `system_state` | — | — | — | S, U(halt_triggered_on, baseline_trading_day, daily_starting_equity, updated_at) | S(trading_paused) ² | — | S | S | S | S, U(trading_paused, updated_at) | — |
 | `system_state_effective` (view) | — | — | — | S | — | — | S | S | S | S | — |
 | `stop_loss_triggers` ¹ | — | — | — | S | S, I | S | — | S | S | — | — |
 | `instrument_reference` ¹ | — | — | — | S | — | — | — | S | S | — | S, I, U |
+| `execution_refusals` ² | — | — | — | — | S, I | S | — | S | S | — | — |
 | `schema_migrations` | — | — | — | — | — | — | — | — | — | — | — |
 
 ¹ Added by `specs/002-risk-gate` (migration `0006`). Execution writes stop-loss triggers and the
 Risk Gate evaluates them. The reference-data job writes universe data and the Risk Gate reads it.
 The journal can read triggers so it can trace a stop-loss exit's order back to its cause.
+
+² Amended by `specs/003-execution` (migration `0007`). Execution's `UPDATE` on `orders` is narrowed
+to the columns that change after submission; it may read the manual pause flag and no other
+`system_state` column (FR-018); `execution_refusals` records approvals it declined to submit, readable
+wherever orders are.
 
 Bold `—` marks the two denials the spec calls out by name: the Risk Gate and Execution can never
 read the journal (FR-012), so attribution cannot become a trading input.
@@ -81,7 +87,9 @@ computed — spec Clarifications).
 | Analyst inserts a row with another agent's `agent` value | RLS violation (SQLSTATE `42501`, "new row violates row-level security policy") |
 | `ta_risk_gate` updates `trading_paused`, or `ta_dashboard_control` updates a halt column | `InsufficientPrivilege` (column-level grant) |
 | Order referencing a rejected or nonexistent verdict | Foreign key violation (SQLSTATE `23503`) |
-| Second verdict for the same decision; second order for the same verdict or the same `{day}-{symbol}-{side}` | Unique violation (SQLSTATE `23505`) |
+| Second verdict for the same decision; second order or second refusal for the same verdict | Unique violation (SQLSTATE `23505`) |
+| An order whose id isn't `{day}-{symbol}-{side}-{first 8 hex of its verdict id}` ([ADR 0012](../../../docs/adr/0012-order-identifier-per-verdict.md)); a buy without a limit price or a sell with one | Check violation (SQLSTATE `23514`) |
+| An order and a refusal for the same verdict | Integrity violation (SQLSTATE `23000`), from the `execution_outcome_exclusive` trigger |
 
 ## Sequences
 

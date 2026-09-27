@@ -11,6 +11,7 @@ dependencies = [
     "psycopg[binary]>=3.2,<3.3",
     "PyYAML>=6.0,<7",
     "exchange-calendars>=4.13,<5",
+    "alpaca-py>=0.44,<0.45",
 ]
 
 [project.optional-dependencies]
