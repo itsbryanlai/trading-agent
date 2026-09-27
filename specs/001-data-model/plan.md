@@ -41,7 +41,7 @@ when unconfigured.
 **Constraints**: Components never hold DDL-capable credentials; no secrets in the repo; every write
 restriction enforced by the database, not application code (FR-017)
 
-**Scale/Scope**: 9 tables, 2 views, 10 group roles, ~2 migrations
+**Scale/Scope**: 9 tables, 2 views, 10 group roles, 5 migrations
 
 ## Constitution Check
 
@@ -92,26 +92,38 @@ src/trading_agent/
     ├── db.py                          # connect(url): commit on success, rollback on error
     ├── migrate.py                     # forward-only runner; `python -m trading_agent.storage.migrate`
     └── migrations/
-        ├── 0001_tables_and_views.sql  # 9 tables, constraints, indexes, 2 views, system_state seed
-        └── 0002_roles_and_grants.sql  # group roles, table/column grants, RLS policies
+        ├── 0001_roles.sql                    # 10 NOLOGIN group roles, schema USAGE, no CREATE
+        ├── 0002_reports.sql                  # US1: reports + RLS + its grants
+        ├── 0003_decision_chain.sql           # US2: decisions, decision_reports, risk_verdicts,
+        │                                     #      orders, reports_with_status view + grants
+        ├── 0004_holdings_and_journal.sql     # US3: positions, account_snapshots, journal + grants
+        └── 0005_system_state.sql             # US4: system_state + seed, system_state_effective + grants
 
 tests/
 ├── unit/
-│   └── storage/test_migrate_ordering.py    # version discovery/ordering, no database
+│   └── storage/test_migrate_discovery.py     # version discovery/ordering, no database
 └── integration/
-    ├── conftest.py                    # fresh schema per session; rolled-back connection; set_role helper
+    ├── conftest.py                           # fresh database per session; rolled-back connection;
+    │                                         #   attempt-as-role helper
     └── storage/
-        ├── grants_matrix.py           # the matrix from contracts/role-grants.md, as data
-        ├── test_grants.py             # every cell: allowed succeeds, unlisted rejected
-        ├── test_constraints.py        # CHECKs, composite FK, uniqueness
-        ├── test_views.py              # computed status, date-based halt
-        └── test_migrate.py            # applies once, re-run is a no-op
+        ├── grants_matrix.py                  # contracts/role-grants.md, as data
+        ├── factories.py                      # per-table valid rows / statements for the grants test
+        ├── test_grants.py                    # every cell attempted as the role + catalog cross-check
+        ├── test_roles.py                     # roles are NOLOGIN, cannot CREATE in schema
+        ├── test_migrate.py                   # applies once, re-run is a no-op
+        ├── test_reports.py                   # US1
+        ├── test_decision_chain.py            # US2
+        ├── test_report_status_view.py        # US2
+        ├── test_holdings_and_journal.py      # US3
+        └── test_system_state.py              # US4
 ```
 
 **Structure Decision**: Single `src/`-layout package `trading_agent`, mirroring `trading-bot`'s
 `src/trading_bot/storage/`. Later features add sibling packages (`risk/`, `execution/`, `agents/`,
-`web/`) beside `storage/`. Two migrations rather than one keep "what the data is" reviewable
-separately from "who may touch it" — a grant change diffs only `0002` or a later grants migration.
+`web/`) beside `storage/`. One migration per user story, each carrying its tables *and* their
+grants: a table never exists in any deployed database with its permissions still undecided, and
+each story is independently deliverable. Group roles come first (`0001`) because every story's
+grants reference them.
 
 ## Complexity Tracking
 
