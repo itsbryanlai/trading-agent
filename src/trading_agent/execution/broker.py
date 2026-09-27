@@ -94,6 +94,9 @@ class BrokerOrder:
 
 
 class Broker(Protocol):
+    def verify_paper(self) -> None:
+        """Raise NotPaperTrading unless provably on the paper account (FR-013)."""
+
     def get_account(self) -> Account: ...
 
     def get_positions(self) -> list[BrokerPosition]: ...

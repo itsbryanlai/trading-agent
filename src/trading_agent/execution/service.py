@@ -86,7 +86,13 @@ class Executor:
         self._allow_savepoints = _allow_savepoints
         self._held = _Held(maybe_placed={})
 
-    # --- entry point -------------------------------------------------------
+    # --- entry points ------------------------------------------------------
+
+    def startup(self) -> None:
+        """The paper-only guard, before anything else touches the broker or the
+        database (FR-013); then the connection check (research E5)."""
+        self.broker.verify_paper()
+        self._require_autocommit()
 
     def tick(self, now: datetime) -> TickReport:
         """One pass of every duty that is due at `now` (research E13)."""

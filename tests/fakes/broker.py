@@ -17,6 +17,7 @@ from trading_agent.execution.broker import (
     BrokerOrder,
     BrokerPosition,
     BrokerUnavailable,
+    NotPaperTrading,
     OrderRejected,
     OrderRequest,
     Quote,
@@ -142,9 +143,14 @@ class FakeBroker:
         self.calls.append(name)
         if name in self._failures:
             del self._failures[name]
+            if name == "verify_paper":
+                raise NotPaperTrading("fake: not the paper account")
             raise BrokerUnavailable(f"fake outage in {name}")
 
     # --- the Broker protocol ---------------------------------------------
+
+    def verify_paper(self) -> None:
+        self._call("verify_paper")
 
     def get_account(self) -> Account:
         self._call("get_account")
