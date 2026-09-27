@@ -15,10 +15,12 @@ does that, deliberately outside the PM's own judgment), or placing orders
 
 ## Inputs
 
-- Every `reports` row with `status = 'open'` from both Research and the
-  Opportunistic Identifier, regardless of which agent produced it.
+- Every open report (`reports_with_status` where `status = 'open'`) from both
+  Research and the Opportunistic Identifier, regardless of which agent
+  produced it.
 - Its own fresh reads, fetched itself rather than trusted from a report:
-  current portfolio state (`positions`, cash), a live quote for each symbol
+  current portfolio state (`positions`, cash from the latest
+  `account_snapshots` row), a live quote for each symbol
   under consideration, and recent `journal` entries for context on how things
   have been going.
 - It does **not** read `config/risk.yaml` — the Risk Gate applies those
@@ -33,8 +35,8 @@ One `decisions` row per symbol it acts on (see `docs/specs/data-model.md`),
 carrying:
 - `direction` and `size_pct` — its own call, not a sum or average of the
   analysts' suggestions
-- `report_ids` — every report this decision drew on, for per-agent
-  attribution in the journal
+- the report(s) this decision drew on, recorded as `decision_reports` rows in
+  the same transaction, for per-agent attribution in the journal
 - `reasoning_md` — including, when both analysts converged on a symbol, how
   it weighed that convergence (a positive signal, not a sizing formula —
   convergence never mechanically doubles size)
@@ -68,7 +70,8 @@ miss genuinely time-sensitive opportunities.
 
 ## Interfaces
 
-- Reads `reports` (all), `positions`, `journal`. Writes only to `decisions`.
+- Reads `reports` (all), `positions`, `account_snapshots`, `journal`. Writes
+  only to `decisions` and `decision_reports`.
 - Never writes `risk_verdicts` or `orders` — a decision is a proposal until
   the Risk Gate and Execution act on it.
 

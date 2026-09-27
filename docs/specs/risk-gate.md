@@ -76,12 +76,15 @@ rule that fired.
 
 ## Interfaces
 
-- Reads `decisions`, `positions`, `system_state`, `config/risk.yaml`.
+- Reads `decisions`, `positions`, `account_snapshots` (cash and equity),
+  `system_state`, `config/risk.yaml`.
 - Writes only `risk_verdicts`.
-- Also responsible for flipping `system_state.daily_loss_halt_active` when
-  its own evaluation detects the daily-loss line has been crossed, and for
-  resetting `daily_starting_equity` at the first evaluation of a new trading
-  day.
+- Also responsible for recording `system_state.halt_triggered_on` (today's
+  date) when its own evaluation detects the daily-loss line has been crossed,
+  and for recording that day's `daily_starting_equity` baseline at its first
+  evaluation of a new trading day. It never needs to *clear* the halt — "halt
+  active" is computed from the date and clears itself the next trading day
+  (see `docs/specs/data-model.md`).
 
 ## Non-goals
 

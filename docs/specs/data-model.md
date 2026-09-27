@@ -2,9 +2,14 @@
 
 The shared knowledge base ([ADR 0004](../adr/0004-shared-postgres-role-scoped-credentials.md)).
 One Postgres instance; every table below lists which database role may write
-to it. Read access is broad by default — assume every role can read every
-table unless a spec says otherwise (the Assistant reads all of them and
-writes none).
+to it. Read access is broad by default, narrowed wherever a component's own
+spec disclaims access (e.g. Research never reads `decisions`; the Risk Gate
+and Execution never read `journal`). The Assistant reads everything and writes
+nothing.
+
+Concrete schema, constraints, and the exact per-role grants matrix live in
+[`specs/001-data-model/`](../../specs/001-data-model/data-model.md) (see its
+`contracts/role-grants.md`). This page stays the behavior-level summary.
 
 ## `reports`
 
@@ -24,11 +29,17 @@ agent is itself a data point (`docs/specs/research-agent.md` and
 | `sources` | jsonb array of `{title, url, publisher, published_at}` | structured citations, not just prose links |
 | `rationale_md` | text (Markdown) | the narrative; rendered as-is in the UI activity log |
 | `expires_at` | timestamptz | end of `generated_at`'s trading day |
-| `status` | enum (`open`, `expired`, `consumed`, `rejected`) | lifecycle |
+
+Status is **not stored**. `open` / `expired` / `consumed` is computed at read
+time: expired once `expires_at` passes, consumed once any decision cites the
+report, otherwise open (view `reports_with_status`). There is no `rejected`
+state for a report — the Risk Gate rejects decisions, not reports. Reports are
+insert-only; nobody updates them after they're written.
 
 Writers: `research` role writes rows where `agent = 'research'`;
 `opportunistic_identifier` role writes rows where
-`agent = 'opportunistic_identifier'`. Neither role may write the other's rows.
+`agent = 'opportunistic_identifier'`. Neither role may write the other's rows
+(row-level security).
 
 ## `decisions`
 
@@ -41,11 +52,16 @@ One row per Portfolio Manager decision.
 | `symbol` | text | |
 | `direction` | enum (`buy`, `sell`, `hold`) | |
 | `size_pct` | numeric | PM's final sizing decision |
-| `report_ids` | uuid[] | the report(s) this decision drew on — enables per-agent attribution |
 | `reasoning_md` | text (Markdown) | PM's own rationale, including how it weighed converging/conflicting reports |
 | `quote_at_decision` | numeric | the live quote the PM fetched itself, not trusted from a report |
 
-Writers: `portfolio_manager` role only.
+The report(s) a decision drew on — what enables per-agent attribution — are
+recorded in a separate `decision_reports (decision_id, report_id)` table
+rather than an array column, so every link is foreign-key enforced and can
+never point at a report that doesn't exist.
+
+Writers: `portfolio_manager` role only, for both `decisions` and
+`decision_reports`.
 
 ## `risk_verdicts`
 
@@ -69,8 +85,8 @@ One row per order Execution actually submits to the broker.
 
 | Column | Type | Notes |
 |---|---|---|
-| `id` | uuid | deterministic: derived from trading day + symbol + side, so a restart after a crash can't double-submit |
-| `risk_verdict_id` | uuid | FK to `risk_verdicts` |
+| `id` | text | deterministic: `{trading_day}-{symbol}-{side}`, also sent as the broker's `client_order_id`, so a restart after a crash can't double-submit |
+| `risk_verdict_id` | uuid | FK to an **approved** `risk_verdicts` row — the database rejects an order for a rejected verdict |
 | `submitted_at` | timestamptz | |
 | `broker_order_id` | text | |
 | `status` | enum (`submitted`, `filled`, `partially_filled`, `rejected`, `canceled`) | kept in sync from broker polling/webhook |
@@ -86,6 +102,16 @@ re-derive its own view of exposure), the Risk Gate (cash/position ceilings),
 the Assistant, and the UI.
 
 Writers: `execution` role only, updated from confirmed order fills.
+
+## `account_snapshots`
+
+Broker account equity, cash, and buying power over time. Execution is the
+only component holding the broker credential, so it records this; the PM
+(cash), the Risk Gate (cash reserve, daily-loss line), and the journal
+(`equity_open`/`equity_close`) read it instead of each calling the broker
+themselves.
+
+Writers: `execution` role only. Insert-only.
 
 ## `journal`
 
@@ -108,13 +134,18 @@ measurement, not a feedback input, per
 
 ## `system_state`
 
-Small key-value table for the one manual control and the daily-loss breaker.
+A single control row for the one manual control and the daily-loss breaker.
 
-| Key | Type | Notes |
+| Field | Type | Notes |
 |---|---|---|
 | `trading_paused` | boolean | the UI's manual pause/resume toggle; the orchestrator checks this before running the PM |
-| `daily_loss_halt_active` | boolean | set by the Risk Gate when the 20% daily-loss line is crossed; cleared automatically at the start of the next trading day |
-| `daily_starting_equity` | numeric | reset each trading day; the daily-loss breaker's baseline |
+| `halt_triggered_on` | date | the trading day the Risk Gate saw the 20% daily-loss line crossed |
+| `baseline_trading_day`, `daily_starting_equity` | date, numeric | the daily-loss breaker's baseline and the day it belongs to |
 
-Writers: `risk_gate` role for the halt fields; a UI-facing role for
-`trading_paused`.
+"Halt active" is computed, not stored: it's true only while
+`halt_triggered_on` is today's trading date, so it clears itself at the start
+of the next trading day with no write from anyone. Likewise a baseline from a
+previous day reads as unset (view `system_state_effective`).
+
+Writers, enforced per column: `risk_gate` role for the halt and baseline
+fields; a dedicated dashboard-control role for `trading_paused` only.
