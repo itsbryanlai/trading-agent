@@ -58,12 +58,19 @@ When several rules would reject, the verdict names the first that applies, in th
 
 1. `market_closed`: every request.
 2. **Exits** (sell decisions and stop-loss triggers): `no_position` → `stop_loss_not_breached`
-   (triggers only) → `direction_contradicts_target` → `target_already_met` → approve.
+   (triggers only) → `no_account_snapshot_today` (sell decisions with a target above 0% only;
+   they need today's equity to size) → `direction_contradicts_target` → `target_already_met` →
+   approve.
 3. **Buys**: `trading_paused` → `no_account_snapshot_today` → `no_daily_baseline` →
    `daily_loss_halt` → `daily_order_cap` → `universe_no_reference_data` → `universe_listing` →
    `universe_market_cap` → `universe_dollar_volume` → `universe_share_price` →
    `direction_contradicts_target` → `target_already_met` → `max_position_pct` →
    `cash_reserve_pct` → approve (trimmed if a limit lowered the quantity).
+
+**Halt detection runs on every evaluation, independent of precedence.** Whenever today's baseline
+and equity are known, crossing the loss line sets `record_halt`, whatever the request type. Only
+for a buy does it also produce the rejection. So the first evaluation after a bad drop records the
+halt even if it happens to be a sell or a stop-loss exit (SC-004).
 
 **Rationale**: account-wide stops come before symbol-specific checks, and symbol checks before
 sizing, so the named rule is the most fundamental reason. Exits skip every stop except

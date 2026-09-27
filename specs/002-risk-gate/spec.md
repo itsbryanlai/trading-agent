@@ -115,8 +115,8 @@ The owner tunes limits by editing one configuration file under code review. If t
 ### Edge Cases
 
 - **The same decision evaluated twice** (a retry, or two runs racing): the second evaluation returns the verdict already recorded; it never produces a second or different one.
-- **Missing account state**: if there is no account snapshot from the current trading day, the gate rejects new exposure rather than sizing against a previous day's equity or cash. Exits are still approved, sized against the shares actually held. A snapshot from earlier today is used as-is. Execution's live re-check at submission is what stops a buy that equity has since moved against.
-- **A buy so small that it rounds to zero shares** at the quote: rejected, naming the sizing rule, rather than approved as an empty order.
+- **Missing account state**: if there is no account snapshot from the current trading day, the gate rejects new exposure rather than sizing against a previous day's equity or cash. Exits that don't need equity are still approved: a sell to a 0% target sells every share held, and a stop-loss exit sells every share held. A sell to a *non-zero* target needs today's equity to know how many shares to keep, so it is rejected (`no_account_snapshot_today`). That's safe to block because it's a trim, not a risk exit. A snapshot from earlier today is used as-is. Execution's live re-check at submission is what stops a buy that equity has since moved against.
+- **A buy that comes out below one whole share**, sized at its price ceiling: rejected rather than approved as an empty order. It is named `target_already_met` when the target is effectively reached, or `max_position_pct` / `cash_reserve_pct` when a limit left no room.
 - **Several rules would reject the same decision**: the verdict names one rule, chosen by a fixed, documented precedence, so the same inputs always name the same rule.
 - **The same decision submitted in two sessions**: because size is a target weight, the second evaluation sees the target already met (or nearly so) and orders nothing, or only the small remaining difference.
 - **Equity crosses the loss line between two decisions in the same session**: the decision evaluated after the crossing is rejected, even though the one before it was approved.
@@ -134,7 +134,7 @@ The owner tunes limits by editing one configuration file under code review. If t
 - **FR-006**: The gate MUST approve a sell only for shares actually held (a target of 0% sells all of them) and reject a sell of a symbol not held. The system is long-only; no target can be negative.
 - **FR-007**: The gate MUST reject every decision when the market is closed at evaluation time.
 - **FR-008**: While the daily-loss halt is active, the gate MUST reject every exposure-increasing decision and MUST still approve exposure-reducing ones.
-- **FR-009**: When its evaluation finds the equity in the latest account snapshot from the current trading day at or below the configured loss line (default 20%) under today's baseline, the gate MUST record the halt against today before rejecting the decision. It MUST NOT sell or reduce any position as a consequence. The live, last-moment check before a buy is submitted belongs to Execution (see Assumptions).
+- **FR-009**: On **every** evaluation (buy, sell, or stop-loss trigger) where today's baseline and the latest account snapshot from the current trading day are both known, if that equity is at or below the configured loss line (default 20%) under the baseline and the halt isn't already recorded, the gate MUST record the halt against today. A buy is then rejected. A sell or stop-loss exit is judged exactly as it would be otherwise, since recording the halt never blocks an exit. The gate MUST NOT sell or reduce any position as a consequence. The live, last-moment check before a buy is submitted belongs to Execution (see Assumptions).
 - **FR-010**: The gate MUST reject an exposure-increasing decision once the configured number of exposure-increasing orders (default 5) has already been approved that trading day. Exposure-reducing orders MUST NOT count toward or be blocked by the cap.
 - **FR-011**: The gate MUST independently re-check every buy's symbol against every universe rule (US common equity only; market cap, average daily dollar volume, and share price floors) using the daily universe reference data, and reject one that fails, whatever upstream components concluded. A symbol with no reference data from the current trading day MUST fail the check.
 - **FR-012**: The gate MUST evaluate stop-loss triggers recorded by Execution's monitor. It MUST approve a full exit of the shares held when the trigger's observed price is at or below the configured stop-loss distance (default 20%) under the position's average entry price. It MUST reject a trigger that doesn't meet the line or names a symbol not held. No hard stop in FR-008 to FR-010 may block an approved stop-loss exit. The market being closed (FR-007) still does.
@@ -145,11 +145,11 @@ The owner tunes limits by editing one configuration file under code review. If t
 - **FR-017**: Evaluating a decision or stop-loss trigger that already has a verdict MUST return the existing verdict and record nothing new.
 - **FR-020**: While the manual pause is on, the gate MUST reject every exposure-increasing decision, naming the pause, even though the orchestrator should not have invoked the Portfolio Manager at all. Sells and stop-loss exits MUST still be approved; pausing trading never traps an exit.
 - **FR-019**: Every approved order MUST record the trading day it was approved for. It is valid only on that trading day while the market is open. Execution MUST NOT submit an approval from an earlier trading day; an unsubmitted approval lapses at the close.
-- **FR-018**: The gate MUST reject exposure-increasing decisions when no account snapshot from the current trading day exists, rather than size against a previous day's equity or cash.
+- **FR-018**: When no account snapshot from the current trading day exists, the gate MUST reject exposure-increasing decisions and sells to a non-zero target (both need today's equity), rather than size against a previous day's equity or cash. Sells to a 0% target and stop-loss exits need no equity and are unaffected.
 
 ### Key Entities
 
-- **Decision** (existing, feature 001): the Portfolio Manager's direction, size as a share of equity, and the quote it fetched itself.
+- **Decision** (existing, feature 001): the Portfolio Manager's direction, its target weight (where the position should end up, as a share of equity), and the quote it fetched itself.
 - **Verdict** (existing, feature 001): approved with a fully-specified order, or rejected with a named rule. There is one per decision or per stop-loss trigger, and each verdict comes from exactly one of the two. This feature adds what the verdict records about trims and the configuration version, and lets a verdict come from a trigger.
 - **Risk configuration**: the reviewed file of limits: position ceiling, cash reserve, stop-loss distance, daily order cap, daily-loss line, and universe floors.
 - **Portfolio state** (existing): current positions, and the latest account equity and cash.
@@ -163,8 +163,8 @@ The owner tunes limits by editing one configuration file under code review. If t
 
 - **SC-001**: Across every combination of inputs in the test suite, and at least 10,000 randomly generated ones, no approved order would take a position above the ceiling or cash below the reserve.
 - **SC-002**: Evaluating the same inputs twice yields an identical verdict (same outcome, quantity, limit price, named rule) in 100% of cases.
-- **SC-003**: Under every hard stop (market closed excepted), 100% of exposure-reducing decisions are approved and 100% of exposure-increasing decisions are rejected naming that stop.
-- **SC-004**: The first evaluation after equity crosses the daily-loss line records the halt; no exposure-increasing decision is approved after that moment on the same trading day.
+- **SC-003**: Under every hard stop (market closed excepted), 100% of exposure-increasing decisions are rejected naming that stop. Every exposure-reducing request is approved unless it fails one of its own exit conditions (no position, stop-loss not breached, direction contradicts target, target already met, or a partial sell with no equity data today). No hard stop ever rejects an exit.
+- **SC-004**: The first evaluation of *any* kind that sees an account snapshot at or below the daily-loss line records the halt, and the gate approves no buy after that on the same trading day. Between snapshots, Execution's live equity check at submission (a later feature) is what stops a buy that equity has crossed since the last snapshot.
 - **SC-005**: With a missing or invalid configuration, zero decisions are approved.
 - **SC-006**: Every recorded verdict can be traced to the configuration it was judged against.
 

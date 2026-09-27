@@ -43,7 +43,8 @@ symbol today, or none).
 - `verdict`: `approved` with an `approved_order` (shape in
   [data-model.md](../data-model.md#approved_order-json-shape)), or `rejected` with
   `rejection_rule` (one name from contracts/rejection-rules.md)
-- `record_halt`: true when this evaluation found the loss line crossed and the halt isn't active yet
+- `record_halt`: true when this evaluation, whatever the request type, found today's equity at or
+  below the loss line and the halt isn't active yet. It never changes an exit's verdict.
 - `config_version`, `trading_day`: copied onto the verdict
 
 Guarantees:
@@ -52,8 +53,9 @@ Guarantees:
   `cash_reserve_pct` of equity, when filled at any price up to its `limit_price` (FR-001a, SC-001).
 - An approved sell or exit never sells more shares than `shares_held` (FR-006).
 - Exits are rejected only for `market_closed`, `no_position`, `stop_loss_not_breached`,
-  `direction_contradicts_target`, or `target_already_met`. They are never rejected by a halt, the
-  pause, or the order cap (SC-003).
+  `no_account_snapshot_today` (partial sells only), `direction_contradicts_target`, or
+  `target_already_met`. They are never rejected by a halt, the pause, the order cap, a missing
+  baseline, or the universe (SC-003).
 
 ## Baseline helper
 
