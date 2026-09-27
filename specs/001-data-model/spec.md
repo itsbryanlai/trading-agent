@@ -27,7 +27,7 @@ Research and the Opportunistic Identifier each run on their own schedule and rec
 
 **Acceptance Scenarios**:
 
-1. **Given** the Research role's credential, **When** it records a report with a symbol, direction, conviction, sources, and rationale, **Then** the row is stored and readable by every other role.
+1. **Given** the Research role's credential, **When** it records a report with a symbol, direction, conviction, sources, and rationale, **Then** the row is stored and readable by every role whose component spec reads reports (see `contracts/role-grants.md`), and by no other.
 2. **Given** the Research role's credential, **When** it attempts to insert a row attributed to the Opportunistic Identifier, **Then** the write is rejected.
 3. **Given** a scheduled run that finds no actionable opportunity, **When** the agent completes that run, **Then** a row recording "no action" is still stored, distinguishable from the agent simply not having run.
 4. **Given** a report whose trading day has ended, **When** any reader queries open reports, **Then** the expired report is excluded without needing to be deleted.
@@ -74,12 +74,12 @@ A single manual toggle can pause trading; the Risk Gate can set an automatic hal
 
 **Why this priority**: This is the one piece of shared state that isn't a record of something that already happened — it's a live control input the orchestrator and Risk Gate must check. Needed before the orchestrator or Risk Gate can be built, but depends on nothing else here.
 
-**Independent Test**: Set the manual pause flag and verify it's readable by the orchestrator's role; set the daily-loss halt flag as the Risk Gate role and verify a UI-facing role cannot set that flag directly; advance to a new trading day and verify the halt flag and the starting-equity baseline both reset without any write from a human or agent.
+**Independent Test**: Set the manual pause flag and verify it's readable by the orchestrator's role; record a daily-loss halt as the Risk Gate role and verify a UI-facing role cannot record one; with the halt recorded against the previous trading day, verify the halt and the starting-equity baseline both read as inactive/unset without any write from a human or agent.
 
 **Acceptance Scenarios**:
 
 1. **Given** the manual pause flag is set to true, **When** any role reads system state, **Then** the flag reads true until explicitly toggled back.
-2. **Given** the Risk Gate detects the daily-loss threshold has been crossed, **When** it records the halt, **Then** the halt flag is set to true and no other role can set that particular flag.
+2. **Given** the Risk Gate detects the daily-loss threshold has been crossed, **When** it records the halt against the current trading day, **Then** the halt reads active for the rest of that day, and no other role can record or alter a halt.
 3. **Given** a halt fired on the previous trading day, **When** any role reads system state on the next trading day, **Then** the halt reads inactive and the previous day's starting-equity baseline reads as unset — with no write by any human, agent, or service — until the Risk Gate records that day's baseline.
 
 ### Edge Cases
@@ -105,10 +105,10 @@ A single manual toggle can pause trading; the Risk Gate can set an automatic hal
 - **FR-010**: The system MUST maintain current position holdings, updated only from confirmed order fills, writable only by the Execution role.
 - **FR-011**: The system MUST maintain a daily journal entry per trading day, including a per-agent attribution figure computed separately from the actual portfolio result, writable only by a dedicated journal-writing role.
 - **FR-012**: The system MUST ensure the journal is never read by the Risk Gate or Execution, so that attribution measurement cannot become a feedback input to trading decisions.
-- **FR-013**: The system MUST maintain a small set of shared control flags: a manual trading-pause flag and an automatic daily-loss halt flag with its supporting starting-equity baseline.
-- **FR-014**: The system MUST restrict write access to the daily-loss halt flag and its baseline to the Risk Gate role, and restrict write access to the manual pause flag to a UI-facing role, kept distinct from each other.
-- **FR-015**: The system MUST reset the daily-loss halt flag and the starting-equity baseline automatically at the start of each new trading day, without requiring a manual write.
-- **FR-016**: The system MUST grant broad read access across all of the above to every role by default, unless a specific table's requirements say otherwise.
+- **FR-013**: The system MUST maintain a small set of shared control state: a manual trading-pause flag, and the daily-loss halt state with its supporting starting-equity baseline.
+- **FR-014**: The system MUST restrict recording the daily-loss halt and its baseline to the Risk Gate role, and restrict write access to the manual pause flag to a UI-facing role, kept distinct from each other.
+- **FR-015**: The system MUST make the daily-loss halt and the starting-equity baseline read as inactive/unset from the start of each new trading day, without any write — neither needs to be reset by anyone.
+- **FR-016**: The system MUST grant read access broadly by default, narrowed wherever a component's own spec (`docs/specs/*.md`) disclaims reading something — a role is never granted read access its component's spec says it doesn't use.
 - **FR-017**: The system MUST enforce every write restriction above at the storage layer (e.g., database-level grants), not solely through the writing component's own code choosing to behave.
 - **FR-018**: The system MUST maintain a durable record of broker account state (equity, cash, buying power) over time, writable only by the Execution role, so that components without broker access (the Portfolio Manager, Risk Gate, and journal) can read cash and equity without holding a broker credential.
 
@@ -129,9 +129,9 @@ A single manual toggle can pause trading; the Risk Gate can set an automatic hal
 
 - **SC-001**: Every order in the system can be traced back, through exactly one chain of references, to the risk verdict, decision, and report(s) that produced it, with no broken or ambiguous links.
 - **SC-002**: A write attempted by a role outside what it's permitted to write is rejected before it reaches storage, 100% of the time, regardless of what the writing component's own code intended.
-- **SC-003**: A trading day's per-agent attribution figure is available in the journal for every day on which at least one decision was made, with zero days silently missing.
+- **SC-003**: The journal holds at most one entry per trading day, and re-running a day's journal write replaces that day's entry rather than duplicating it or failing. (That an entry is written for *every* trading day with a decision is a property of the journal writer, verified by that feature.)
 - **SC-004**: A restarted process that re-submits an order for the same trading day, symbol, and side is recognized as a duplicate rather than creating a second position, in 100% of observed restart scenarios.
-- **SC-005**: The daily-loss halt and its baseline reset at the start of every new trading day without any manual action, observable as the flag reading false and the baseline reflecting that day's opening equity by the first evaluation of that day.
+- **SC-005**: On every new trading day, a halt recorded on a previous day reads inactive and a previous day's baseline reads unset, with zero writes by any human, agent, or service.
 
 ## Assumptions
 
@@ -140,3 +140,4 @@ A single manual toggle can pause trading; the Risk Gate can set an automatic hal
 - Each role's distinct credential is provisioned and rotated as an operational/deployment concern outside this feature's scope; this feature defines what each role may read and write, not how the credential itself is issued.
 - `config/risk.yaml` (the Risk Gate's configuration) is a separate artifact from this data model and is out of scope here, referenced only insofar as risk-verdict rows record its outcome.
 - A UI-facing role's ability to toggle the manual pause flag is in scope here as a data-access rule; the dashboard surface that calls it is a separate feature.
+- This feature proves what the storage layer enforces: who may read and write what, the constraints on each row, and the computed views. Clauses describing another component's runtime behavior are verified by that component's feature, not here: which component holds broker or market-data credentials (FR-007, FR-009 → Execution, Risk Gate), that positions change only from confirmed fills (FR-010 → Execution), how per-agent attribution is calculated (FR-011 → journal), the broker rejecting a duplicate `client_order_id` (SC-004 → Execution), and the Risk Gate recording each day's baseline on its first evaluation (SC-005 → Risk Gate).
