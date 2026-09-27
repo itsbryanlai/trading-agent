@@ -235,13 +235,13 @@ snapshots; then evaluate a buy through the real gate and compare baselines.
 
 ### Tests for User Story 6 ⚠️ write first, confirm they fail
 
-- [ ] T048 [P] [US6] Extend `tests/unit/execution/test_schedule.py` with `pre_open_due(now, has_snapshot_before_open_today)`: on 2026-09-28 due from 12:30 to 13:29:59 UTC when none exists, not due at 12:29 or at/after 13:30, not due once one exists; never due on 2026-09-26 or 2026-11-26; on 2026-11-27 the window is relative to that day's open
-- [ ] T049 [P] [US6] Write `tests/integration/execution/test_pre_open_snapshot.py`: a tick at 13:00 UTC records exactly one snapshot with the fake's values; a second tick at 13:10 records none; a tick where `get_account` fails records none and the next succeeds; no snapshot on a weekend or holiday tick; after the pre-open snapshot, `evaluate_decision` for a buy (real gate) records `system_state.daily_starting_equity` equal to Execution's own baseline computation for the same day (E11)
+- [X] T048 [P] [US6] Extend `tests/unit/execution/test_schedule.py` with `pre_open_due(now, has_snapshot_before_open_today)`: on 2026-09-28 due from 12:30 to 13:29:59 UTC when none exists, not due at 12:29 or at/after 13:30, not due once one exists; never due on 2026-09-26 or 2026-11-26; on 2026-11-27 the window is relative to that day's open
+- [X] T049 [P] [US6] Write `tests/integration/execution/test_pre_open_snapshot.py`: a tick at 13:00 UTC records exactly one snapshot with the fake's values; a second tick at 13:10 records none; a tick where `get_account` fails records none and the next succeeds; no snapshot on a weekend or holiday tick; after the pre-open snapshot, `evaluate_decision` for a buy (real gate) records `system_state.daily_starting_equity` equal to Execution's own baseline computation for the same day (E11)
 
 ### Implementation for User Story 6
 
-- [ ] T050 [US6] Implement `pre_open_due` in `schedule.py` (window `[open − 60 min, open)`) and `_record_pre_open_snapshot(conn, broker, now)` in `service.py`, run last in `tick`; the "exists" check queries `account_snapshots` for today's New York date before today's open (so it survives restarts)
-- [ ] T051 [US6] Run the US6 tests; confirm T048 and T049 pass
+- [X] T050 [US6] Implement `pre_open_due` in `schedule.py` (window `[open − 60 min, open)`) and `_record_pre_open_snapshot(conn, broker, now)` in `service.py`, run last in `tick`; the "exists" check queries `account_snapshots` for today's New York date before today's open (so it survives restarts)
+- [X] T051 [US6] Run the US6 tests; confirm T048 and T049 pass
 
 **Checkpoint**: every story is in place; `tick` runs every duty in the E13 order.
 

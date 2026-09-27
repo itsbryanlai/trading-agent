@@ -39,7 +39,7 @@ from trading_agent.execution.model import (
     Submit,
     TickReport,
 )
-from trading_agent.execution.schedule import monitor_window
+from trading_agent.execution.schedule import monitor_window, pre_open_due
 from trading_agent.risk import calendar
 from trading_agent.risk.config import RiskConfig, RiskConfigError, load_config
 from trading_agent.risk.model import ApprovedOrder
@@ -126,6 +126,7 @@ class Executor:
         self._isolated(
             "unevaluated triggers", report, lambda: self._check_unevaluated(session, report)
         )
+        self._isolated("pre-open snapshot", report, lambda: self._pre_open(session, report))
         return report
 
     # --- helpers shared by every duty ---------------------------------------
@@ -487,6 +488,27 @@ class Executor:
                 del self._held.stale_windows[symbol]
         if result.complete:
             self._held.windows_done.add(start)
+
+    def _pre_open(self, session: Session, report: TickReport) -> None:
+        """The gate's daily-loss baseline (FR-015). Checked in the table, so it
+        survives restarts; a broker failure just means the next tick tries again."""
+        with self._cursor() as cur:
+            exists = baseline_equity(cur, session.today) is not None
+        if not pre_open_due(session.now, exists):
+            return
+        try:
+            account = self.broker.get_account()
+        except BrokerUnavailable as exc:
+            log.warning("execution: pre-open snapshot not taken yet: %s", exc)
+            return
+        with self.conn.transaction(), self._cursor() as cur:
+            cur.execute(
+                "INSERT INTO account_snapshots (taken_at, equity, cash, buying_power) "
+                "VALUES (%s, %s, %s, %s)",
+                (session.now, account.equity, account.cash, account.buying_power),
+            )
+        report.snapshot_taken = True
+        log.info("execution: pre-open snapshot, equity %s", account.equity)
 
     def _check_unevaluated(self, session: Session, report: TickReport) -> None:
         """A trigger the gate hasn't evaluated within minutes means its runner isn't
