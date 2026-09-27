@@ -11,14 +11,14 @@ What other features call or rely on. Decisions: [research.md](../research.md) E1
 | `tick(now, broker, exec_conn, config_path)` | the runner, or the orchestrator's scheduler | One pass of every duty that's due at `now`, in the order listed in E13. Returns a `TickReport` (counts of orders submitted, refusals, retries, fills applied, triggers recorded, snapshot taken) for logging. |
 
 `exec_conn` is a login in `ta_execution`, opened with `autocommit=True` so each unit of work is a
-real transaction; `startup` raises if it isn't (E5). Execution's process holds no
+real transaction; `startup` and `tick` raise if it isn't (E5). **Caller obligation**: anything that hosts `tick` must pass an autocommit connection; only tests may pass `_allow_savepoints=True`. On a lost database connection, the runner exits non-zero for the platform to restart (ADR 0013). Execution's process holds no
 other database credential.
 
 ## Entry point added to the Risk Gate (`trading_agent.risk`)
 
 | Call | Used by | Behaviour |
 |---|---|---|
-| `python -m trading_agent.risk` | the worker service, as its own process | Every 60 seconds, calls `evaluate_stop_loss_trigger` for each trigger observed on the current trading day with no verdict yet (E13). Holds only `RISK_GATE_DATABASE_URL`. Adds no gate logic. |
+| `python -m trading_agent.risk` | the worker service, as its own process | Every 60 seconds, calls `evaluate_stop_loss_trigger` for each trigger observed on the current trading day with no verdict yet (E13). Holds only `RISK_GATE_DATABASE_URL`. Adds no gate logic. Isolates each trigger; exits non-zero on a lost database connection ([ADR 0013](../../../docs/adr/0013-deterministic-services-run-their-own-loops.md)). |
 
 A recorded trigger is the whole hand-off from Execution to the gate. Execution then picks up the
 approved exit on its next tick like any other approval.

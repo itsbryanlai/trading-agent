@@ -101,10 +101,16 @@ reference and the `alpaca-py` SDK docs on 2026-09-27; each is cited where it's u
      every submission, so recovery isn't a separate code path that only runs after a crash (FR-009).
   4. Run the checks (E6). Refuse, or submit.
   5. Insert the `orders` row with what the broker returned, and commit.
-- **Crash windows**: a crash before step 3's submission leaves nothing anywhere, so the next tick
+- **Crash windows**: a crash before step 4's submission leaves nothing anywhere, so the next tick
   starts over. A crash after submission but before commit leaves an order at the broker and none
-  in the database; the next tick finds it in step 2. There's no window where a second order can be
-  placed for the same verdict.
+  in the database; the next tick finds it in step 3.
+- **Remaining risk, bounded**: a *timeout* on submission followed by a broker lookup that lags
+  behind the order it placed. If the broker then also accepted a repeated client id (undocumented,
+  E3), a resubmission would be a second order. So a verdict whose submission raised
+  `BrokerUnavailable` goes into an in-memory "maybe placed" set with the time, and is not
+  resubmitted until a `find_order` at least 2 minutes after the timeout still finds nothing. A
+  restart forgets the set, but a restart takes longer than the broker's lookup lag in practice, and
+  the lookup still runs first.
 - **A timeout on submission** is treated as "maybe placed": the broker's own guidance is to check
   rather than resubmit or assume it failed (docs.alpaca.markets/us/docs/working-with-orders). The
   transaction rolls back and the next tick's step 3 settles it.
@@ -116,11 +122,15 @@ reference and the `alpaca-py` SDK docs on 2026-09-27; each is cited where it's u
   recorded.
 - **Real transactions, not savepoints.** Execution's connection runs with `autocommit=True`, so
   each `conn.transaction()` block is a real transaction that commits at its end and releases the
-  advisory lock. The runner opens it that way and `startup` asserts `conn.autocommit`, refusing to run otherwise. (`tick` itself doesn't assert, so the rolled-back test harness can drive it inside savepoints.) The
+  advisory lock. The runner opens it that way, and both `startup` and `tick` assert `conn.autocommit`, refusing to run otherwise. `tick` takes `_allow_savepoints=False`; only the rolled-back test harness passes `True`. Any other host of `tick` must supply an autocommit connection (a caller obligation in the interface contract). The
   shared `storage.db.connect` helper commits only when the connection closes, which would leave
   every write of a long-running Execution uncommitted and invisible to other components. The
   single-connection test harness can't show this, so one integration test uses two real committed
   connections (Execution's and the gate's) against a database it cleans up itself.
+- **A lost database connection ends the process.** A `psycopg.OperationalError`, or a closed
+  connection, is not a per-unit failure: every unit would fail forever and no exit would go out. The
+  runner exits non-zero so the platform restarts it (ADR 0013). The gate's trigger runner does the
+  same.
 - **Failures are isolated per unit of work.** Each approval, each order sync, the reconciliation,
   the monitor and the snapshot run in their own `try` block: an unexpected error in one is logged
   with the verdict or order id and the tick carries on. **Exits are processed before buys**, so a
@@ -305,7 +315,12 @@ No pause, halt, baseline, or config check on exits (FR-006, FR-018, FR-020).
   windows is logged at error level, since it is going unprotected. The record of which windows
   succeeded is in memory: a restart re-runs the current window's check, which is harmless.
 - **Duplicate triggers are avoided**: no new trigger for a symbol with an open sell order, a trigger
-  from today not yet evaluated, or an approved exit from today with no outcome yet.
+  from today not yet evaluated, or an approved exit from today with no outcome yet. A trigger the
+  gate *rejected* has a verdict, so it doesn't block a later one.
+- **A missing gate runner is visible.** Every tick, Execution counts triggers from today with no
+  verdict older than 5 minutes. Each is logged at error level ("stop-loss trigger unevaluated;
+  is the gate's trigger runner running?") and counted in `TickReport`. Execution can read
+  `risk_verdicts` and `stop_loss_triggers` already.
 - **Pre-open snapshot**: due from 60 minutes before the open until the open, on trading days, until
   one exists for today (checked in `account_snapshots`, so it survives restarts). A broker failure
   just means the next tick tries again (FR-015).
@@ -325,6 +340,11 @@ No pause, halt, baseline, or config check on exits (FR-006, FR-018, FR-020).
   - **Alternatives considered**: an injected callable in Execution's process wrapping a gate
     connection (rejected: Execution's process would hold `ta_risk_gate`); leaving evaluation to the
     orchestrator (rejected: stop-losses wouldn't work until that feature exists).
+  - Recorded in [ADR 0013](../../docs/adr/0013-deterministic-services-run-their-own-loops.md),
+    which qualifies ADR 0003's rejected "each process manages its own schedule" for these two
+    deterministic services.
+  - Each trigger is evaluated in its own `try` block: one that raises is logged with its id and the
+    pass continues, so a poisoned trigger can't block the others.
   - The runner is hosting only: it adds no logic to the gate and needs no new grant
     (`ta_risk_gate` already reads `stop_loss_triggers` and writes `risk_verdicts`). Triggers from an
     earlier trading day are never evaluated; they are logged and left alone.

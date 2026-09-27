@@ -18,7 +18,7 @@ is still valid.
 | 2 | `identifier_clash` | an order with this verdict's identifier already exists for a different verdict (FR-008) | `order_id`, `other_verdict_id` |
 | 3 | `trading_paused` | the manual pause is on (FR-018) | — |
 | 4 | `no_daily_baseline` | no snapshot on today's date before today's open (FR-004) | `trading_day` |
-| 5 | `daily_loss_line_crossed` | live equity ≤ baseline × (1 − `daily_loss_halt_pct`/100) (FR-004) | `equity`, `baseline`, `line`, `snapshot_id` |
+| 5 | `daily_loss_line_crossed` | live equity, or the lowest snapshot equity since today's open, ≤ baseline × (1 − `daily_loss_halt_pct`/100) (FR-004) | `equity`, `min_equity_since_open`, `min_snapshot_id`, `baseline`, `line`, `snapshot_id` (the one just recorded) |
 | 6 | `quote_above_ceiling` | live ask > the verdict's price ceiling (FR-003) | `ask`, `ceiling`, `quote_time` |
 | 7 | `max_position_pct` | (held + open buy qty + qty) × ask > `max_position_pct`% of live equity (FR-005) | `held`, `open_buy_qty`, `qty`, `ask`, `equity`, `limit_pct` |
 | 8 | `cash_reserve_pct` | cash − open buy cost − qty × ask < `cash_reserve_pct`% of live equity (FR-005) | `cash`, `open_buy_cost`, `qty`, `ask`, `equity`, `reserve_pct` |

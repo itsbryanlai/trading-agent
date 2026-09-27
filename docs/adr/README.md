@@ -40,3 +40,4 @@ What this makes easier, harder, or locks in going forward.
 | [0010](0010-stop-loss-monitor-and-universe-reference-data.md) | Stop-loss monitoring, universe reference data, and the daily baseline |
 | [0011](0011-event-driven-portfolio-manager-runs.md) | Portfolio Manager: a morning session plus event-driven intraday runs |
 | [0012](0012-order-identifier-per-verdict.md) | Order identifiers are per verdict, not per symbol, side and day |
+| [0013](0013-deterministic-services-run-their-own-loops.md) | Execution and the Risk Gate's trigger evaluation run their own loops, in separate processes |
