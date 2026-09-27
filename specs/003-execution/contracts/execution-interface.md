@@ -7,8 +7,9 @@ What other features call or rely on. Decisions: [research.md](../research.md) E1
 | Call | Used by | Behaviour |
 |---|---|---|
 | `python -m trading_agent.execution` | the worker service (hosting is the orchestrator feature's call, E13) | Runs `startup()`, then `tick()` every 60 seconds until stopped. |
-| `startup(broker, exec_conn)` | the runner | Paper-only guard (FR-013): raises `NotPaperTrading` and nothing else runs. Then one sync and reconciliation (FR-009). |
-| `tick(now, broker, exec_conn, config_path)` | the runner, or the orchestrator's scheduler | One pass of every duty that's due at `now`, in the order listed in E13. Returns a `TickReport` (counts of orders submitted, refusals, retries, fills applied, triggers recorded, snapshot taken) for logging. |
+| `Executor(broker, exec_conn, config_path)` | the runner | Holds the broker port, the connection, and a little per-process memory (the "maybe placed" set, which stop-loss windows succeeded). Losing that memory on restart only repeats harmless work. |
+| `Executor.startup()` | the runner | Paper-only guard (FR-013): raises `NotPaperTrading` and nothing else runs. Then refuses a non-autocommit connection, then one order sync and reconciliation (FR-009). |
+| `Executor.tick(now)` | the runner | One pass of every duty that's due at `now`, in the order listed in E13. Returns a `TickReport` (orders submitted and recovered, refusals, retries, errors, fills applied, positions reconciled, triggers recorded, unevaluated triggers, snapshot taken) for logging. |
 
 `exec_conn` is a login in `ta_execution`, opened with `autocommit=True` so each unit of work is a
 real transaction; `startup` and `tick` raise if it isn't (E5). **Caller obligation**: anything that hosts `tick` must pass an autocommit connection; only tests may pass `_allow_savepoints=True`. On a lost database connection, the runner exits non-zero for the platform to restart (ADR 0013). Execution's process holds no

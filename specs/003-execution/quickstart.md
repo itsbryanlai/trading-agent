@@ -63,13 +63,32 @@ For Execution:
 | Positions that disagree with the broker are overwritten with the broker's figures and logged | FR-011, SC-007 |
 | Pre-open snapshot recorded once, before the open, and the gate then takes today's baseline from it; Execution's own baseline equals the gate's | US6, E11 |
 
-## 3. Lint
+## 3. Running (not part of validation)
+
+Two long-running processes, each with **only its own** credentials
+([ADR 0013](../../docs/adr/0013-deterministic-services-run-their-own-loops.md)). The repo has no
+deployment configuration yet; whichever feature first writes the Railway configuration must start
+both.
+
+| Process | Command | Environment | Never given |
+|---|---|---|---|
+| Execution | `python -m trading_agent.execution` | `ALPACA_API_KEY_ID`, `ALPACA_API_SECRET_KEY` (paper), optional `ALPACA_BASE_URL` (must equal the paper address), `EXECUTION_DATABASE_URL` (a `ta_execution` login) | `RISK_GATE_DATABASE_URL` |
+| Risk Gate trigger runner | `python -m trading_agent.risk` | `RISK_GATE_DATABASE_URL` (a `ta_risk_gate` login) | any `ALPACA_*` key |
+
+Both tick every 60 seconds and exit non-zero on a lost database connection, so the platform's
+restart policy recovers them. Execution exits with code 2 if it can't prove it is on the paper
+account.
+
+**Running Execution against the paper account places real paper orders. Do it only when the owner
+asks for that specific action** (CLAUDE.md).
+
+## 4. Lint
 
 ```bash
 .venv/bin/ruff check src tests && .venv/bin/ruff format --check src tests
 ```
 
-## 4. Mutation check before trusting new tests
+## 5. Mutation check before trusting new tests
 
 As in feature 002: break a rule on purpose (e.g. compare the ask with `>=` instead of `>`, drop
 open orders from the reserve check, skip the `find_order` lookup) and confirm at least one test

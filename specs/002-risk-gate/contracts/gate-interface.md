@@ -10,7 +10,7 @@ Both run as `ta_risk_gate`, inside one transaction holding the gate's advisory l
 | Call | Used by | Behavior |
 |---|---|---|
 | `evaluate_decision(decision_id) -> Verdict \| None` | the PM session runner (orchestrator feature) | Returns `None` for a `hold` decision and writes nothing. Otherwise returns the verdict, recording it if new. |
-| `evaluate_stop_loss_trigger(trigger_id) -> Verdict` | Execution's stop-loss monitor | Returns the verdict, recording it if new. |
+| `evaluate_stop_loss_trigger(trigger_id) -> Verdict` | the gate's own trigger runner (`python -m trading_agent.risk`, `trading_agent.risk.runner`), for triggers Execution's monitor recorded. Amended by `specs/003-execution` (Clarifications 2026-09-28, ADR 0013): Execution never calls it. | Returns the verdict, recording it if new. |
 
 Guarantees:
 - **Idempotent** (FR-017): calling either again for the same id returns the recorded verdict

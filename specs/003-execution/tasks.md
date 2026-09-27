@@ -249,13 +249,13 @@ snapshots; then evaluate a buy through the real gate and compare baselines.
 
 ## Phase 10: Polish & Cross-Cutting Concerns
 
-- [ ] T052 [P] Write `tests/unit/execution/test_properties.py` (Hypothesis, `max_examples=10_000`): over generated live states (equity, cash, held qty, open buy qty and cost, ask, qty, ceiling, baseline) biased so most reach the limit checks, every `Submit` from `check_buy` satisfies `(held + open + qty) × limit_price ≤ max_position_pct% × equity` and `cash − open_cost − qty × limit_price ≥ cash_reserve_pct% × equity` and `limit_price ≤ ceiling` (SC-004); `check_buy` is deterministic (same input twice → equal outcome); `check_exit` never refuses for any reason outside `{APPROVAL_EXPIRED, IDENTIFIER_CLASH, SHARES_HELD_DIFFER}`. Add a guard test that fails if fewer than 500 generated cases end in `Submit` (the 002 lesson: a property that never reaches its branch checks nothing)
-- [ ] T053 [P] Write `tests/integration/execution/test_tick_order.py`: one `tick` with a filled order to sync, a lapsed approval, a new buy approval, a due monitor window and (at 13:00 UTC on a different day fixture) a due pre-open snapshot, asserting the E13 order via the fake's call log and the returned `TickReport` counts; that approved exits are submitted before approved buys in the same tick; and that an unexpected error while processing one approval (monkeypatch a step to raise for one verdict id) or syncing one order is logged and every other unit in the tick still completes (analyze S5)
-- [ ] T054 [P] Write `tests/integration/execution/test_committed_connections.py` (analyze S1): on a fresh database from `make_database` (migrated, dropped at the end), two **separate autocommit** connections, one `SET ROLE ta_execution`, one `SET ROLE ta_risk_gate`; seed a held position breaching its stop and the fake broker; run `tick` on the first, `evaluate_pending_triggers` on the second, `tick` again on the first → exactly one market sell submitted, and the trigger, verdict and order rows are visible from a third connection (proving they were committed); and `startup` refuses a non-autocommit connection
-- [ ] T055 [P] Update `docs/specs/execution.md` per ADR 0012 and this feature's Clarifications: the order identifier format, refusals recorded in `execution_refusals` (with a link to `specs/003-execution/contracts/refusal-reasons.md`), the pause check on buys, the paper-only guard as built (research E2, including that no documented account field marks paper), IEX prices and the last-trade stop-loss price, and Execution finding approvals itself each tick; and in `specs/002-risk-gate/contracts/gate-interface.md` and `docs/specs/risk-gate.md`, name the gate's trigger runner (`python -m trading_agent.risk`) as the caller of `evaluate_stop_loss_trigger`, citing this feature's Clarifications 2026-09-28 and ADR 0013; and add a "Running" section to `specs/003-execution/quickstart.md` listing the two long-running processes (`python -m trading_agent.execution`, `python -m trading_agent.risk`), each one's environment variables, that each must run with only its own credentials, and that whichever feature first writes the Railway configuration must start both (ADR 0013 Consequences)
-- [ ] T056 [P] Update `docs/specs/data-model.md`: the `orders.id` row (ADR 0012 format), the `expired` status, `limit_price` and `broker_reason`, and a new `execution_refusals` section; and `docs/architecture/overview.md` if it names the old identifier
-- [ ] T057 Mutation check (quickstart §4): one at a time, (a) compare the ask with `>=` instead of `>`, (b) drop open buy cost from the reserve check, (c) skip the `find_order` lookup before submitting, (d) apply the daily-loss check to exits, (e) grant `ta_execution` SELECT on `system_state.halt_triggered_on` in the migration, (f) drop the since-the-open lookback from row 7, (g) let the lapsed sweep skip `find_order`, (h) record `rejected` without the second `find_order`; confirm at least one test fails for each, then revert. Record the results under "Implementation notes" below
-- [ ] T058 Full validation per `quickstart.md`: offline suite, integration suite (expect 686 + this feature's tests), `ruff check src tests`, `ruff format --check src tests`; confirm the fake broker's and the network guard's tests ran (not skipped)
+- [X] T052 [P] Write `tests/unit/execution/test_properties.py` (Hypothesis, `max_examples=10_000`): over generated live states (equity, cash, held qty, open buy qty and cost, ask, qty, ceiling, baseline) biased so most reach the limit checks, every `Submit` from `check_buy` satisfies `(held + open + qty) × limit_price ≤ max_position_pct% × equity` and `cash − open_cost − qty × limit_price ≥ cash_reserve_pct% × equity` and `limit_price ≤ ceiling` (SC-004); `check_buy` is deterministic (same input twice → equal outcome); `check_exit` never refuses for any reason outside `{APPROVAL_EXPIRED, IDENTIFIER_CLASH, SHARES_HELD_DIFFER}`. Add a guard test that fails if fewer than 500 generated cases end in `Submit` (the 002 lesson: a property that never reaches its branch checks nothing)
+- [X] T053 [P] Write `tests/integration/execution/test_tick_order.py`: one `tick` with a filled order to sync, a lapsed approval, a new buy approval, a due monitor window and (at 13:00 UTC on a different day fixture) a due pre-open snapshot, asserting the E13 order via the fake's call log and the returned `TickReport` counts; that approved exits are submitted before approved buys in the same tick; and that an unexpected error while processing one approval (monkeypatch a step to raise for one verdict id) or syncing one order is logged and every other unit in the tick still completes (analyze S5)
+- [X] T054 [P] Write `tests/integration/execution/test_committed_connections.py` (analyze S1): on a fresh database from `make_database` (migrated, dropped at the end), two **separate autocommit** connections, one `SET ROLE ta_execution`, one `SET ROLE ta_risk_gate`; seed a held position breaching its stop and the fake broker; run `tick` on the first, `evaluate_pending_triggers` on the second, `tick` again on the first → exactly one market sell submitted, and the trigger, verdict and order rows are visible from a third connection (proving they were committed); and `startup` refuses a non-autocommit connection
+- [X] T055 [P] Update `docs/specs/execution.md` per ADR 0012 and this feature's Clarifications: the order identifier format, refusals recorded in `execution_refusals` (with a link to `specs/003-execution/contracts/refusal-reasons.md`), the pause check on buys, the paper-only guard as built (research E2, including that no documented account field marks paper), IEX prices and the last-trade stop-loss price, and Execution finding approvals itself each tick; and in `specs/002-risk-gate/contracts/gate-interface.md` and `docs/specs/risk-gate.md`, name the gate's trigger runner (`python -m trading_agent.risk`) as the caller of `evaluate_stop_loss_trigger`, citing this feature's Clarifications 2026-09-28 and ADR 0013; and add a "Running" section to `specs/003-execution/quickstart.md` listing the two long-running processes (`python -m trading_agent.execution`, `python -m trading_agent.risk`), each one's environment variables, that each must run with only its own credentials, and that whichever feature first writes the Railway configuration must start both (ADR 0013 Consequences)
+- [X] T056 [P] Update `docs/specs/data-model.md`: the `orders.id` row (ADR 0012 format), the `expired` status, `limit_price` and `broker_reason`, and a new `execution_refusals` section; and `docs/architecture/overview.md` if it names the old identifier
+- [X] T057 Mutation check (quickstart §4): one at a time, (a) compare the ask with `>=` instead of `>`, (b) drop open buy cost from the reserve check, (c) skip the `find_order` lookup before submitting, (d) apply the daily-loss check to exits, (e) grant `ta_execution` SELECT on `system_state.halt_triggered_on` in the migration, (f) drop the since-the-open lookback from row 7, (g) let the lapsed sweep skip `find_order`, (h) record `rejected` without the second `find_order`; confirm at least one test fails for each, then revert. Record the results under "Implementation notes" below
+- [X] T058 Full validation per `quickstart.md`: offline suite, integration suite (expect 686 + this feature's tests), `ruff check src tests`, `ruff format --check src tests`; confirm the fake broker's and the network guard's tests ran (not skipped)
 
 ---
 
@@ -333,4 +333,44 @@ numbers confirm them, against the fake broker. **Stop and validate** with the US
 
 ## Implementation notes
 
-(Filled in during `/speckit-implement`.)
+- **Order of work.** `checks.py` and `fills.py` were written during Phase 2 and Phase 3 respectively,
+  slightly ahead of their test tasks. The tests were then confirmed to fail against deliberately
+  broken versions (mutation checks below) rather than against missing code.
+- **API shape.** The contract's `tick(now, broker, conn, config_path)` became a small class,
+  `Executor(broker, conn, config_path).tick(now)`, because the "maybe placed" set and the
+  successful stop-loss windows are per-process state. The interface contract was updated to match.
+  Tests pass `_allow_savepoints=True`; production requires an autocommit connection.
+- **SDK behaviour found during implementation (not in research).** alpaca-py 0.44 retries HTTP 429
+  and 504 up to three times, including on `POST /v2/orders`, and sets no request timeout. A
+  retried 504 on an order could place it twice, and a hung call could stall a tick forever. The
+  adapter switches both off at construction (`_retry = 0`, `_retry_codes = []`, a 10-second
+  timeout on every request). These are private SDK attributes, so the version is pinned below 0.45
+  and a test asserts them on real client objects.
+- **Fake broker addition.** Rejecting a duplicate client id also ends the fake's lookup lag (a
+  broker that rejects a duplicate evidently knows the order), which is what lets the double-check
+  after `OrderRejected` be exercised.
+- **Existing tests updated for ADR 0012.** Feature 001/002 tests that inserted `orders` rows with the
+  old `{day}-{symbol}-{side}` id now build the per-verdict id; the old "same day/symbol/side is a
+  duplicate" test became "a restart re-deriving the same identifier is a duplicate".
+- **Grants test.** The bare `S` probe is now `SELECT *` (so a column-only grant reads as denied for
+  the table) and a table-level grant is counted as covering its columns in the per-op check
+  (analyze G2). The catalog-equality test is unchanged.
+- **T053 test honesty fix.** The first version of the lock-release assertion ran after the
+  connections closed (which releases every lock) and so proved nothing; it now checks while both
+  are still open, and a session-level-lock mutation makes it fail.
+- **T057 mutation results** (each reverted after): ask compared with `>=` (1 unit failure); open buy
+  cost dropped from the reserve (1); since-open lookback dropped from row 7 (1); open buy qty dropped
+  from the position check (Hypothesis property fails in about a second); broker lookup before
+  submitting removed (8 integration failures); second lookup after a rejection removed (1); the
+  maybe-placed wait removed (1); exits routed through the buy checks (16); lapsed sweep without the
+  lookup (3); `ta_execution` granted `SELECT (halt_triggered_on)` (3 grants failures); exits-first
+  ordering reversed (1); a planted `datetime.now()` in a core module (import guard fails);
+  session-level advisory lock (committed-connections test fails).
+- **Property coverage.** 10,000 generated buy states split roughly 1,150 submitted, 3,100
+  `quote_above_ceiling`, 3,200 `daily_loss_line_crossed`, 1,500 `max_position_pct`, 1,000
+  `cash_reserve_pct`; a guard test fails if submits drop below 500 or any of those refusals below
+  100.
+- **Not done here, by design.** Nothing was run against the Alpaca paper account. The adapter's
+  real HTTP behaviour (status codes on rejection, duplicate client-id handling, the order statuses a
+  partially filled day order ends in) is covered only by stubs and the docs cited in research; a
+  first supervised paper run, when the owner asks for one, is where those get confirmed.

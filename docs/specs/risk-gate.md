@@ -17,6 +17,11 @@ call and reads no environment beyond what its caller passes in.
 - `config/risk.yaml` (see below for contents).
 - Or, instead of a decision, one stop-loss trigger recorded by Execution's
   monitor ([ADR 0010](../adr/0010-stop-loss-monitor-and-universe-reference-data.md)).
+  Triggers are evaluated by the gate's own trigger runner
+  (`python -m trading_agent.risk`), a separate process holding only the gate's
+  database login; the recorded trigger is the whole hand-off from Execution
+  ([ADR 0013](../adr/0013-deterministic-services-run-their-own-loops.md),
+  `specs/003-execution` Clarifications 2026-09-28).
 - Whether the market is currently open — a boolean the caller computes from an
   exchange calendar, with no credential. The gate never fetches it itself.
 - Current `positions`, the latest `account_snapshots` row, and `system_state`
