@@ -30,7 +30,8 @@ _HUNDRED = Decimal(100)
 _CENT = Decimal("0.01")
 
 
-def _expired_or_not_yet(approval: Approval, session: Session) -> Outcome | None:
+def expiry_check(approval: Approval, session: Session) -> Outcome | None:
+    """Row 1-2: an approval from a day that is over is spent; before the open, wait."""
     day = approval.order.trading_day
     if day != session.today or session.after_close:
         return Refuse(
@@ -42,7 +43,7 @@ def _expired_or_not_yet(approval: Approval, session: Session) -> Outcome | None:
     return None
 
 
-def _clash(approval: Approval, clash_with) -> Outcome | None:
+def clash_refusal(approval: Approval, clash_with) -> Outcome | None:
     if clash_with is None:
         return None
     return Refuse(
@@ -62,7 +63,7 @@ def precheck_buy(
     approval: Approval, live: BuyLive, session: Session, clash_with=None
 ) -> Outcome | None:
     """Rows 1-6: everything decidable before fetching the account or a quote."""
-    for outcome in (_expired_or_not_yet(approval, session), _clash(approval, clash_with)):
+    for outcome in (expiry_check(approval, session), clash_refusal(approval, clash_with)):
         if outcome is not None:
             return outcome
     if live.config is None:
@@ -169,7 +170,7 @@ def check_buy(approval: Approval, live: BuyLive, session: Session, clash_with=No
 def check_exit(approval: Approval, live: ExitLive, session: Session, clash_with=None) -> Outcome:
     """Exits take no equity, baseline, pause or config input: nothing but their
     own conditions can refuse them (FR-006, FR-018, FR-020)."""
-    for outcome in (_expired_or_not_yet(approval, session), _clash(approval, clash_with)):
+    for outcome in (expiry_check(approval, session), clash_refusal(approval, clash_with)):
         if outcome is not None:
             return outcome
     order = approval.order
