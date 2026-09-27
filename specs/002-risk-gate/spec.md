@@ -36,7 +36,7 @@ The Portfolio Manager decides to buy a symbol at some size. The Risk Gate turns 
 
 **Acceptance Scenarios**:
 
-1. **Given** equity of $100,000, no position in AAPL, ample cash, and a decision to buy AAPL with a target weight of 5% at a quote of $200, **When** the gate evaluates it, **Then** it approves a limit buy of 25 shares with a price ceiling of $202 (quote plus the 1% tolerance) and a day time-in-force.
+1. **Given** equity of $100,000, no position in AAPL, ample cash, and a decision to buy AAPL with a target weight of 5% at a quote of $200, **When** the gate evaluates it, **Then** it approves a limit buy of 24 shares with a price ceiling of $202 (quote plus the 1% tolerance) and a day time-in-force. It is 24, not 25, because the buy is sized at the ceiling (FR-001a): 25 shares filled at $202 would cost $5,050, over the 5% target.
 2. **Given** an existing AAPL position worth 6% of equity, **When** a decision targets 10%, **Then** the gate approves a trimmed buy that brings the position to exactly the 8% ceiling (rounded down to whole shares) and records that it was trimmed and by which rule.
 3. **Given** an AAPL position already at the 8% ceiling, **When** a decision targets a higher weight, **Then** the gate rejects it, naming the position ceiling.
 4. **Given** cash that is already at the 20% reserve floor, **When** a buy decision arrives, **Then** the gate rejects it, naming the cash reserve. When only part of the buy fits above the floor, it trims to what fits.

@@ -26,6 +26,7 @@ an operator creates out-of-band as a member of the matching group role (research
 | `ta_assistant` | Assistant agent | `docs/specs/assistant-agent.md` |
 | `ta_dashboard` | Dashboard, general request path | `docs/specs/ui-dashboard.md` |
 | `ta_dashboard_control` | Dashboard, pause/resume toggle only | `docs/specs/ui-dashboard.md` |
+| `ta_reference_data` | Daily universe reference-data job | ADR 0010; added by `specs/002-risk-gate` |
 
 The dashboard uses two roles, following `trading-bot`'s `web_reader` / control split: the ordinary
 request path holds a connection that cannot write at all; only the toggle endpoint holds the one
@@ -37,20 +38,26 @@ that can.
 `I*` = INSERT restricted by row-level security to the role's own `agent` value.
 `U(cols)` = UPDATE on the named columns only.
 
-| Object | research | opp_identifier | portfolio_mgr | risk_gate | execution | journal | orchestrator | assistant | dashboard | dashboard_control |
-|---|---|---|---|---|---|---|---|---|---|---|
-| `reports` | S, I* | S, I* | S | — | — | S | — | S | S | — |
-| `reports_with_status` (view) | — | — | S | — | — | S | — | S | S | — |
-| `decisions` | — | — | S, I | S | — | S | — | S | S | — |
-| `decision_reports` | — | — | S, I | — | — | S | — | S | S | — |
-| `risk_verdicts` | — | — | — | S, I | S | S | — | S | S | — |
-| `orders` | — | — | — | — | S, I, U | S | — | S | S | — |
-| `positions` | — | — | S | S | S, I, U, D | S | — | S | S | — |
-| `account_snapshots` | — | — | S | S | S, I | S | — | S | S | — |
-| `journal` | — | — | S | **—** | **—** | S, I, U | — | S | S | — |
-| `system_state` | — | — | — | S, U(halt_triggered_on, baseline_trading_day, daily_starting_equity, updated_at) | — | — | S | S | S | S, U(trading_paused, updated_at) |
-| `system_state_effective` (view) | — | — | — | S | — | — | S | S | S | S |
-| `schema_migrations` | — | — | — | — | — | — | — | — | — | — |
+| Object | research | opp_identifier | portfolio_mgr | risk_gate | execution | journal | orchestrator | assistant | dashboard | dashboard_control | reference_data |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| `reports` | S, I* | S, I* | S | — | — | S | — | S | S | — | — |
+| `reports_with_status` (view) | — | — | S | — | — | S | — | S | S | — | — |
+| `decisions` | — | — | S, I | S | — | S | — | S | S | — | — |
+| `decision_reports` | — | — | S, I | — | — | S | — | S | S | — | — |
+| `risk_verdicts` | — | — | — | S, I | S | S | — | S | S | — | — |
+| `orders` | — | — | — | — | S, I, U | S | — | S | S | — | — |
+| `positions` | — | — | S | S | S, I, U, D | S | — | S | S | — | — |
+| `account_snapshots` | — | — | S | S | S, I | S | — | S | S | — | — |
+| `journal` | — | — | S | **—** | **—** | S, I, U | — | S | S | — | — |
+| `system_state` | — | — | — | S, U(halt_triggered_on, baseline_trading_day, daily_starting_equity, updated_at) | — | — | S | S | S | S, U(trading_paused, updated_at) | — |
+| `system_state_effective` (view) | — | — | — | S | — | — | S | S | S | S | — |
+| `stop_loss_triggers` ¹ | — | — | — | S | S, I | S | — | S | S | — | — |
+| `instrument_reference` ¹ | — | — | — | S | — | — | — | S | S | — | S, I, U |
+| `schema_migrations` | — | — | — | — | — | — | — | — | — | — | — |
+
+¹ Added by `specs/002-risk-gate` (migration `0006`). Execution writes stop-loss triggers and the
+Risk Gate evaluates them. The reference-data job writes universe data and the Risk Gate reads it.
+The journal can read triggers so it can trace a stop-loss exit's order back to its cause.
 
 Bold `—` marks the two denials the spec calls out by name: the Risk Gate and Execution can never
 read the journal (FR-012), so attribution cannot become a trading input.

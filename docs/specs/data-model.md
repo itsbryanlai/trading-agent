@@ -65,19 +65,37 @@ Writers: `portfolio_manager` role only, for both `decisions` and
 
 ## `risk_verdicts`
 
-One row per Risk Gate evaluation of a `decisions` row.
+One row per Risk Gate evaluation. The request is either a `decisions` row or
+a `stop_loss_triggers` row, and exactly one of the two.
 
 | Column | Type | Notes |
 |---|---|---|
 | `id` | uuid | |
-| `decision_id` | uuid | FK to `decisions` |
+| `decision_id` | uuid | FK to `decisions`, or NULL for a stop-loss exit |
+| `stop_loss_trigger_id` | uuid | FK to `stop_loss_triggers`, or NULL for a decision |
 | `evaluated_at` | timestamptz | |
+| `trading_day` | date | the only day the approval is valid (Execution never submits it on a later day) |
 | `verdict` | enum (`approved`, `rejected`) | |
-| `rejection_rule` | text | which `config/risk.yaml` rule fired, if rejected |
-| `approved_order` | jsonb | fully-specified order (symbol, side, qty, limit price, TIF) if approved |
+| `rejection_rule` | text | the named rule that fired, if rejected (`specs/002-risk-gate/contracts/rejection-rules.md`) |
+| `approved_order` | jsonb | if approved: a limit buy with a price ceiling, or a market sell/exit, plus any trims |
+| `config_version` | text | which version of `config/risk.yaml` it was judged against |
 
 Writers: `risk_gate` role only. The Risk Gate itself holds no broker or
 market-data credentials — it is a pure function over its inputs.
+
+## `stop_loss_triggers`
+
+One observation by Execution's 30-minute monitor that a held position is at
+or below its stop-loss line: the symbol, the price seen, and when. There is no
+entry price or line; the Risk Gate re-derives both itself, so a faulty monitor
+can't force a sale. Writers: `execution` role only.
+
+## `instrument_reference`
+
+Per-symbol universe data for one trading day: security type, exchange, market
+cap, average daily dollar volume, and share price. The Risk Gate's universe
+check reads it; a symbol missing today's row fails that check. Writers: a
+dedicated `reference_data` role for the daily reference-data job (ADR 0010).
 
 ## `orders`
 
