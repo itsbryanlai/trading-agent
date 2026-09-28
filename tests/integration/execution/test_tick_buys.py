@@ -84,6 +84,31 @@ def test_a_crossing_earlier_today_refuses_a_buy_after_equity_recovered(conn, bro
     _, [refusal] = outcomes(conn, verdict)
     assert refusal["reason"] == "daily_loss_line_crossed"
     assert broker.submissions == []
+    # The refusal names the snapshots it judged by (contracts/refusal-reasons.md).
+    details = refusal["details"]
+    low = conn.execute("SELECT id FROM account_snapshots WHERE equity = 79000").fetchone()["id"]
+    just_taken = conn.execute(
+        "SELECT id FROM account_snapshots WHERE taken_at = %s", (NOW,)
+    ).fetchone()["id"]
+    assert details["min_snapshot_id"] == str(low)
+    assert details["snapshot_id"] == str(just_taken)
+    assert details["min_equity_since_open"] == "79000.00"
+
+
+def test_a_retried_buy_keeps_nothing_not_even_the_pre_buy_snapshot(conn, broker, executor):
+    # T061: an unusable quote retries every minute; it must not write a snapshot each time.
+    from datetime import timedelta
+
+    seed_baseline(conn)
+    broker.set_quote("AAPL", "201.50", at=NOW - timedelta(minutes=5))  # stale
+    verdict = approved_verdict(conn, buy_order())
+    before = conn.execute("SELECT count(*) AS n FROM account_snapshots").fetchone()["n"]
+
+    report = run_tick(conn, executor)
+
+    assert report.retried == 1 and "get_account" in broker.calls
+    assert conn.execute("SELECT count(*) AS n FROM account_snapshots").fetchone()["n"] == before
+    assert outcomes(conn, verdict) == ([], [])
 
 
 def test_paused_refuses_buys_but_still_sends_sells(conn, broker, executor):

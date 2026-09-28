@@ -171,3 +171,35 @@ def test_an_unexpected_status_leaves_the_order_unchanged(conn, broker, executor,
         run_tick(conn, executor, LATER)
     [order], _ = outcomes(conn, verdict)
     assert order["status"] == "submitted" and "replaced" in caplog.text
+
+
+def test_a_rejection_after_acceptance_keeps_a_reason_and_is_never_resubmitted(
+    conn, broker, executor
+):
+    # FR-012, US7 AC5: the broker accepts the order, then rejects it on a later poll.
+    import dataclasses
+
+    verdict, client_id = _submitted_buy(conn, broker, executor)
+    [placed] = broker.orders_for(client_id)
+    broker.orders[placed.broker_order_id] = dataclasses.replace(
+        placed, status="rejected", reason="symbol halted"
+    )
+    run_tick(conn, executor, LATER)
+    run_tick(conn, executor, LATER + timedelta(minutes=1))
+
+    [order], _ = outcomes(conn, verdict)
+    assert order["status"] == "rejected" and order["broker_reason"] == "symbol halted"
+    assert len(broker.submissions) == 1
+
+
+def test_a_rejection_the_broker_gives_no_reason_for_is_still_explained(conn, broker, executor):
+    import dataclasses
+
+    from trading_agent.execution.service import NO_BROKER_REASON
+
+    verdict, client_id = _submitted_buy(conn, broker, executor)
+    [placed] = broker.orders_for(client_id)
+    broker.orders[placed.broker_order_id] = dataclasses.replace(placed, status="rejected")
+    run_tick(conn, executor, LATER)
+    [order], _ = outcomes(conn, verdict)
+    assert order["broker_reason"] == NO_BROKER_REASON

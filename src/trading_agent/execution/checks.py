@@ -95,7 +95,9 @@ def check_buy(approval: Approval, live: BuyLive, session: Session, clash_with=No
             reasons.DAILY_LOSS_LINE_CROSSED,
             {
                 "equity": str(live.equity),
+                "snapshot_id": live.snapshot_id,
                 "min_equity_since_open": _str(live.min_equity_since_open),
+                "min_snapshot_id": live.min_snapshot_id,
                 "baseline": str(live.baseline),
                 "line": str(line),
             },

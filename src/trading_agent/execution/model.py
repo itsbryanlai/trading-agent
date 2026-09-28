@@ -46,6 +46,9 @@ class BuyLive:
     equity: Decimal | None = None
     cash: Decimal | None = None
     min_equity_since_open: Decimal | None = None
+    # Which snapshots those equities came from, so a refusal names them.
+    snapshot_id: str | None = None
+    min_snapshot_id: str | None = None
     held_qty: Decimal = Decimal(0)
     open_buy_qty_symbol: Decimal = Decimal(0)
     open_buy_cost_all: Decimal = Decimal(0)

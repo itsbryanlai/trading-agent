@@ -58,6 +58,10 @@ MAYBE_PLACED_WAIT = timedelta(minutes=2)
 
 _OPEN_STATUSES = ("submitted", "partially_filled")
 
+# Alpaca's order object carries no rejection reason (alpaca-py 0.44), so a
+# rejection that arrives by polling rather than at submission records this (FR-012).
+NO_BROKER_REASON = "rejected by the broker after acceptance; the broker gave no reason"
+
 # A trigger without a verdict this long after it was recorded means the gate's
 # trigger runner isn't running (ADR 0013).
 UNEVALUATED_AFTER = timedelta(minutes=5)
@@ -251,9 +255,11 @@ class Executor:
         account = self.broker.get_account()
         cur.execute(
             "INSERT INTO account_snapshots (taken_at, equity, cash, buying_power) "
-            "VALUES (%s, %s, %s, %s)",
+            "VALUES (%s, %s, %s, %s) RETURNING id",
             (session.now, account.equity, account.cash, account.buying_power),
         )
+        snapshot_id = str(cur.fetchone()["id"])
+        lowest = lowest_snapshot_since_open(cur, session)
         symbol = approval.order.symbol
         held = self._held_qty(symbol)
         open_qty, open_cost = open_buys(cur, symbol)
@@ -263,7 +269,9 @@ class Executor:
             config=live.config,
             equity=account.equity,
             cash=account.cash,
-            min_equity_since_open=min_equity_since_open(cur, session),
+            min_equity_since_open=lowest["equity"] if lowest else None,
+            snapshot_id=snapshot_id,
+            min_snapshot_id=str(lowest["id"]) if lowest else None,
             held_qty=held,
             open_buy_qty_symbol=open_qty,
             open_buy_cost_all=open_cost,
@@ -297,6 +305,9 @@ class Executor:
         if isinstance(outcome, Retry):
             report.retried += 1
             log.info("execution: verdict %s retried: %s", approval.verdict_id, outcome.why)
+            # Nothing from a retried attempt is kept, including the pre-buy snapshot,
+            # so an unusable quote doesn't write one every minute (T020, T061).
+            raise psycopg.Rollback()
         elif isinstance(outcome, Refuse):
             self._record_refusal(cur, approval, outcome, session)
             report.refused += 1
@@ -370,10 +381,16 @@ class Executor:
             if delta is not None:
                 self._apply_fill(cur, row["symbol"], row["side"], *delta)
                 report.fills_applied += 1
+            reason = None
+            if status == "rejected":
+                reason = placed.reason or NO_BROKER_REASON
+                log.warning(
+                    "execution: broker rejected %s after accepting it: %s", row["id"], reason
+                )
             cur.execute(
-                "UPDATE orders SET status = %s, fill_qty = %s, fill_price = %s, updated_at = now() "
-                "WHERE id = %s",
-                (status, placed.filled_qty, placed.filled_avg_price, row["id"]),
+                "UPDATE orders SET status = %s, fill_qty = %s, fill_price = %s, "
+                "broker_reason = coalesce(%s, broker_reason), updated_at = now() WHERE id = %s",
+                (status, placed.filled_qty, placed.filled_avg_price, reason, row["id"]),
             )
 
     def _apply_fill(self, cur, symbol: str, side: str, qty: Decimal, price: Decimal) -> None:
@@ -671,17 +688,19 @@ def baseline_equity(cur, today) -> Decimal | None:
     return row["equity"] if row else None
 
 
-def min_equity_since_open(cur, session: Session) -> Decimal | None:
-    """The lowest equity recorded since today's open (research E6 row 7)."""
+def lowest_snapshot_since_open(cur, session: Session) -> dict | None:
+    """The snapshot with the lowest equity since today's open (research E6 row 7),
+    as {id, equity}, or None."""
     if not calendar.is_session(session.today):
         return None
     cur.execute(
-        "SELECT min(equity) AS low FROM account_snapshots "
+        "SELECT id, equity FROM account_snapshots "
         "WHERE (taken_at AT TIME ZONE 'America/New_York')::date = %s "
-        "AND taken_at >= %s AND taken_at <= %s",
+        "AND taken_at >= %s AND taken_at <= %s "
+        "ORDER BY equity, taken_at LIMIT 1",
         (session.today, calendar.open_time(session.today), session.now),
     )
-    return cur.fetchone()["low"]
+    return cur.fetchone()
 
 
 def _open_orders(cur, side: str):
