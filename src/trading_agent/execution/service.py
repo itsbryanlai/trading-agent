@@ -205,6 +205,11 @@ class Executor:
     ) -> bool:
         """E5 steps 2-3: refuse a clashing identifier, else adopt an order the broker
         already has under it. True if the approval now has an outcome."""
+        invalid = checks.symbol_refusal(approval)
+        if invalid is not None:
+            self._record_refusal(cur, approval, invalid, session)
+            report.refused += 1
+            return True
         oid = order_id(approval.verdict_id, approval.order)
         cur.execute(
             "SELECT risk_verdict_id FROM orders WHERE id = %s AND risk_verdict_id <> %s",

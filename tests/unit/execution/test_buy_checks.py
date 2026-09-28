@@ -161,3 +161,12 @@ def test_details_never_carry_floats():
         outcome = check_buy(approved_buy(), live, session())
         assert isinstance(outcome, Refuse)
         assert not any(isinstance(v, float) for v in outcome.details.values())
+
+
+@pytest.mark.parametrize("symbol", ["BRK-B", "aapl", "1ABC", "A B"])
+def test_a_symbol_the_order_identifier_cant_hold_is_refused(symbol):
+    # Research E16: refused before any broker call, so nothing is placed unrecordable.
+    details = _refused(
+        check_buy(approved_buy(symbol=symbol), buy_live(), session()), reasons.INVALID_SYMBOL
+    )
+    assert details["symbol"] == symbol

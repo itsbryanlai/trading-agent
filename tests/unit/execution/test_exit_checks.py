@@ -57,3 +57,8 @@ def test_nothing_about_equity_pause_baseline_or_config_can_reach_an_exit():
     assert params == {"approval", "live", "session", "clash_with"}
     live_fields = set(exit_live().__dataclass_fields__)
     assert live_fields == {"held_qty", "open_sell_qty_symbol"}
+
+
+def test_an_exit_of_a_symbol_the_identifier_cant_hold_is_refused():
+    outcome = check_exit(approved_sell(symbol="BRK-B"), exit_live(), session())
+    assert isinstance(outcome, Refuse) and outcome.reason == reasons.INVALID_SYMBOL

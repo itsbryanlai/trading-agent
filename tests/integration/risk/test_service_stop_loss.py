@@ -18,8 +18,9 @@ from trading_agent.risk.service import evaluate_decision, evaluate_stop_loss_tri
 def _record_trigger(conn, observed: str, symbol="AAPL") -> str:
     with as_role(conn, "ta_execution"):
         return conn.execute(
-            "INSERT INTO stop_loss_triggers (symbol, observed_price) VALUES (%s, %s) RETURNING id",
-            (symbol, observed),
+            "INSERT INTO stop_loss_triggers (symbol, observed_price, observed_at) "
+            "VALUES (%s, %s, %s) RETURNING id",
+            (symbol, observed, NOW),
         ).fetchone()["id"]
 
 

@@ -87,7 +87,8 @@ def insert_verdict(
 
 def insert_trigger(conn: psycopg.Connection, symbol: str = "AAPL", observed: str = "160") -> str:
     return conn.execute(
-        "INSERT INTO stop_loss_triggers (symbol, observed_price) VALUES (%s, %s) RETURNING id",
+        "INSERT INTO stop_loss_triggers (symbol, observed_price, observed_at) "
+        "VALUES (%s, %s, '2026-09-28 14:00+00') RETURNING id",
         (symbol, observed),
     ).fetchone()["id"]
 

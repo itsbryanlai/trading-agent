@@ -24,6 +24,7 @@ class DecisionRequest:
 class StopLossRequest:
     symbol: str
     observed_price: Decimal
+    observed_at: datetime  # a trigger older than MAX_TRIGGER_AGE is stale (ADR 0014)
 
 
 Request = DecisionRequest | StopLossRequest

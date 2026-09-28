@@ -7,6 +7,7 @@ module and that document in lockstep.
 
 MARKET_CLOSED = "market_closed"
 
+STOP_LOSS_TRIGGER_STALE = "stop_loss_trigger_stale"
 NO_POSITION = "no_position"
 STOP_LOSS_NOT_BREACHED = "stop_loss_not_breached"
 DIRECTION_CONTRADICTS_TARGET = "direction_contradicts_target"

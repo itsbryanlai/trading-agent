@@ -6,6 +6,7 @@ module and that document in lockstep. A refusal is final: the approval is spent.
 """
 
 APPROVAL_EXPIRED = "approval_expired"
+INVALID_SYMBOL = "invalid_symbol"
 IDENTIFIER_CLASH = "identifier_clash"
 TRADING_PAUSED = "trading_paused"
 NO_DAILY_BASELINE = "no_daily_baseline"
@@ -18,6 +19,7 @@ SHARES_HELD_DIFFER = "shares_held_differ"
 ALL = frozenset(
     {
         APPROVAL_EXPIRED,
+        INVALID_SYMBOL,
         IDENTIFIER_CLASH,
         TRADING_PAUSED,
         NO_DAILY_BASELINE,

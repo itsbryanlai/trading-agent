@@ -12,7 +12,7 @@ from decimal import ROUND_DOWN, Decimal
 
 from trading_agent.execution import reasons
 from trading_agent.execution.broker import OrderRequest
-from trading_agent.execution.ids import order_id
+from trading_agent.execution.ids import is_valid, order_id
 from trading_agent.execution.model import (
     Approval,
     BuyLive,
@@ -43,6 +43,15 @@ def expiry_check(approval: Approval, session: Session) -> Outcome | None:
     return None
 
 
+def symbol_refusal(approval: Approval) -> Outcome | None:
+    """Row 1a: an identifier the database would refuse means an order that could be
+    placed but never recorded (research E16)."""
+    oid = order_id(approval.verdict_id, approval.order)
+    if is_valid(oid):
+        return None
+    return Refuse(reasons.INVALID_SYMBOL, {"symbol": approval.order.symbol, "order_id": oid})
+
+
 def clash_refusal(approval: Approval, clash_with) -> Outcome | None:
     if clash_with is None:
         return None
@@ -63,7 +72,11 @@ def precheck_buy(
     approval: Approval, live: BuyLive, session: Session, clash_with=None
 ) -> Outcome | None:
     """Rows 1-6: everything decidable before fetching the account or a quote."""
-    for outcome in (expiry_check(approval, session), clash_refusal(approval, clash_with)):
+    for outcome in (
+        expiry_check(approval, session),
+        symbol_refusal(approval),
+        clash_refusal(approval, clash_with),
+    ):
         if outcome is not None:
             return outcome
     if live.config is None:
@@ -172,7 +185,11 @@ def check_buy(approval: Approval, live: BuyLive, session: Session, clash_with=No
 def check_exit(approval: Approval, live: ExitLive, session: Session, clash_with=None) -> Outcome:
     """Exits take no equity, baseline, pause or config input: nothing but their
     own conditions can refuse them (FR-006, FR-018, FR-020)."""
-    for outcome in (expiry_check(approval, session), clash_refusal(approval, clash_with)):
+    for outcome in (
+        expiry_check(approval, session),
+        symbol_refusal(approval),
+        clash_refusal(approval, clash_with),
+    ):
         if outcome is not None:
             return outcome
     order = approval.order

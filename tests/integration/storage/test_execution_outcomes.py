@@ -158,3 +158,9 @@ def test_execution_cannot_repoint_an_order_but_can_record_its_fills(conn):
     assert attempt(conn, "ta_execution", repoint) == "denied"
     with as_role(conn, "ta_execution"):
         conn.execute("UPDATE orders SET status = 'filled', fill_qty = 10, fill_price = 187")
+
+
+def test_invalid_symbol_is_a_contract_reason(conn):
+    # Migration 0008 (research E16).
+    verdict = _verdict(conn)
+    insert_refusal(conn, verdict, "invalid_symbol")

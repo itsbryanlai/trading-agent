@@ -180,3 +180,12 @@ def test_no_baseline_refuses_the_buy(conn, broker, executor):
     _, [refusal] = outcomes(conn, verdict)
     assert refusal["reason"] == "no_daily_baseline"
     assert "get_account" not in broker.calls
+
+
+def test_an_invalid_symbol_is_refused_before_any_broker_call(conn, broker, executor):
+    seed_baseline(conn)
+    verdict = approved_verdict(conn, buy_order(symbol="BRK-B"))
+    run_tick(conn, executor)
+    _, [refusal] = outcomes(conn, verdict)
+    assert refusal["reason"] == "invalid_symbol"
+    assert "find_order" not in broker.calls and broker.submissions == []

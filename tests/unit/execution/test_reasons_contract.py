@@ -16,7 +16,9 @@ CONTRACT = (
 
 def _contract_reason_names() -> set[str]:
     # Table rows look like: | 5 | `daily_loss_line_crossed` | ... |
-    return set(re.findall(r"^\|\s*\d+\s*\|\s*`([a-z_]+)`", CONTRACT.read_text(), re.MULTILINE))
+    return set(
+        re.findall(r"^\|\s*\d+[a-z]?\s*\|\s*`([a-z_]+)`", CONTRACT.read_text(), re.MULTILINE)
+    )
 
 
 def _code_reason_names() -> set[str]:
@@ -30,4 +32,4 @@ def test_contract_and_code_name_exactly_the_same_reasons():
 
 
 def test_the_contract_parse_is_not_vacuous():
-    assert len(_contract_reason_names()) == 9
+    assert len(_contract_reason_names()) == 10

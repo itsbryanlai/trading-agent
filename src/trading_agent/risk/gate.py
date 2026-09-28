@@ -7,6 +7,7 @@ research.md G3-G4.
 
 from __future__ import annotations
 
+from datetime import timedelta
 from decimal import ROUND_CEILING, ROUND_DOWN, ROUND_FLOOR, Decimal
 
 from trading_agent.risk import rules
@@ -31,6 +32,10 @@ def _floor(value: Decimal) -> int:
 
 def _ceil(value: Decimal) -> int:
     return int(value.to_integral_value(rounding=ROUND_CEILING))
+
+
+# How long a stop-loss observation stays usable (ADR 0014). Not a risk limit.
+MAX_TRIGGER_AGE = timedelta(minutes=10)
 
 
 def price_ceiling(quote: Decimal, tolerance_pct: Decimal) -> Decimal:
@@ -71,6 +76,9 @@ def _stop_loss(request: StopLossRequest, ctx: Context, config: RiskConfig) -> Ve
     are the gate's own, so a faulty monitor can't force a sale. No pause, halt,
     cap, missing account data or universe rule can block a genuine breach.
     """
+    # A trigger is one observation; an old one may no longer be true (ADR 0014).
+    if ctx.now - request.observed_at > MAX_TRIGGER_AGE:
+        return Verdict.reject(rules.STOP_LOSS_TRIGGER_STALE)
     if ctx.shares_held <= 0 or ctx.avg_entry_price is None:
         return Verdict.reject(rules.NO_POSITION)
     line = ctx.avg_entry_price * (1 - config.stop_loss_pct / _HUNDRED)

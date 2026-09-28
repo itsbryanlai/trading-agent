@@ -73,8 +73,11 @@ def test_pure_core_never_reads_the_clock():
         if not path.exists():
             continue
         for node in ast.walk(ast.parse(path.read_text())):
-            if isinstance(node, ast.Attribute) and node.attr in {"now", "today", "utcnow"}:
-                raise AssertionError(f"{filename} calls .{node.attr}() — the clock is an input")
+            # A call such as datetime.now(); reading the injected `ctx.now` is fine.
+            called = isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
+            if called and node.func.attr in {"now", "today", "utcnow"}:
+                name = node.func.attr
+                raise AssertionError(f"{filename} calls .{name}() — the clock is an input")
 
 
 def test_core_modules_exist_so_the_guard_is_not_vacuous():

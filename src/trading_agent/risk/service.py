@@ -85,12 +85,15 @@ def evaluate_stop_loss_trigger(
             return existing
 
         cur.execute(
-            "SELECT symbol, observed_price FROM stop_loss_triggers WHERE id = %s", (trigger_id,)
+            "SELECT symbol, observed_price, observed_at FROM stop_loss_triggers WHERE id = %s",
+            (trigger_id,),
         )
         trigger = cur.fetchone()
         if trigger is None:
             raise LookupError(f"no stop-loss trigger {trigger_id}")
-        request = StopLossRequest(trigger["symbol"], trigger["observed_price"])
+        request = StopLossRequest(
+            trigger["symbol"], trigger["observed_price"], trigger["observed_at"]
+        )
         return _judge_and_record(cur, request, now, config, trigger_id=trigger_id)
 
 
