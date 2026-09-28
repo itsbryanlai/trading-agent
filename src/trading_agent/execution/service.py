@@ -280,7 +280,7 @@ class Executor:
             held_qty=held,
             open_buy_qty_symbol=open_qty,
             open_buy_cost_all=open_cost,
-            ask=self.broker.get_latest_ask(symbol),
+            ask=self.broker.get_latest_quote(symbol),
         )
         return checks.check_buy(approval, live, session)
 
@@ -470,7 +470,7 @@ class Executor:
                 for row in cur.fetchall()
             }
             skip = exits_on_their_way(cur, session.today)
-        trades = {}
+        trades, quotes = {}, {}
         for symbol in holdings:
             if symbol in skip:
                 continue
@@ -479,7 +479,13 @@ class Executor:
             except BrokerUnavailable as exc:
                 log.warning("execution: no last trade for %s: %s", symbol, exc)
                 trades[symbol] = None
-        result = monitor.scan(holdings, trades, config.stop_loss_pct, session.now, skip)
+            # The second reading (ADR 0014); only consulted if the trade breaches.
+            try:
+                quotes[symbol] = self.broker.get_latest_quote(symbol)
+            except BrokerUnavailable as exc:
+                log.warning("execution: no quote for %s: %s", symbol, exc)
+                quotes[symbol] = None
+        result = monitor.scan(holdings, trades, quotes, config.stop_loss_pct, session.now, skip)
         for breach in result.breaches:
             # Committed on its own, so the gate's process can see it (ADR 0013).
             with self.conn.transaction(), self._cursor() as cur:

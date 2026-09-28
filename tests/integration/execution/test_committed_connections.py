@@ -49,6 +49,7 @@ def test_a_stop_loss_exit_across_two_processes_is_committed_and_visible(committe
     broker = FakeBroker(now=NOW)
     broker.set_position("AAPL", 50, "200")
     broker.set_trade("AAPL", "150")
+    broker.set_quote("AAPL", "150")  # the confirming bid (ADR 0014)
 
     with (
         _connect(committed_db, "ta_execution") as exec_conn,
@@ -60,6 +61,7 @@ def test_a_stop_loss_exit_across_two_processes_is_committed_and_visible(committe
         assert evaluate_pending_triggers(gate_conn, NOW, REPO_CONFIG) == 1
         later = NOW + timedelta(minutes=1)
         broker.set_trade("AAPL", "150", at=later)
+        broker.set_quote("AAPL", "150", at=later)
         assert executor.tick(later).submitted == 1
         # Still connected: a lock left held would show here (research E5).
         with _connect(committed_db) as observer:

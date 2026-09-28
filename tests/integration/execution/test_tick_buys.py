@@ -149,7 +149,7 @@ def test_a_rejected_verdict_is_never_touched(conn, broker, executor):
 def test_a_transient_failure_records_nothing_and_the_next_tick_submits(conn, broker, executor):
     seed_baseline(conn)
     verdict = approved_verdict(conn, buy_order())
-    broker.fail("get_latest_ask")
+    broker.fail("get_latest_quote")
 
     report = run_tick(conn, executor)
     assert outcomes(conn, verdict) == ([], []) and report.retried == 1

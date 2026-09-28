@@ -68,7 +68,7 @@ def test_one_order_per_verdict_whatever_step_crashes(conn, broker, monkeypatch, 
     if crash == "before_find_order":
         broker.fail("find_order")
     elif crash == "before_submit":
-        broker.fail("get_latest_ask" if side == "buy" else "get_positions")
+        broker.fail("get_latest_quote" if side == "buy" else "get_positions")
     elif crash == "submit_timed_out_after_placing":
         broker.fail("submit_order", after_effect=True)
     else:

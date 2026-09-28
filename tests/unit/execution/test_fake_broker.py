@@ -102,9 +102,9 @@ def test_lookup_lag_and_duplicate_client_ids():
 def test_missing_quote_or_trade_is_unavailable_and_calls_are_logged():
     broker = FakeBroker()
     with pytest.raises(BrokerUnavailable):
-        broker.get_latest_ask("AAPL")
+        broker.get_latest_quote("AAPL")
     broker.set_quote("AAPL", "201.50")
     broker.set_trade("AAPL", "201.40")
-    assert broker.get_latest_ask("AAPL").ask == Decimal("201.50")
+    assert broker.get_latest_quote("AAPL").ask == Decimal("201.50")
     assert broker.get_latest_trade("AAPL").price == Decimal("201.40")
-    assert broker.calls == ["get_latest_ask", "get_latest_ask", "get_latest_trade"]
+    assert broker.calls == ["get_latest_quote", "get_latest_quote", "get_latest_trade"]

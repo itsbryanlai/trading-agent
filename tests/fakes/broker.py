@@ -69,8 +69,9 @@ class FakeBroker:
     def set_position(self, symbol: str, qty, avg_entry_price) -> None:
         self.positions[symbol] = BrokerPosition(symbol, D(qty), D(avg_entry_price))
 
-    def set_quote(self, symbol: str, ask, at: datetime | None = None) -> None:
-        self.quotes[symbol] = Quote(symbol, D(ask), at or self.now)
+    def set_quote(self, symbol: str, ask, at: datetime | None = None, bid=None) -> None:
+        """A quote; the bid defaults to the ask unless a test says otherwise."""
+        self.quotes[symbol] = Quote(symbol, D(ask), at or self.now, D(ask if bid is None else bid))
 
     def set_trade(self, symbol: str, price, at: datetime | None = None) -> None:
         self.trades[symbol] = Trade(symbol, D(price), at or self.now)
@@ -160,8 +161,8 @@ class FakeBroker:
         self._call("get_positions")
         return list(self.positions.values())
 
-    def get_latest_ask(self, symbol: str) -> Quote:
-        self._call("get_latest_ask")
+    def get_latest_quote(self, symbol: str) -> Quote:
+        self._call("get_latest_quote")
         if symbol not in self.quotes:
             raise BrokerUnavailable(f"no quote for {symbol}")
         return self.quotes[symbol]

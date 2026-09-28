@@ -51,6 +51,9 @@ class Quote:
     symbol: str
     ask: Decimal  # 0 means no active ask
     timestamp: datetime
+    # What a market sell would get: the stop-loss monitor's second reading (ADR 0014).
+    # 0 means no active bid.
+    bid: Decimal = Decimal(0)
 
 
 @dataclass(frozen=True)
@@ -101,7 +104,7 @@ class Broker(Protocol):
 
     def get_positions(self) -> list[BrokerPosition]: ...
 
-    def get_latest_ask(self, symbol: str) -> Quote: ...
+    def get_latest_quote(self, symbol: str) -> Quote: ...
 
     def get_latest_trade(self, symbol: str) -> Trade: ...
 

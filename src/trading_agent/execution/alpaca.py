@@ -119,10 +119,10 @@ class AlpacaBroker:
         positions = self._call(self._trading.get_all_positions)
         return [BrokerPosition(p.symbol, _dec(p.qty), _dec(p.avg_entry_price)) for p in positions]
 
-    def get_latest_ask(self, symbol: str) -> Quote:
+    def get_latest_quote(self, symbol: str) -> Quote:
         request = StockLatestQuoteRequest(symbol_or_symbols=symbol, feed=DataFeed.IEX)
         quote = self._call(self._data.get_stock_latest_quote, request)[symbol]
-        return Quote(symbol, _dec(quote.ask_price), quote.timestamp)
+        return Quote(symbol, _dec(quote.ask_price), quote.timestamp, bid=_dec(quote.bid_price))
 
     def get_latest_trade(self, symbol: str) -> Trade:
         request = StockLatestTradeRequest(symbol_or_symbols=symbol, feed=DataFeed.IEX)

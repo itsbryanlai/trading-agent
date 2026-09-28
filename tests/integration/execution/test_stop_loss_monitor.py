@@ -18,10 +18,13 @@ from trading_agent.execution.service import Executor
 LATER = NOW + timedelta(minutes=1)
 
 
-def _hold(conn, broker, symbol="AAPL", qty=50, entry="200", last="160"):
+def _hold(conn, broker, symbol="AAPL", qty=50, entry="200", last="160", bid=None):
+    """A held position whose last trade is `last` and whose bid confirms it
+    unless `bid` says otherwise (ADR 0014)."""
     insert_position(conn, symbol, qty=qty, avg_entry=entry)
     broker.set_position(symbol, qty, entry)
     broker.set_trade(symbol, last)
+    broker.set_quote(symbol, last, bid=last if bid is None else bid)
 
 
 def _triggers(conn):
@@ -133,3 +136,38 @@ def test_nothing_is_checked_outside_market_hours(conn, broker, executor):
     _hold(conn, broker, last="100")
     run_tick(conn, executor, NOW - timedelta(hours=2))
     assert _triggers(conn) == [] and "get_latest_trade" not in broker.calls
+
+
+def test_an_unconfirmed_print_through_the_line_records_nothing(conn, broker, executor):
+    # ADR 0014: the last trade is through the line but the bid isn't.
+    _hold(conn, broker, last="150", bid="165")
+    report = run_tick(conn, executor)
+    assert report.triggers == 0 and _triggers(conn) == []
+
+
+def test_a_bid_that_cant_be_fetched_is_retried_within_the_window(conn, broker, executor):
+    _hold(conn, broker, last="150")
+    broker.fail("get_latest_quote")
+    run_tick(conn, executor)
+    assert _triggers(conn) == []
+    broker.set_quote("AAPL", "150", at=LATER)
+    run_tick(conn, executor, LATER)
+    assert len(_triggers(conn)) == 1
+
+
+def test_a_trigger_the_gate_sees_too_late_is_stale_and_the_monitor_tries_again(
+    conn, broker, executor
+):
+    seed_baseline(conn)
+    _hold(conn, broker, last="150")
+    run_tick(conn, executor)  # trigger at 14:00
+    late = NOW + timedelta(minutes=11)
+    gate_runner_pass(conn, late)  # the runner was down; too old now
+    assert conn.execute("SELECT rejection_rule FROM risk_verdicts").fetchone() == {
+        "rejection_rule": "stop_loss_trigger_stale"
+    }
+    later = NOW + timedelta(minutes=31)  # next window: still through the line
+    broker.set_trade("AAPL", "150", at=later)
+    broker.set_quote("AAPL", "150", at=later)
+    run_tick(conn, executor, later)
+    assert len(_triggers(conn)) == 2
