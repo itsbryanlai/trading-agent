@@ -71,3 +71,17 @@ def test_a_previous_days_halt_does_not_block_today(conn, repo_config):
     insert_reference(conn)
     conn.execute("UPDATE system_state SET halt_triggered_on = %s", (date(2026, 9, 25),))
     assert _evaluate(conn, make_decision(conn), repo_config).approved
+
+
+def test_a_crossing_between_evaluations_still_records_the_halt(conn, repo_config):
+    # ADR 0014 §3 (second review F7): a window snapshot at 09:45 ET showed the
+    # crossing; by 09:55 equity recovered; the next evaluation still halts.
+    insert_snapshot(conn, PRE_OPEN, equity="100000")
+    insert_snapshot(conn, INTRADAY, equity="79000", cash="79000")
+    insert_snapshot(conn, INTRADAY.replace(minute=55), equity="95000", cash="95000")
+    insert_reference(conn)
+
+    verdict = _evaluate(conn, make_decision(conn), repo_config)
+
+    assert verdict.rejection_rule == "daily_loss_halt"
+    assert _state(conn)["halt_triggered_on"] == TODAY

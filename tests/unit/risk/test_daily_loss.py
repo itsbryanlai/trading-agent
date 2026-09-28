@@ -64,3 +64,24 @@ def test_pre_open_snapshot_used_and_marked_for_recording():
 
 def test_no_baseline_available():
     assert choose_baseline(None, None) == (None, False)
+
+
+def test_a_crossing_earlier_today_records_the_halt_even_after_recovery():
+    # ADR 0014 §3 (second review F7): the gate judges the lowest snapshot since
+    # the open, not only the latest, just as Execution does.
+    from decimal import Decimal
+
+    from tests.unit.risk.builders import buy, config, context
+    from trading_agent.risk import rules
+    from trading_agent.risk.gate import evaluate
+
+    ctx = context(
+        equity=Decimal(95000), baseline_equity=Decimal(100000), lowest_equity_today=Decimal(79000)
+    )
+    result = evaluate(buy(), ctx, config())
+    assert result.record_halt is True
+    assert result.verdict.rejection_rule == rules.DAILY_LOSS_HALT
+    above = context(
+        equity=Decimal(95000), baseline_equity=Decimal(100000), lowest_equity_today=Decimal(80001)
+    )
+    assert evaluate(buy(), above, config()).record_halt is False

@@ -61,9 +61,15 @@ CRASH_POINTS = [
 ]
 
 
+@pytest.mark.parametrize("duplicates", ["rejected", "accepted"])
 @pytest.mark.parametrize("side", ["buy", "sell"])
 @pytest.mark.parametrize("crash", CRASH_POINTS)
-def test_one_order_per_verdict_whatever_step_crashes(conn, broker, monkeypatch, side, crash):
+def test_one_order_per_verdict_whatever_step_crashes(
+    conn, broker, monkeypatch, side, crash, duplicates
+):
+    # Under both broker behaviours for a repeated client id: Alpaca's is
+    # unverified, and a rejecting broker can mask a missing lookup (second review F5).
+    broker.reject_duplicate_client_ids = duplicates == "rejected"
     verdict = _seed(conn, broker, side)
     if crash == "before_find_order":
         broker.fail("find_order")
@@ -80,6 +86,9 @@ def test_one_order_per_verdict_whatever_step_crashes(conn, broker, monkeypatch, 
 
     client_id = order_id_for(verdict, side)
     assert len(broker.orders_for(client_id)) == 1
+    # One submission *attempt*, not just one accepted order: the lookup, not the
+    # broker's duplicate check, is what prevents a second.
+    assert len(broker.calls_named("submit_order")) == 1
     orders, refusals = outcomes(conn, verdict)
     assert refusals == [] and [o["id"] for o in orders] == [client_id]
     assert orders[0]["broker_order_id"] == broker.orders_for(client_id)[0].broker_order_id
@@ -155,6 +164,7 @@ def test_a_lookup_that_caught_up_within_the_wait_means_one_submission(conn, brok
     broker.set_quote("AAPL", "201.50", at=later)
     run_tick(conn, executor, later)
     assert len(broker.orders_for(client_id)) == 1
+    assert len(broker.calls_named("submit_order")) == 1
     assert len(outcomes(conn, verdict)[0]) == 1
 
 

@@ -427,3 +427,39 @@ trigger age (M3), and the bid confirmation (M3).
   id (the fake now assumes rejection, the safer case), and what a restart forgets about unresolved
   placements (research E16).
 
+
+## Phase 13: Second adversarial review fixes (owner: "fix all nine", 2026-09-28)
+
+Findings F1–F9 from the second review of `9c5d45a..bca547e`. Order-logic changes flagged per
+CLAUDE.md: F1 (how long a rejection after a timeout counts as a live order) and F7 (the gate records
+the halt from the lowest snapshot since the open, a stricter reading that matches ADR 0014 §3).
+
+- [X] T075 F1: a rejection after an earlier timeout counts as a duplicate of a live order only if its reason names a duplicate client id, or within `DUPLICATE_GRACE = 10 min` of the first timeout; otherwise it is recorded as the rejection it is. The monitor logs an error for each symbol it skips because an approved exit has had no outcome for 5 minutes. Tests: a genuine rejection of a sell after a timeout is recorded after the grace and the stop-loss monitor resumes; a buy is no longer held back all day
+- [X] T076 F4: for a verdict that timed out, mark it unresolved again before the follow-up lookup, so a lookup failure can't reopen the H2 hole; test
+- [X] T077 F2: count windows in which a held symbol couldn't be checked (failed or stale) and log an error at two; test with a bid older than 60 s across windows
+- [X] T078 F3: reconciliation (including its `get_positions`) is isolated inside the positions transaction, so its failure no longer rolls back the fills just synced; test
+- [X] T079 F5: the crash-recovery matrix runs with the fake both rejecting and accepting duplicate client ids, and asserts exactly one submission attempt per verdict; the lookup-caught-up test asserts one attempt
+- [X] T080 F6: the adapter indexes the SDK's per-symbol result inside its error mapping, so a missing symbol is `BrokerUnavailable`; unit test
+- [X] T081 F7: the gate's halt detection uses the lowest snapshot equity since the open as well as the latest (`Context.lowest_equity_today`); unit and integration tests; 002 spec FR-009 amended
+- [X] T082 F8: startup waits for the single-instance lock (retrying every 15 s for up to 5 minutes, logging each attempt) before refusing; the runner's connection sets client and server TCP keepalives; tests
+- [X] T083 F9: both clock guards also flag uncalled references such as `datetime.now` or `date.today`, while allowing the injected `ctx.now` / `session.now`; planted-reference check
+- [X] T084 Full offline and integration runs, lint, planted-bug checks for F1, F3, F4 and F7, and notes below
+
+### Phase 13 implementation notes
+
+- **Planted-bug checks** (each reverted): removing the pre-submission lookup now fails 20 tests
+  (2 before F5); an unbounded "rejection means live" rule (1, F1); no re-marking before the
+  follow-up lookup (1, F4); reconciliation not isolated (1, F3); the gate ignoring the lowest
+  snapshot since the open (1, F7); an uncalled `datetime.now` reference in a core module (both
+  clock guards fail, F9).
+- **F1's rule is a compromise.** Alpaca's wording for a duplicate client id is unverified, so a
+  rejection counts as a duplicate if it names one (`client_order_id`, `duplicate`, `unique`) or
+  within a 10-minute grace after the timeout. A live order whose lookup lags past that, and whose
+  resubmission is refused with other wording, would be recorded as rejected: bounded and logged,
+  and positions are still reconciled to the broker. Confirm the real wording on a paper run.
+- **F8's server-side keepalives** are set with `SET tcp_keepalives_*` after startup, so the paper
+  check still comes before any use of the database. Whether they take effect through Railway's
+  proxy is unverified; the 5-minute lock wait covers the common case either way.
+- **Planted bugs were reverted with direct edits**, since a local hook forbids restoring files from
+  git; every planted change was confirmed gone before committing.
+

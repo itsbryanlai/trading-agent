@@ -205,3 +205,14 @@ def test_a_rejection_the_broker_gives_no_reason_for_is_still_explained(conn, bro
     run_tick(conn, executor, LATER)
     [order], _ = outcomes(conn, verdict)
     assert order["broker_reason"] == NO_BROKER_REASON
+
+
+def test_a_failed_position_read_does_not_undo_the_fills_just_synced(conn, broker, executor):
+    # Second review F3.
+    verdict, client_id = _submitted_buy(conn, broker, executor)
+    broker.fill(client_id, 24, "201.50")
+    broker.fail("get_positions")
+    report = run_tick(conn, executor, LATER)
+    [order], _ = outcomes(conn, verdict)
+    assert order["status"] == "filled" and report.fills_applied == 1
+    assert _position(conn) == (Decimal(24), Decimal("201.5"))

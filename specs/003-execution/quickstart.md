@@ -75,7 +75,7 @@ both.
 | Execution | `python -m trading_agent.execution` | `ALPACA_API_KEY_ID`, `ALPACA_API_SECRET_KEY` (paper), optional `ALPACA_BASE_URL` (must equal the paper address), `EXECUTION_DATABASE_URL` (a `ta_execution` login) | `RISK_GATE_DATABASE_URL` |
 | Risk Gate trigger runner | `python -m trading_agent.risk` | `RISK_GATE_DATABASE_URL` (a `ta_risk_gate` login) | any `ALPACA_*` key |
 
-Only one Execution may run at a time (a second exits with code 2). Both tick every 60 seconds and exit non-zero on a lost database connection, so the platform's
+Only one Execution may run at a time (a second waits up to 5 minutes for the lock, then exits with code 2). Both tick every 60 seconds and exit non-zero on a lost database connection, so the platform's
 restart policy recovers them. Execution exits with code 2 if it can't prove it is on the paper
 account.
 

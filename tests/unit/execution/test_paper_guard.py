@@ -144,3 +144,13 @@ def test_a_missing_order_is_none_and_other_lookup_errors_are_unavailable(recorde
     broker._trading.get_order_by_client_id = down
     with pytest.raises(BrokerUnavailable):
         broker.find_order("x")
+
+
+@pytest.mark.parametrize("method", ["get_latest_quote", "get_latest_trade"])
+def test_a_symbol_missing_from_the_reply_is_unavailable(recorders, method):
+    # Second review F6: never a raw KeyError that escapes the monitor's handling.
+    broker = adapter.AlpacaBroker("key", "secret", None)
+    broker._data.get_stock_latest_quote = lambda request: {}
+    broker._data.get_stock_latest_trade = lambda request: {}
+    with pytest.raises(BrokerUnavailable):
+        getattr(broker, method)("AAPL")

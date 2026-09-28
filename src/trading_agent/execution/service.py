@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import dataclasses
 import logging
+import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
@@ -65,6 +66,10 @@ MAYBE_PLACED_WAIT = timedelta(minutes=2)
 # next session. An order-logic parameter, not a risk limit.
 NO_SUBMIT_BEFORE_CLOSE = timedelta(seconds=30)
 
+# How long after a timeout an unexplained rejection may still be a duplicate of the
+# live order (second review F1). An order-logic parameter, not a risk limit.
+DUPLICATE_GRACE = timedelta(minutes=10)
+
 _OPEN_STATUSES = ("submitted", "partially_filled")
 
 # Alpaca's order object carries no rejection reason (alpaca-py 0.44), so a
@@ -99,15 +104,15 @@ class _Held:
     the unresolved placements: see research E16 on what a restart forgets."""
 
     maybe_placed: dict[UUID, _Unresolved] = field(default_factory=dict)
-    # Verdicts whose submission ever timed out: a later rejection of the same
-    # identifier is a duplicate of a live order, never a real rejection (E16).
-    timed_out_ever: set[UUID] = field(default_factory=set)
+    # Verdicts whose submission ever timed out, and when it first did: a later
+    # rejection may be the broker refusing a duplicate of a live order (E16).
+    timed_out_ever: dict[UUID, datetime] = field(default_factory=dict)
     # Stop-loss windows whose check succeeded for every held position (E13).
     windows_done: set[datetime] = field(default_factory=set)
     # Stop-loss windows that already have their account snapshot (ADR 0014).
     snapshot_windows: set[datetime] = field(default_factory=set)
-    # symbol -> the windows in which its last trade was stale.
-    stale_windows: dict[str, set[datetime]] = field(default_factory=dict)
+    # symbol -> the windows in which it couldn't be checked (stale trade, bad bid).
+    unchecked_windows: dict[str, set[datetime]] = field(default_factory=dict)
 
 
 class Executor:
@@ -133,17 +138,37 @@ class Executor:
 
     # --- entry points ------------------------------------------------------
 
-    def startup(self) -> None:
+    def startup(
+        self,
+        *,
+        lock_wait: timedelta = timedelta(minutes=5),
+        lock_retry: timedelta = timedelta(seconds=15),
+        sleep: Callable[[float], None] = time.sleep,
+    ) -> None:
         """The paper-only guard, before anything else touches the broker or the
         database (FR-013); then the connection check (research E5)."""
         self.broker.verify_paper()
         self._require_autocommit()
         # Held for the connection's lifetime: a second Execution (e.g. an overlapping
-        # redeploy) would sync and reconcile outside the per-approval lock (E16).
-        with self._cursor() as cur:
-            cur.execute("SELECT pg_try_advisory_lock(%s) AS mine", (_SINGLE_INSTANCE_KEY,))
-            if not cur.fetchone()["mine"]:
-                raise AnotherExecutionRunning("another Execution holds the single-instance lock")
+        # redeploy) would sync and reconcile outside the per-approval lock (E16). A
+        # previous process's lock can outlive it briefly (a half-open connection),
+        # so wait for it before giving up (second review F8).
+        attempts = max(1, int(lock_wait / lock_retry) + 1)
+        for attempt in range(1, attempts + 1):
+            with self._cursor() as cur:
+                cur.execute("SELECT pg_try_advisory_lock(%s) AS mine", (_SINGLE_INSTANCE_KEY,))
+                if cur.fetchone()["mine"]:
+                    break
+            if attempt == attempts:
+                raise AnotherExecutionRunning(
+                    f"another Execution still holds the single-instance lock after {lock_wait}"
+                )
+            log.warning(
+                "execution: single-instance lock held elsewhere (attempt %d of %d); waiting",
+                attempt,
+                attempts,
+            )
+            sleep(lock_retry.total_seconds())
         report = TickReport()
         self._isolated("positions", report, lambda: self._positions_pass(report))
 
@@ -401,6 +426,11 @@ class Executor:
         try:
             placed = self.broker.submit_order(request)
         except OrderRejected as exc:
+            first_timeout = self._held.timed_out_ever.get(approval.verdict_id)
+            if first_timeout is not None:
+                # Unresolved again *before* asking the broker: if the lookup fails,
+                # the order must still hold back what it could affect (E16, F4).
+                self._mark_unresolved(approval, at)
             # A duplicate-id rejection after a lagging lookup must not hide a live
             # order, so ask again before recording a rejection (E5).
             again = self.broker.find_order(request.client_order_id)
@@ -409,10 +439,9 @@ class Executor:
                 self._held.maybe_placed.pop(approval.verdict_id, None)
                 report.recovered += 1
                 return
-            if approval.verdict_id in self._held.timed_out_ever:
-                # This identifier timed out before: the rejection is the broker
-                # refusing a duplicate of a live order. Keep looking; record nothing.
-                self._mark_unresolved(approval, at)
+            if first_timeout is not None and _may_be_duplicate(exc.reason, first_timeout, at):
+                # Likely the broker refusing a duplicate of the live order that timed
+                # out. Keep looking; record nothing.
                 report.retried += 1
                 log.warning(
                     "execution: %s rejected after an earlier timeout (%s); treated as live",
@@ -420,6 +449,9 @@ class Executor:
                     exc.reason,
                 )
                 raise psycopg.Rollback() from exc
+            # A genuine rejection (FR-012): record it, so the verdict stops holding
+            # anything back (second review F1).
+            self._held.maybe_placed.pop(approval.verdict_id, None)
             self._record_rejection(cur, approval, request, exc.reason, session.now)
             report.refused += 1
             log.warning("execution: broker rejected %s: %s", request.client_order_id, exc.reason)
@@ -427,7 +459,7 @@ class Executor:
         except BrokerUnavailable:
             # Maybe placed: roll back, and let a later lookup settle it (E5).
             self._mark_unresolved(approval, at)
-            self._held.timed_out_ever.add(approval.verdict_id)
+            self._held.timed_out_ever.setdefault(approval.verdict_id, at)
             raise
         self._record_order(cur, approval, placed, session.now)
         report.submitted += 1
@@ -446,7 +478,9 @@ class Executor:
         and each symbol is its own savepoint, so one bad row can't block the rest."""
         with self.conn.transaction():
             self._sync_orders(report)
-            self._reconcile_positions(report)
+            # Isolated: if the broker's positions can't be read, only reconciliation
+            # is skipped; the fills just synced still commit (second review F3).
+            self._isolated("reconciliation", report, lambda: self._reconcile_positions(report))
 
     def _sync_orders(self, report: TickReport) -> None:
         with self._cursor() as cur:
@@ -585,6 +619,16 @@ class Executor:
                 for row in cur.fetchall()
             }
             skip = exits_on_their_way(cur, session.today)
+            stuck = stuck_exits(cur, session.today, session.now - UNEVALUATED_AFTER)
+        for symbol in sorted(stuck):
+            # Skipping is right while an exit is on its way; not when it is stuck
+            # (second review F1): the position is then unwatched.
+            log.error(
+                "execution: %s is not being checked against its stop-loss line: an approved "
+                "exit has had no outcome for over %s",
+                symbol,
+                UNEVALUATED_AFTER,
+            )
         trades, quotes = {}, {}
         for symbol in holdings:
             if symbol in skip:
@@ -616,19 +660,21 @@ class Executor:
                 breach.price,
                 breach.line,
             )
-        for symbol in result.stale:
-            seen = self._held.stale_windows.setdefault(symbol, set())
+        # A stale trade or a missing, zero or stale bid leaves a position unchecked;
+        # two windows of that is an error, not a warning (second review F2).
+        unchecked = set(result.stale) | set(result.failed)
+        for symbol in sorted(unchecked):
+            seen = self._held.unchecked_windows.setdefault(symbol, set())
             seen.add(start)
             if len(seen) >= 2:
                 log.error(
-                    "execution: %s has had no fresh trade for %d windows; it is going "
-                    "unprotected by the stop-loss monitor",
+                    "execution: %s could not be checked (no fresh trade or bid) for %d "
+                    "windows; it is going unprotected by the stop-loss monitor",
                     symbol,
                     len(seen),
                 )
-        for symbol in set(self._held.stale_windows) - set(result.stale):
-            if symbol not in result.failed:
-                del self._held.stale_windows[symbol]
+        for symbol in set(self._held.unchecked_windows) - unchecked:
+            del self._held.unchecked_windows[symbol]
         if result.complete:
             self._held.windows_done.add(start)
 
@@ -815,6 +861,17 @@ def _write_position(cur, symbol: str, holding) -> None:
     )
 
 
+def _may_be_duplicate(reason: str, first_timeout: datetime, at: datetime) -> bool:
+    """After a timeout, a rejection is taken as the broker refusing a duplicate of the
+    live order if it says so, or while the lookup may plausibly still be catching up.
+    Past that grace a rejection is genuine, so it can't hold anything back all day
+    (second review F1). Alpaca's duplicate-id wording is unverified, hence both."""
+    text = reason.lower()
+    if "client_order_id" in text or "duplicate" in text or "unique" in text:
+        return True
+    return at - first_timeout < DUPLICATE_GRACE
+
+
 def _approval(row: dict) -> Approval:
     return Approval(row["id"], ApprovedOrder.from_json(row["approved_order"]))
 
@@ -910,6 +967,22 @@ def exits_on_their_way(cur, today) -> frozenset[str]:
           AND NOT EXISTS (SELECT 1 FROM execution_refusals r WHERE r.risk_verdict_id = v.id)
         """,
         {"open": list(_OPEN_STATUSES), "today": today},
+    )
+    return frozenset(row["symbol"] for row in cur.fetchall())
+
+
+def stuck_exits(cur, today, before: datetime) -> frozenset[str]:
+    """Symbols with an approved exit from today, approved before `before`, that still
+    has no order and no refusal."""
+    cur.execute(
+        """
+        SELECT DISTINCT v.approved_order->>'symbol' AS symbol FROM risk_verdicts v
+        WHERE v.verdict = 'approved' AND v.trading_day = %s AND v.evaluated_at <= %s
+          AND v.approved_order->>'side' = 'sell'
+          AND NOT EXISTS (SELECT 1 FROM orders o WHERE o.risk_verdict_id = v.id)
+          AND NOT EXISTS (SELECT 1 FROM execution_refusals r WHERE r.risk_verdict_id = v.id)
+        """,
+        (today, before),
     )
     return frozenset(row["symbol"] for row in cur.fetchall())
 

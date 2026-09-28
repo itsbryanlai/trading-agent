@@ -34,6 +34,9 @@ class RecordingConn:
         self.log.append("db")
         raise AssertionError("database touched")
 
+    def execute(self, statement, *args):
+        self.log.append(statement)
+
     def close(self):
         self.closed = True
 
@@ -112,6 +115,8 @@ def test_the_runner_connects_with_autocommit(env):
         sleep=lambda s: None,
     )
     assert code == runner.EXIT_OK and seen["autocommit"] is True
+    # Second review F8: a dead peer is noticed in about a minute, both ways.
+    assert (seen["keepalives"], seen["keepalives_idle"]) == (1, 30)
 
 
 def test_a_lost_database_connection_exits_for_a_restart(env):
@@ -139,3 +144,49 @@ def test_the_runner_never_reads_the_risk_gates_credential():
     source = Path(runner.__file__).read_text()
     strings = {n.value for n in ast.walk(ast.parse(source)) if isinstance(n, ast.Constant)}
     assert "RISK_GATE_DATABASE_URL" not in strings
+
+
+def test_startup_waits_for_the_single_instance_lock_before_giving_up():
+    # Second review F8: a previous process's lock can outlive it briefly.
+    from datetime import timedelta
+
+    from trading_agent.execution.service import AnotherExecutionRunning
+
+    class LockConn(RecordingConn):
+        def __init__(self, free_after):
+            super().__init__()
+            self.tries, self.free_after = 0, free_after
+
+        def cursor(self, *a, **k):
+            conn = self
+
+            class Cur:
+                def __enter__(self):
+                    return self
+
+                def __exit__(self, *exc):
+                    return False
+
+                def execute(self, *a):
+                    conn.tries += 1
+
+                def fetchone(self):
+                    return {"mine": conn.tries > conn.free_after}
+
+            return Cur()
+
+    slept = []
+    conn = LockConn(free_after=2)
+    executor = Executor(FakeBroker(), conn)
+    executor._positions_pass = lambda report: None
+    executor.startup(
+        lock_wait=timedelta(seconds=60), lock_retry=timedelta(seconds=15), sleep=slept.append
+    )
+    assert conn.tries == 3 and slept == [15.0, 15.0]
+
+    never = LockConn(free_after=99)
+    with pytest.raises(AnotherExecutionRunning):
+        Executor(FakeBroker(), never).startup(
+            lock_wait=timedelta(seconds=30), lock_retry=timedelta(seconds=15), sleep=slept.append
+        )
+    assert never.tries == 3

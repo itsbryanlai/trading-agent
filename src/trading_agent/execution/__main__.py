@@ -55,14 +55,32 @@ def main(
     try:
         # autocommit: each unit of work is a real transaction (research E5);
         # storage.db.connect would commit only when the connection closes.
-        conn = connect(database_url, autocommit=True, row_factory=dict_row)
+        conn = connect(
+            database_url,
+            autocommit=True,
+            row_factory=dict_row,
+            # Notice a dead peer in about a minute, so a lost process's session (and
+            # its single-instance lock) is released promptly (second review F8).
+            keepalives=1,
+            keepalives_idle=30,
+            keepalives_interval=10,
+            keepalives_count=3,
+        )
     except psycopg.OperationalError as exc:
         log.critical("execution: database unreachable: %s", exc)
         return EXIT_DATABASE_LOST
 
     try:
         executor = executor_factory(broker, conn)
-        executor.startup()
+        executor.startup()  # the paper check comes before any use of the database
+        # The server's side of the keepalives: drop this session (and release its
+        # single-instance lock) soon after this process vanishes (second review F8).
+        for setting in (
+            "tcp_keepalives_idle = 30",
+            "tcp_keepalives_interval = 10",
+            "tcp_keepalives_count = 3",
+        ):
+            conn.execute(f"SET {setting}")
         ticks = 0
         while max_ticks is None or ticks < max_ticks:
             if conn.closed:

@@ -53,6 +53,9 @@ class Context:
     baseline_equity: Decimal | None
     increase_orders_approved_today: int
     reference: Reference | None
+    # The lowest equity among today's snapshots since the open, so a crossing between
+    # two evaluations still records the halt (ADR 0014 §3, second review F7).
+    lowest_equity_today: Decimal | None = None
 
 
 @dataclass(frozen=True)

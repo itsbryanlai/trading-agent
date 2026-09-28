@@ -98,11 +98,13 @@ Added by [ADR 0010](../adr/0010-stop-loss-monitor-and-universe-reference-data.md
   the next session, where it would go out unchecked.
 - **A submission that timed out**: it may be live at the broker without being
   recorded. Until a lookup settles it, no other buy is submitted and no other
-  exit of the same symbol if it was a sell, and a later rejection of the same
-  identifier is treated as a duplicate of the live order, never recorded.
+  exit of the same symbol if it was a sell. A later rejection of the same
+  identifier is treated as a duplicate of the live order if it says so, or
+  within 10 minutes of the timeout; after that it is recorded as a rejection.
 - **A symbol the order identifier can't hold** (e.g. `BRK-B`): refused as
   `invalid_symbol` before any broker call.
-- **Two Execution processes**: only one runs; a second refuses to start.
+- **Two Execution processes**: only one runs; a second waits up to 5 minutes
+  for the first to go away, then refuses to start.
 - **Startup against a non-paper endpoint**: refuse to start at all. The paper
   address is fixed in code; a configured address that differs from it stops
   startup; and an authenticated account read at that address must succeed.

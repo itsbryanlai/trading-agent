@@ -62,11 +62,15 @@ def evaluate(request: Request, context: Context, config: RiskConfig) -> GateResu
 
 
 def _loss_line_crossed(ctx: Context, config: RiskConfig) -> bool:
-    """True when today's equity is at or below the loss line and the halt isn't yet recorded."""
+    """True when today's equity, or any snapshot's since the open, is at or below the
+    loss line and the halt isn't yet recorded (FR-009, ADR 0014 §3)."""
     if ctx.halt_active or ctx.equity is None or ctx.baseline_equity is None:
         return False
     line = ctx.baseline_equity * (1 - config.daily_loss_halt_pct / _HUNDRED)
-    return ctx.equity <= line
+    lowest = ctx.equity
+    if ctx.lowest_equity_today is not None:
+        lowest = min(lowest, ctx.lowest_equity_today)
+    return lowest <= line
 
 
 def _stop_loss(request: StopLossRequest, ctx: Context, config: RiskConfig) -> Verdict:

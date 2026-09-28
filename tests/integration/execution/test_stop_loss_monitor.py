@@ -101,7 +101,7 @@ def test_a_trade_stale_for_two_windows_is_an_error(conn, broker, executor, caplo
         run_tick(conn, executor)
         assert "unprotected" not in caplog.text
         run_tick(conn, executor, NOW + timedelta(minutes=30))
-    assert "AAPL has had no fresh trade for 2 windows" in caplog.text
+    assert "AAPL could not be checked (no fresh trade or bid) for 2 windows" in caplog.text
     assert _triggers(conn) == []
 
 
@@ -171,3 +171,16 @@ def test_a_trigger_the_gate_sees_too_late_is_stale_and_the_monitor_tries_again(
     broker.set_quote("AAPL", "150", at=later)
     run_tick(conn, executor, later)
     assert len(_triggers(conn)) == 2
+
+
+def test_a_bid_that_stays_stale_across_windows_is_an_error(conn, broker, executor, caplog):
+    # Second review F2: a stale bid used to fail the check silently, forever.
+    _hold(conn, broker, last="150")
+    with caplog.at_level(logging.ERROR):
+        for window in (0, 30):
+            at = NOW + timedelta(minutes=window)
+            broker.set_trade("AAPL", "150", at=at)
+            broker.set_quote("AAPL", "150", at=at - timedelta(seconds=90))
+            run_tick(conn, executor, at)
+    assert _triggers(conn) == []
+    assert "AAPL could not be checked (no fresh trade or bid) for 2 windows" in caplog.text

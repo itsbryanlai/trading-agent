@@ -100,6 +100,6 @@ def test_a_second_execution_refuses_to_start(committed_db):
     ):
         Executor(FakeBroker(now=NOW), one, REPO_CONFIG).startup()
         with pytest.raises(AnotherExecutionRunning):
-            Executor(FakeBroker(now=NOW), two, REPO_CONFIG).startup()
+            Executor(FakeBroker(now=NOW), two, REPO_CONFIG).startup(lock_wait=timedelta(0))
     with _connect(committed_db, "ta_execution") as three:  # released on disconnect
         Executor(FakeBroker(now=NOW), three, REPO_CONFIG).startup()

@@ -161,3 +161,91 @@ def test_a_timeout_just_before_the_close_is_not_expired_while_it_may_be_live(
     run_tick(conn, executor, CLOSE + timedelta(minutes=2, seconds=30))
     [order], refusals = outcomes(conn, verdict)
     assert refusals == [] and order["id"] == client_id
+
+
+# --- Second review F1, F4 ------------------------------------------------------
+
+
+def test_a_genuine_rejection_after_a_timeout_is_recorded_once_the_grace_is_over(
+    conn, broker, executor, caplog
+):
+    # F1: a sell that timed out without being placed, then is genuinely refused on
+    # every resubmission, must not stay pending (and unwatched) all day.
+    import logging
+
+    start = datetime(2026, 9, 28, 14, 0, tzinfo=UTC)
+    broker.set_position("AAPL", 50, "200")
+    verdict = approved_verdict(conn, sell_order(qty=50))
+    conn.execute("UPDATE risk_verdicts SET evaluated_at = %s WHERE id = %s", (start, verdict))
+    broker.fail("submit_order")  # timed out, nothing placed
+    run_tick(conn, executor, start)
+
+    three = start + timedelta(minutes=3)
+    broker.reject_next("pattern day trader protection")
+    with caplog.at_level(logging.ERROR):
+        run_tick(conn, executor, three)  # inside the grace: may still be a duplicate
+    assert outcomes(conn, verdict) == ([], [])
+    assert "is not being checked against its stop-loss line" not in caplog.text
+
+    eleven = start + timedelta(minutes=11)
+    broker.reject_next("pattern day trader protection")
+    run_tick(conn, executor, eleven)  # past the grace: genuine
+    [order], _ = outcomes(conn, verdict)
+    assert order["status"] == "rejected"
+    assert order["broker_reason"] == "pattern day trader protection"
+
+
+def test_an_unwatched_symbol_behind_a_stuck_exit_is_an_error(conn, broker, executor, caplog):
+    import logging
+
+    from tests.integration.risk.conftest import insert_position
+
+    start = datetime(2026, 9, 28, 14, 0, tzinfo=UTC)
+    insert_position(conn, qty=50, avg_entry="200")
+    broker.set_position("AAPL", 50, "200")
+    broker.set_trade("AAPL", "120")
+    broker.set_quote("AAPL", "120")
+    verdict = approved_verdict(conn, sell_order(qty=50))
+    conn.execute(
+        "UPDATE risk_verdicts SET evaluated_at = %s WHERE id = %s",
+        (start - timedelta(minutes=6), verdict),
+    )
+    broker.fail("submit_order")  # the exit is stuck behind a timeout
+    with caplog.at_level(logging.ERROR):
+        run_tick(conn, executor, start)
+    assert "AAPL is not being checked against its stop-loss line" in caplog.text
+
+
+def test_a_duplicate_rejection_with_a_failed_lookup_still_holds_back_other_buys(
+    conn, broker, executor
+):
+    # F4: the order that timed out is live; its resubmission is rejected as a
+    # duplicate and the follow-up lookup fails. Other buys must still wait.
+    from uuid import UUID
+
+    from trading_agent.execution.broker import BrokerUnavailable
+
+    seed_baseline(conn)
+    start = datetime(2026, 9, 28, 14, 0, tzinfo=UTC)
+    x = approved_verdict(conn, buy_order(), verdict_id=UUID(int=1))
+    approved_verdict(conn, buy_order(symbol="MSFT"), verdict_id=UUID(int=2))
+    broker.fail("submit_order", after_effect=True)
+    broker.hide_from_lookup(order_id_for(x))
+    _quotes(broker, start, "AAPL", "MSFT")
+    run_tick(conn, executor, start)
+    assert len(broker.submissions) == 1
+
+    real_find = broker.find_order
+
+    def find_fails_right_after_a_rejection(client_order_id):
+        if broker.calls and broker.calls[-1] == "submit_order":
+            broker.calls.append("find_order")
+            raise BrokerUnavailable("lookup down")
+        return real_find(client_order_id)
+
+    broker.find_order = find_fails_right_after_a_rejection
+    later = start + timedelta(minutes=3)
+    _quotes(broker, later, "AAPL", "MSFT")
+    run_tick(conn, executor, later)
+
+    assert [r.symbol for r in broker.submissions] == ["AAPL"]  # MSFT still waited

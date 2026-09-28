@@ -409,3 +409,11 @@ these gaps, fixed as follows (owner decisions, 2026-09-28):
   reconciliation share one transaction (no reader sees a half-applied state) with reconciliation
   isolated per symbol; a session-level advisory lock makes Execution single-instance; an order
   stuck on an unexpected broker status is reported every tick.
+- **After the second review** (tasks Phase 13): a rejection after a timeout counts as a duplicate
+  of a live order only if its reason names a duplicate client id, or within 10 minutes of the first
+  timeout; otherwise it is recorded, so a genuine rejection can't hold anything back all day. A
+  verdict that timed out is marked unresolved again before the follow-up lookup. A symbol the
+  monitor skips behind a stuck exit, or can't check for two windows (stale trade or bad bid), is an
+  error. Reconciliation is isolated inside the positions transaction. The gate records the halt
+  from the lowest snapshot since the open, as ADR 0014 §3 says. Startup waits up to 5 minutes for
+  the single-instance lock, and the connection uses client and server TCP keepalives.
