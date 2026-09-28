@@ -49,7 +49,9 @@ class FakeBroker:
         self.by_client_id: dict[str, list[str]] = {}
         self.submissions: list[OrderRequest] = []
         self.calls: list[str] = []
-        self.reject_duplicate_client_ids = False
+        # Alpaca's handling of a repeated client order id is undocumented; the fake
+        # assumes the safer behaviour, rejection, and tests can switch it off (L6).
+        self.reject_duplicate_client_ids = True
         self._failures: dict[str, bool] = {}  # method -> after_effect
         self._reject_next: str | None = None
         self._hidden: set[str] = set()  # client ids find_order can't see yet (lag)
@@ -193,9 +195,8 @@ class FakeBroker:
             reason, self._reject_next = self._reject_next, None
             raise OrderRejected(reason)
         if self.reject_duplicate_client_ids and request.client_order_id in self.by_client_id:
-            # Rejecting a duplicate means the broker knows the order: its lookup
-            # has caught up by now.
-            self._hidden.discard(request.client_order_id)
+            # Deliberately doesn't end a lookup lag: a rejection and a lagging lookup
+            # can coexist, and Execution must cope with both at once (research E16).
             raise OrderRejected("client_order_id must be unique")
         self.submissions.append(request)
         order = BrokerOrder(

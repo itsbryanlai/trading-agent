@@ -131,9 +131,15 @@ def test_a_lagging_lookup_after_a_timeout_never_leads_to_a_hidden_second_order(
     broker.set_quote("AAPL", "201.50", at=later)
     run_tick(conn, executor, later)  # resubmits; the broker rejects the duplicate id
     assert len(broker.calls_named("submit_order")) == 2
+    # Still lagging: the rejection is of a duplicate of a live order, so nothing
+    # is recorded, least of all a phantom "rejected" (research E16).
+    assert outcomes(conn, verdict) == ([], [])
+
+    broker.reveal(client_id)  # the lookup catches up
+    run_tick(conn, executor, later + timedelta(minutes=1))
 
     [order], _ = outcomes(conn, verdict)
-    assert order["status"] == "submitted"  # the live order, not a phantom "rejected"
+    assert order["status"] == "submitted"
     assert order["broker_order_id"] == broker.orders_for(client_id)[0].broker_order_id
     assert len(broker.orders_for(client_id)) == 1
 

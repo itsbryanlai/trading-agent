@@ -55,13 +55,16 @@ def test_a_stop_loss_exit_across_two_processes_is_committed_and_visible(committe
         _connect(committed_db, "ta_execution") as exec_conn,
         _connect(committed_db, "ta_risk_gate") as gate_conn,
     ):
-        executor = Executor(broker, exec_conn, REPO_CONFIG)  # no savepoint allowance
+        clock = {"now": NOW}
+        # No savepoint allowance: a real autocommit connection.
+        executor = Executor(broker, exec_conn, REPO_CONFIG, clock=lambda: clock["now"])
         executor.startup()
         assert executor.tick(NOW).triggers == 1
         assert evaluate_pending_triggers(gate_conn, NOW, REPO_CONFIG) == 1
         later = NOW + timedelta(minutes=1)
         broker.set_trade("AAPL", "150", at=later)
         broker.set_quote("AAPL", "150", at=later)
+        clock["now"] = later
         assert executor.tick(later).submitted == 1
         # Still connected: a lock left held would show here (research E5).
         with _connect(committed_db) as observer:

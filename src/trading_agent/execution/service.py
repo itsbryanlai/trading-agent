@@ -10,8 +10,9 @@ from __future__ import annotations
 
 import dataclasses
 import logging
+from collections.abc import Callable
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from decimal import ROUND_HALF_UP, Decimal
 from pathlib import Path
 from uuid import UUID
@@ -57,6 +58,11 @@ _LOCK_KEY = 0x65786563
 # up before trying again, so a lagging lookup can't cause a second order (E5).
 MAYBE_PLACED_WAIT = timedelta(minutes=2)
 
+# No submission this close to the close (research E16): the checks ran moments
+# earlier, and a day order that reaches the broker after the close is held for the
+# next session. An order-logic parameter, not a risk limit.
+NO_SUBMIT_BEFORE_CLOSE = timedelta(seconds=30)
+
 _OPEN_STATUSES = ("submitted", "partially_filled")
 
 # Alpaca's order object carries no rejection reason (alpaca-py 0.44), so a
@@ -72,11 +78,24 @@ class NotAutocommit(Exception):
     """Execution needs each unit of work to be a real transaction (research E5)."""
 
 
+@dataclass(frozen=True)
+class _Unresolved:
+    """A submission that timed out: it may be live at the broker (research E5, E16)."""
+
+    since: datetime
+    side: str
+    symbol: str
+
+
 @dataclass
 class _Held:
-    """Per-process memory. Losing it on restart only repeats harmless work."""
+    """Per-process memory. Losing it on restart only repeats harmless work, except
+    the unresolved placements: see research E16 on what a restart forgets."""
 
-    maybe_placed: dict[UUID, datetime] = field(default_factory=dict)
+    maybe_placed: dict[UUID, _Unresolved] = field(default_factory=dict)
+    # Verdicts whose submission ever timed out: a later rejection of the same
+    # identifier is a duplicate of a live order, never a real rejection (E16).
+    timed_out_ever: set[UUID] = field(default_factory=set)
     # Stop-loss windows whose check succeeded for every held position (E13).
     windows_done: set[datetime] = field(default_factory=set)
     # Stop-loss windows that already have their account snapshot (ADR 0014).
@@ -94,11 +113,15 @@ class Executor:
         conn: psycopg.Connection,
         config_path: Path = DEFAULT_CONFIG_PATH,
         *,
+        clock: Callable[[], datetime] | None = None,
         _allow_savepoints: bool = False,
     ) -> None:
         self.broker = broker
         self.conn = conn
         self.config_path = config_path
+        # Re-read immediately before each submission (research E16): a tick's own
+        # `now` can be seconds stale by then.
+        self.clock = clock or (lambda: datetime.now(UTC))
         self._allow_savepoints = _allow_savepoints
         self._held = _Held()
 
@@ -190,6 +213,15 @@ class Executor:
                 if self._waiting_on_maybe_placed(approval, session):
                     report.retried += 1
                     return
+                blocker = self._blocked_by_unresolved(approval)
+                if blocker is not None:
+                    report.retried += 1
+                    log.info(
+                        "execution: verdict %s waits: placement %s is unresolved",
+                        approval.verdict_id,
+                        blocker,
+                    )
+                    return
                 outcome = self._judge(cur, approval, session)
                 self._act(cur, approval, outcome, session, report)
         except BrokerUnavailable as exc:
@@ -235,13 +267,26 @@ class Executor:
         return False
 
     def _waiting_on_maybe_placed(self, approval: Approval, session: Session) -> bool:
-        since = self._held.maybe_placed.get(approval.verdict_id)
-        if since is None:
+        unresolved = self._held.maybe_placed.get(approval.verdict_id)
+        if unresolved is None:
             return False
-        if session.now - since < MAYBE_PLACED_WAIT:
+        if session.now - unresolved.since < MAYBE_PLACED_WAIT:
             return True
         del self._held.maybe_placed[approval.verdict_id]
         return False
+
+    def _blocked_by_unresolved(self, approval: Approval) -> UUID | None:
+        """A placement that may be live isn't in the open-order sums (research E16).
+        While one is unresolved, no buy goes out (it could breach the reserve or the
+        ceiling), and no exit of the same symbol if it is a sell (it could oversell)."""
+        for verdict_id, unresolved in self._held.maybe_placed.items():
+            if verdict_id == approval.verdict_id:
+                continue
+            if approval.order.side == "buy":
+                return verdict_id
+            if unresolved.side == "sell" and unresolved.symbol == approval.order.symbol:
+                return verdict_id
+        return None
 
     def _judge(self, cur, approval: Approval, session: Session) -> Outcome:
         if approval.order.side == "buy":
@@ -332,6 +377,14 @@ class Executor:
     def _submit(
         self, cur, approval: Approval, request: OrderRequest, session: Session, report: TickReport
     ) -> None:
+        at = self.clock()
+        if not submittable(at, approval.order.trading_day):
+            # The checks ran against the tick's start; the market is closed or about
+            # to close by now. Alpaca would hold a late day order for the next
+            # session, unchecked (research E16). Retry; it lapses at the close.
+            report.retried += 1
+            log.info("execution: verdict %s not submitted at %s", approval.verdict_id, at)
+            raise psycopg.Rollback()
         try:
             placed = self.broker.submit_order(request)
         except OrderRejected as exc:
@@ -340,19 +393,37 @@ class Executor:
             again = self.broker.find_order(request.client_order_id)
             if again is not None:
                 self._record_order(cur, approval, again, session.now)
+                self._held.maybe_placed.pop(approval.verdict_id, None)
                 report.recovered += 1
                 return
+            if approval.verdict_id in self._held.timed_out_ever:
+                # This identifier timed out before: the rejection is the broker
+                # refusing a duplicate of a live order. Keep looking; record nothing.
+                self._mark_unresolved(approval, at)
+                report.retried += 1
+                log.warning(
+                    "execution: %s rejected after an earlier timeout (%s); treated as live",
+                    request.client_order_id,
+                    exc.reason,
+                )
+                raise psycopg.Rollback() from exc
             self._record_rejection(cur, approval, request, exc.reason, session.now)
             report.refused += 1
             log.warning("execution: broker rejected %s: %s", request.client_order_id, exc.reason)
             return
         except BrokerUnavailable:
             # Maybe placed: roll back, and let a later lookup settle it (E5).
-            self._held.maybe_placed[approval.verdict_id] = session.now
+            self._mark_unresolved(approval, at)
+            self._held.timed_out_ever.add(approval.verdict_id)
             raise
         self._record_order(cur, approval, placed, session.now)
         report.submitted += 1
         log.info("execution: submitted %s", request.client_order_id)
+
+    def _mark_unresolved(self, approval: Approval, since: datetime) -> None:
+        self._held.maybe_placed[approval.verdict_id] = _Unresolved(
+            since, approval.order.side, approval.order.symbol
+        )
 
     # --- fills and positions (E7, E8) --------------------------------------
 
@@ -609,7 +680,7 @@ class Executor:
                                   WHERE r.risk_verdict_id = v.id)
                 ORDER BY v.trading_day, v.id
                 """,
-                (session.today, session.today, session.after_close),
+                (session.today, session.today, lapse_today(session)),
             )
             rows = cur.fetchall()
         for row in rows:
@@ -625,9 +696,14 @@ class Executor:
             with self.conn.transaction(), self._cursor() as cur:
                 cur.execute("SELECT pg_advisory_xact_lock(%s)", (_LOCK_KEY,))
                 if self._has_outcome(cur, approval.verdict_id):
+                    self._held.maybe_placed.pop(approval.verdict_id, None)
                     return
+                # No wait for an unresolved placement here: submissions stop 30 s
+                # before the close and today's approvals lapse only 2 minutes after
+                # it (lapse_today), so any wait has already run out.
                 if self._settle_from_broker(cur, approval, session, report):
                     return
+                self._held.maybe_placed.pop(approval.verdict_id, None)
                 outcome = checks.expiry_check(approval, session)
                 if not isinstance(outcome, Refuse):
                     raise AssertionError(f"lapsed verdict {approval.verdict_id} not expired")
@@ -703,6 +779,24 @@ def _write_position(cur, symbol: str, holding) -> None:
         """,
         (symbol, holding.qty, _stored(holding.avg_entry_price)),
     )
+
+
+def submittable(at: datetime, trading_day) -> bool:
+    """Open, on the approval's own trading day, and not in the final seconds before
+    the close (research E16)."""
+    if calendar.trading_day(at) != trading_day or not calendar.market_open(at):
+        return False
+    return at < calendar.close_time(trading_day) - NO_SUBMIT_BEFORE_CLOSE
+
+
+def lapse_today(session: Session) -> bool:
+    """Today's approvals lapse once the close is past by the maybe-placed wait, so a
+    submission that timed out just before the close is looked up first (E16)."""
+    if not session.after_close:
+        return False
+    if not calendar.is_session(session.today):
+        return True
+    return session.now >= calendar.close_time(session.today) + MAYBE_PLACED_WAIT
 
 
 def session_at(now: datetime) -> Session:

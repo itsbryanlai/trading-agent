@@ -92,11 +92,15 @@ def test_lookup_lag_and_duplicate_client_ids():
     broker.reveal(cid)
     assert broker.find_order(cid) is not None
 
-    broker.submit_order(_buy())  # duplicates accepted by default
-    assert len(broker.orders_for(cid)) == 2
-    broker.reject_duplicate_client_ids = True
     with pytest.raises(OrderRejected, match="unique"):
+        broker.submit_order(_buy())  # duplicates rejected by default
+    broker.hide_from_lookup(cid)
+    with pytest.raises(OrderRejected):
         broker.submit_order(_buy())
+    assert broker.find_order(cid) is None  # a rejection doesn't end a lookup lag
+    broker.reject_duplicate_client_ids = False
+    broker.submit_order(_buy())
+    assert len(broker.orders_for(cid)) == 2
 
 
 def test_missing_quote_or_trade_is_unavailable_and_calls_are_logged():

@@ -127,7 +127,10 @@ def executor(conn, broker) -> Executor:
     return Executor(broker, conn, REPO_CONFIG, _allow_savepoints=True)
 
 
-def run_tick(conn, executor: Executor, now: datetime = NOW):
+def run_tick(conn, executor: Executor, now: datetime = NOW, *, submit_at: datetime | None = None):
+    """One tick at `now`. The clock Execution re-reads just before submitting reads
+    `submit_at` (default: `now`, i.e. no time passes during the tick)."""
+    executor.clock = lambda: submit_at or now
     with as_role(conn, "ta_execution"):
         return executor.tick(now)
 
