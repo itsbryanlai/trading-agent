@@ -56,7 +56,9 @@ def test_no_account_snapshot_is_taken_for_an_exit(conn, broker, executor):
     run_tick(conn, executor)
 
     after = conn.execute("SELECT count(*) AS n FROM account_snapshots").fetchone()["n"]
-    assert after == before and "get_account" not in broker.calls
+    # One snapshot: the window's (ADR 0014), taken after the exit was submitted.
+    assert after == before + 1
+    assert broker.calls.index("submit_order") < broker.calls.index("get_account")
 
 
 def test_selling_more_than_the_broker_holds_is_refused(conn, broker, executor):

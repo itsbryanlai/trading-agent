@@ -106,8 +106,10 @@ def test_a_retried_buy_keeps_nothing_not_even_the_pre_buy_snapshot(conn, broker,
 
     report = run_tick(conn, executor)
 
-    assert report.retried == 1 and "get_account" in broker.calls
-    assert conn.execute("SELECT count(*) AS n FROM account_snapshots").fetchone()["n"] == before
+    assert report.retried == 1 and broker.calls_named("get_account") == ["get_account"] * 2
+    # Only the window snapshot stays (ADR 0014); the pre-buy one was rolled back.
+    after = conn.execute("SELECT count(*) AS n FROM account_snapshots").fetchone()["n"]
+    assert after == before + 1
     assert outcomes(conn, verdict) == ([], [])
 
 
@@ -179,7 +181,9 @@ def test_no_baseline_refuses_the_buy(conn, broker, executor):
     run_tick(conn, executor)
     _, [refusal] = outcomes(conn, verdict)
     assert refusal["reason"] == "no_daily_baseline"
-    assert "get_account" not in broker.calls
+    # The only account read is the window snapshot, after the approvals (E13).
+    assert broker.calls_named("get_account") == ["get_account"]
+    assert broker.calls.index("get_account") > broker.calls.index("get_positions")
 
 
 def test_an_invalid_symbol_is_refused_before_any_broker_call(conn, broker, executor):
@@ -189,3 +193,22 @@ def test_an_invalid_symbol_is_refused_before_any_broker_call(conn, broker, execu
     _, [refusal] = outcomes(conn, verdict)
     assert refusal["reason"] == "invalid_symbol"
     assert "find_order" not in broker.calls and broker.submissions == []
+
+
+def test_a_crossing_seen_on_a_buy_is_kept_even_if_the_quote_then_fails(conn, broker, executor):
+    # Research E16: the loss line is judged before any other broker call, so a
+    # later failure can't roll the crossing back.
+    seed_baseline(conn)
+    broker.set_account(equity="79000", cash="79000")
+    broker.fail("get_latest_quote")
+    verdict = approved_verdict(conn, buy_order())
+
+    run_tick(conn, executor)
+
+    _, [refusal] = outcomes(conn, verdict)
+    assert refusal["reason"] == "daily_loss_line_crossed"
+    kept = conn.execute(
+        "SELECT count(*) AS n FROM account_snapshots WHERE id::text = %s",
+        (refusal["details"]["snapshot_id"],),
+    ).fetchone()["n"]
+    assert kept == 1

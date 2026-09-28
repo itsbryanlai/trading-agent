@@ -68,6 +68,30 @@ def daily_loss_line(baseline: Decimal, halt_pct: Decimal) -> Decimal:
     return baseline * (1 - halt_pct / _HUNDRED)
 
 
+def loss_line_refusal(live: BuyLive) -> Refuse | None:
+    """Row 7: the live equity or any snapshot since the open at or below the line
+    halts buys for the rest of the day (Constitution IV). Needs `equity`, `baseline`
+    and `config`; the service calls it right after the pre-buy snapshot, before any
+    other broker call, so a crossing is never lost to a later failure (E16)."""
+    line = daily_loss_line(live.baseline, live.config.daily_loss_halt_pct)
+    lowest = live.equity
+    if live.min_equity_since_open is not None:
+        lowest = min(lowest, live.min_equity_since_open)
+    if lowest > line:
+        return None
+    return Refuse(
+        reasons.DAILY_LOSS_LINE_CROSSED,
+        {
+            "equity": str(live.equity),
+            "snapshot_id": live.snapshot_id,
+            "min_equity_since_open": _str(live.min_equity_since_open),
+            "min_snapshot_id": live.min_snapshot_id,
+            "baseline": str(live.baseline),
+            "line": str(line),
+        },
+    )
+
+
 def precheck_buy(
     approval: Approval, live: BuyLive, session: Session, clash_with=None
 ) -> Outcome | None:
@@ -97,24 +121,9 @@ def check_buy(approval: Approval, live: BuyLive, session: Session, clash_with=No
     if live.equity is None or live.cash is None:
         return Retry("account not fetched")
 
-    # Row 7: the live equity or any snapshot since the open at or below the line
-    # halts buys for the rest of the day (Constitution IV).
-    line = daily_loss_line(live.baseline, config.daily_loss_halt_pct)
-    lowest = live.equity
-    if live.min_equity_since_open is not None:
-        lowest = min(lowest, live.min_equity_since_open)
-    if lowest <= line:
-        return Refuse(
-            reasons.DAILY_LOSS_LINE_CROSSED,
-            {
-                "equity": str(live.equity),
-                "snapshot_id": live.snapshot_id,
-                "min_equity_since_open": _str(live.min_equity_since_open),
-                "min_snapshot_id": live.min_snapshot_id,
-                "baseline": str(live.baseline),
-                "line": str(line),
-            },
-        )
+    crossed = loss_line_refusal(live)
+    if crossed is not None:
+        return crossed
 
     # Row 8: a usable live ask.
     quote = live.ask

@@ -42,10 +42,27 @@ def test_no_snapshot_on_a_weekend_or_holiday(conn, broker, executor):
     assert _snapshots(conn) == []
 
 
-def test_none_outside_the_hour_before_the_open(conn, broker, executor):
+def test_no_pre_open_snapshot_outside_the_hour_before_the_open(conn, broker, executor):
     run_tick(conn, executor, datetime(2026, 9, 28, 12, 29, tzinfo=UTC))
+    assert _snapshots(conn) == []
+
+
+def test_one_snapshot_per_stop_loss_window_during_market_hours(conn, broker, executor):
+    # ADR 0014: a crossing of the loss line is recorded within 30 minutes.
+    for minute in (0, 10, 29, 30, 45):
+        run_tick(
+            conn, executor, datetime(2026, 9, 28, 14, 0, tzinfo=UTC) + timedelta(minutes=minute)
+        )
+    taken = [s["taken_at"].minute for s in _snapshots(conn)]
+    assert taken == [0, 30]
+
+
+def test_a_failed_window_snapshot_is_retried_within_the_window(conn, broker, executor):
+    broker.fail("get_account")
     run_tick(conn, executor, datetime(2026, 9, 28, 14, 0, tzinfo=UTC))
     assert _snapshots(conn) == []
+    run_tick(conn, executor, datetime(2026, 9, 28, 14, 1, tzinfo=UTC))
+    assert len(_snapshots(conn)) == 1
 
 
 def test_the_gate_takes_its_baseline_from_it_and_both_agree(conn, broker, executor):

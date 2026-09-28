@@ -8,6 +8,7 @@ research.md E4, E5, E13.
 
 from __future__ import annotations
 
+import dataclasses
 import logging
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
@@ -78,6 +79,8 @@ class _Held:
     maybe_placed: dict[UUID, datetime] = field(default_factory=dict)
     # Stop-loss windows whose check succeeded for every held position (E13).
     windows_done: set[datetime] = field(default_factory=set)
+    # Stop-loss windows that already have their account snapshot (ADR 0014).
+    snapshot_windows: set[datetime] = field(default_factory=set)
     # symbol -> the windows in which its last trade was stale.
     stale_windows: dict[str, set[datetime]] = field(default_factory=dict)
 
@@ -126,6 +129,7 @@ class Executor:
                 report,
                 lambda a=approval: self._process_approval(a, session, report),
             )
+        self._isolated("window snapshot", report, lambda: self._window_snapshot(session, report))
         self._isolated("stop-loss monitor", report, lambda: self._run_monitor(session, report))
         self._isolated(
             "unevaluated triggers", report, lambda: self._check_unevaluated(session, report)
@@ -265,19 +269,24 @@ class Executor:
         )
         snapshot_id = str(cur.fetchone()["id"])
         lowest = lowest_snapshot_since_open(cur, session)
-        symbol = approval.order.symbol
-        held = self._held_qty(symbol)
-        open_qty, open_cost = open_buys(cur, symbol)
-        live = BuyLive(
-            paused=paused,
-            baseline=live.baseline,
-            config=live.config,
+        live = dataclasses.replace(
+            live,
             equity=account.equity,
             cash=account.cash,
             min_equity_since_open=lowest["equity"] if lowest else None,
             snapshot_id=snapshot_id,
             min_snapshot_id=str(lowest["id"]) if lowest else None,
-            held_qty=held,
+        )
+        # Row 7 before any other broker call: a crossing is refused (and the snapshot
+        # showing it committed) even if a later call would have failed (E16).
+        crossed = checks.loss_line_refusal(live)
+        if crossed is not None:
+            return crossed
+        symbol = approval.order.symbol
+        open_qty, open_cost = open_buys(cur, symbol)
+        live = dataclasses.replace(
+            live,
+            held_qty=self._held_qty(symbol),
             open_buy_qty_symbol=open_qty,
             open_buy_cost_all=open_cost,
             ask=self.broker.get_latest_quote(symbol),
@@ -537,6 +546,26 @@ class Executor:
             )
         report.snapshot_taken = True
         log.info("execution: pre-open snapshot, equity %s", account.equity)
+
+    def _window_snapshot(self, session: Session, report: TickReport) -> None:
+        """One account snapshot per 30-minute window during market hours, so a crossing
+        of the daily-loss line is recorded within 30 minutes (ADR 0014, FR-015)."""
+        window = monitor_window(session.now)
+        if window is None or window[0] in self._held.snapshot_windows:
+            return
+        try:
+            account = self.broker.get_account()
+        except BrokerUnavailable as exc:
+            log.warning("execution: window snapshot not taken yet: %s", exc)
+            return
+        with self.conn.transaction(), self._cursor() as cur:
+            cur.execute(
+                "INSERT INTO account_snapshots (taken_at, equity, cash, buying_power) "
+                "VALUES (%s, %s, %s, %s)",
+                (session.now, account.equity, account.cash, account.buying_power),
+            )
+        self._held.snapshot_windows.add(window[0])
+        report.snapshot_taken = True
 
     def _check_unevaluated(self, session: Session, report: TickReport) -> None:
         """A trigger the gate hasn't evaluated within minutes means its runner isn't
