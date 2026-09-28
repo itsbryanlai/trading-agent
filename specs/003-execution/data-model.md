@@ -101,3 +101,12 @@ decisions ─┐
 stop_loss_ ┘                              └─► execution_refusals  (at most one; never both)
 triggers
 ```
+
+## Migration `0008_execution_review.sql` (research E16)
+
+| Change | Detail |
+|---|---|
+| `execution_refusals.reason` | CHECK widened with `invalid_symbol` (contracts/refusal-reasons.md) |
+
+The gate's new `stop_loss_trigger_stale` rule needs no schema change: `risk_verdicts.rejection_rule`
+is free text checked by the rules contract, and `stop_loss_triggers.observed_at` already exists.

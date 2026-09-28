@@ -13,7 +13,7 @@ All frozen dataclasses; every price and quantity is a `Decimal`, every time time
 |---|---|
 | `Account` | `account_number`, `equity`, `cash`, `buying_power` |
 | `BrokerPosition` | `symbol`, `qty`, `avg_entry_price` |
-| `Quote` | `symbol`, `ask`, `timestamp` (ask `0` means no active ask) |
+| `Quote` | `symbol`, `ask`, `bid`, `timestamp` (`0` means no active ask or bid; the bid is the stop-loss monitor's second reading, ADR 0014) |
 | `Trade` | `symbol`, `price`, `timestamp` |
 | `OrderRequest` | `client_order_id`, `symbol`, `side` (`buy` \| `sell`), `qty` (whole shares), `order_type` (`limit` \| `market`), `limit_price` (limit only), `time_in_force` (always `day`) |
 | `BrokerOrder` | `broker_order_id`, `client_order_id`, `symbol`, `side`, `qty`, `order_type`, `limit_price` (limit orders; none for market), `status` (the broker's raw status string), `filled_qty`, `filled_avg_price` (or none), `submitted_at`, `reason` (on rejection, or none) |
@@ -24,7 +24,7 @@ All frozen dataclasses; every price and quantity is a `Decimal`, every time time
 |---|---|---|
 | `get_account()` | `Account` | `BrokerUnavailable` |
 | `get_positions()` | `list[BrokerPosition]` | `BrokerUnavailable` |
-| `get_latest_ask(symbol)` | `Quote` | `BrokerUnavailable` |
+| `get_latest_quote(symbol)` | `Quote` | `BrokerUnavailable` |
 | `get_latest_trade(symbol)` | `Trade` | `BrokerUnavailable` |
 | `find_order(client_order_id)` | `BrokerOrder` or `None` if the broker has none | `BrokerUnavailable` |
 | `get_order(broker_order_id)` | `BrokerOrder` | `BrokerUnavailable` |

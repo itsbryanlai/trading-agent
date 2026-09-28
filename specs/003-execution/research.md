@@ -380,3 +380,32 @@ No pause, halt, baseline, or config check on exits (FR-006, FR-018, FR-020).
 - **Open, and out of scope here**: the Portfolio Manager and Opportunistic Identifier need a price
   source that can't trade. They must not get these keys (Constitution I). Market data with the
   same Alpaca keys would put a trading-capable credential in an LLM agent's process.
+
+## E16. Fixes after the adversarial review ([ADR 0014](../../docs/adr/0014-fresh-confirmed-stop-loss-triggers-and-intraday-equity.md))
+
+The review of the implementation found no way to place two orders for one verdict, but found
+these gaps, fixed as follows (owner decisions, 2026-09-28):
+
+- **The clock at submission.** A tick decides "market open" at its start; slow broker calls can
+  push a submission past the close, and Alpaca holds a day order submitted after hours for the
+  next session, where it would go out without that day's checks. `_submit` re-reads the clock
+  under the lock and submits only while the market is open and more than 30 seconds before the
+  close; otherwise it retries, and the approval lapses at the close.
+- **Unresolved placements.** A timed-out submission may be live but has no `orders` row, so the
+  open-order sums miss it. While any placement is unresolved, buys retry, and exits retry for that
+  symbol if the unresolved order is a sell. The lapsed-approval sweep leaves unresolved verdicts
+  alone and doesn't expire today's approvals until two minutes after the close. A rejection for a
+  verdict that ever timed out is treated as a duplicate of the live order: retried, never recorded.
+  A restart forgets the set; the first lookup still runs before any submission, so the remaining
+  risk is Alpaca accepting a duplicate client id while its lookup lags, unverified until a paper
+  run (L6).
+- **Symbols the identifier can't hold.** The identifier is validated before any broker call and
+  refused as `invalid_symbol`, so no order is placed that couldn't be recorded.
+- **Stop-loss confirmation (ADR 0014).** The monitor needs the last trade and a fresh bid both
+  through the line; the gate rejects triggers older than 10 minutes.
+- **Intraday equity (ADR 0014).** One account snapshot per stop-loss window. On a buy, the loss
+  line is checked right after the pre-buy snapshot, before any other broker call.
+- **Robustness.** Pending approvals are parsed one at a time inside isolation; sync and
+  reconciliation share one transaction (no reader sees a half-applied state) with reconciliation
+  isolated per symbol; a session-level advisory lock makes Execution single-instance; an order
+  stuck on an unexpected broker status is reported every tick.

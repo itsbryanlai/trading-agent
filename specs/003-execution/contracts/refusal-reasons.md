@@ -15,6 +15,7 @@ is still valid.
 | # | Reason | Refused when | `details` carries |
 |---|---|---|---|
 | 1 | `approval_expired` | the verdict's trading day is before today, or is today and the market has closed (FR-002) | `trading_day`, `now` |
+| 1a | `invalid_symbol` | the order identifier can't be formed validly: the symbol isn't `[A-Z][A-Z0-9.]*` (FR-007). Checked before any broker call, so no order can be placed that couldn't be recorded. | `symbol`, `order_id` |
 | 2 | `identifier_clash` | an order with this verdict's identifier already exists for a different verdict (FR-008) | `order_id`, `other_verdict_id` |
 | 3 | `trading_paused` | the manual pause is on (FR-018) | — |
 | 4 | `no_daily_baseline` | no snapshot on today's date before today's open (FR-004) | `trading_day` |
@@ -28,6 +29,7 @@ is still valid.
 | # | Reason | Refused when | `details` carries |
 |---|---|---|---|
 | 1 | `approval_expired` | as for buys | `trading_day`, `now` |
+| 1a | `invalid_symbol` | as for buys | `symbol`, `order_id` |
 | 2 | `identifier_clash` | as for buys | `order_id`, `other_verdict_id` |
 | 3 | `shares_held_differ` | the broker's held qty minus Execution's open sell qty is less than the approved qty (FR-006) | `held`, `open_sell_qty`, `qty` |
 
