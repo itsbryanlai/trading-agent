@@ -87,16 +87,39 @@ def insert_verdict(
 
 def insert_trigger(conn: psycopg.Connection, symbol: str = "AAPL", observed: str = "160") -> str:
     return conn.execute(
-        "INSERT INTO stop_loss_triggers (symbol, observed_price) VALUES (%s, %s) RETURNING id",
+        "INSERT INTO stop_loss_triggers (symbol, observed_price, observed_at) "
+        "VALUES (%s, %s, '2026-09-28 14:00+00') RETURNING id",
         (symbol, observed),
     ).fetchone()["id"]
 
 
+def order_id_for(verdict_id, side: str = "buy", symbol: str = "AAPL", day: str = "2026-09-28"):
+    """The ADR 0012 identifier: the suffix must name the order's own verdict."""
+    return f"{day}-{symbol}-{side}-{str(verdict_id)[:8]}"
+
+
 def insert_order(
-    conn: psycopg.Connection, verdict_id: str, order_id: str = "2026-09-28-AAPL-buy"
+    conn: psycopg.Connection,
+    verdict_id: str,
+    side: str = "buy",
+    symbol: str = "AAPL",
+    limit_price: str | None = "187.25",
 ) -> str:
+    """A submitted order; a buy carries a limit price and a sell doesn't (migration 0007)."""
     return conn.execute(
-        "INSERT INTO orders (id, risk_verdict_id, status) VALUES (%s, %s, 'submitted') "
-        "RETURNING id",
-        (order_id, verdict_id),
+        "INSERT INTO orders (id, risk_verdict_id, status, limit_price) "
+        "VALUES (%s, %s, 'submitted', %s) RETURNING id",
+        (
+            order_id_for(verdict_id, side, symbol),
+            verdict_id,
+            limit_price if side == "buy" else None,
+        ),
+    ).fetchone()["id"]
+
+
+def insert_refusal(conn: psycopg.Connection, verdict_id: str, reason: str = "trading_paused"):
+    return conn.execute(
+        "INSERT INTO execution_refusals (risk_verdict_id, reason, details, refused_at) "
+        "VALUES (%s, %s, '{}'::jsonb, now()) RETURNING id",
+        (verdict_id, reason),
     ).fetchone()["id"]

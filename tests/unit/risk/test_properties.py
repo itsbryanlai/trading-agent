@@ -6,6 +6,7 @@ input. Fix the gate, then add that input as an example test.
 
 from __future__ import annotations
 
+from datetime import timedelta
 from decimal import Decimal
 
 from hypothesis import HealthCheck, given, settings
@@ -109,7 +110,15 @@ decisions = st.builds(
     target_weight_pct=weights,
     quote=prices,
 )
-triggers = st.builds(StopLossRequest, symbol=st.just("AAPL"), observed_price=prices)
+triggers = st.builds(
+    StopLossRequest,
+    symbol=st.just("AAPL"),
+    observed_price=prices,
+    # Fresh and stale observations alike (ADR 0014's 10-minute limit).
+    observed_at=st.timedeltas(min_value=timedelta(0), max_value=timedelta(minutes=20)).map(
+        lambda age: NOW - age
+    ),
+)
 
 
 # --- SC-001: no approved order ever breaches a limit -------------------------------------
@@ -242,7 +251,7 @@ def test_a_genuine_stop_loss_breach_is_always_approved(ctx, observed):
     if not ctx.shares_held:
         return
     line = ctx.avg_entry_price * (1 - CONFIG.stop_loss_pct / HUNDRED)
-    verdict = evaluate(StopLossRequest("AAPL", observed), ctx, CONFIG).verdict
+    verdict = evaluate(StopLossRequest("AAPL", observed, NOW), ctx, CONFIG).verdict
     if observed <= line:
         assert verdict.approved and verdict.order.qty == ctx.shares_held
     else:

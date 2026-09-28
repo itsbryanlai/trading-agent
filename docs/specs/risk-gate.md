@@ -17,6 +17,11 @@ call and reads no environment beyond what its caller passes in.
 - `config/risk.yaml` (see below for contents).
 - Or, instead of a decision, one stop-loss trigger recorded by Execution's
   monitor ([ADR 0010](../adr/0010-stop-loss-monitor-and-universe-reference-data.md)).
+  Triggers are evaluated by the gate's own trigger runner
+  (`python -m trading_agent.risk`), a separate process holding only the gate's
+  database login; the recorded trigger is the whole hand-off from Execution
+  ([ADR 0013](../adr/0013-deterministic-services-run-their-own-loops.md),
+  `specs/003-execution` Clarifications 2026-09-28).
 - Whether the market is currently open — a boolean the caller computes from an
   exchange calendar, with no credential. The gate never fetches it itself.
 - Current `positions`, the latest `account_snapshots` row, and `system_state`
@@ -84,7 +89,9 @@ rule that fired.
 - **Stop-loss trigger**: approve a full exit of the shares held only if the
   trigger's observed price really is at or below the stop-loss line under the
   position's average entry price. Otherwise reject, so a faulty monitor can't
-  force a sale. An approved stop-loss exit is exempt from the daily order cap
+  force a sale. A trigger observed more than 10 minutes before the evaluation is
+  rejected as stale (`stop_loss_trigger_stale`,
+  [ADR 0014](../adr/0014-fresh-confirmed-stop-loss-triggers-and-intraday-equity.md)). An approved stop-loss exit is exempt from the daily order cap
   and the daily-loss halt.
 - **No pre-open account snapshot today**: no daily-loss baseline can be
   recorded, so reject every exposure-increasing decision until one exists.

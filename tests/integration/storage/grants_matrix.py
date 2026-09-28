@@ -4,7 +4,8 @@ This is the contract. test_grants.py asserts the database matches it exactly,
 in both directions: every listed op is allowed, every unlisted op is denied,
 and the catalogs hold no privilege for a ta_* role that isn't listed here.
 
-Ops: "S" SELECT, "I" INSERT, "U" UPDATE, "D" DELETE, "U:<col>" column-level UPDATE.
+Ops: "S" SELECT, "I" INSERT, "U" UPDATE, "D" DELETE, "U:<col>" column-level UPDATE,
+"S:<col>" column-level SELECT.
 """
 
 ROLES = (
@@ -55,8 +56,18 @@ GRANTS: dict[str, dict[str, set[str]]] = {
         "ta_assistant": {"S"},
         "ta_dashboard": {"S"},
     },
+    # UPDATE narrowed by 003 to the columns that change after submission.
     "orders": {
-        "ta_execution": {"S", "I", "U"},
+        "ta_execution": {
+            "S",
+            "I",
+            "U:broker_order_id",
+            "U:status",
+            "U:fill_qty",
+            "U:fill_price",
+            "U:broker_reason",
+            "U:updated_at",
+        },
         "ta_journal": {"S"},
         "ta_assistant": {"S"},
         "ta_dashboard": {"S"},
@@ -102,6 +113,8 @@ GRANTS: dict[str, dict[str, set[str]]] = {
             "U:updated_at",
         },
         "ta_dashboard_control": {"S", "U:trading_paused", "U:updated_at"},
+        # 003: the manual pause flag only (FR-018); never the halt or baseline.
+        "ta_execution": {"S:trading_paused"},
         "ta_orchestrator": {"S"},
         "ta_assistant": {"S"},
         "ta_dashboard": {"S"},
@@ -125,6 +138,13 @@ GRANTS: dict[str, dict[str, set[str]]] = {
     "instrument_reference": {
         "ta_reference_data": {"S", "I", "U"},
         "ta_risk_gate": {"S"},
+        "ta_assistant": {"S"},
+        "ta_dashboard": {"S"},
+    },
+    # Feature 003 (migration 0007). An approval Execution declined to submit.
+    "execution_refusals": {
+        "ta_execution": {"S", "I"},
+        "ta_journal": {"S"},
         "ta_assistant": {"S"},
         "ta_dashboard": {"S"},
     },

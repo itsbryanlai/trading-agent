@@ -18,8 +18,9 @@ from trading_agent.risk.service import evaluate_decision, evaluate_stop_loss_tri
 def _record_trigger(conn, observed: str, symbol="AAPL") -> str:
     with as_role(conn, "ta_execution"):
         return conn.execute(
-            "INSERT INTO stop_loss_triggers (symbol, observed_price) VALUES (%s, %s) RETURNING id",
-            (symbol, observed),
+            "INSERT INTO stop_loss_triggers (symbol, observed_price, observed_at) "
+            "VALUES (%s, %s, %s) RETURNING id",
+            (symbol, observed, NOW),
         ).fetchone()["id"]
 
 
@@ -92,4 +93,4 @@ def test_approved_exit_can_be_turned_into_an_order_by_execution(conn, repo_confi
         "SELECT id FROM risk_verdicts WHERE stop_loss_trigger_id = %s", (trigger,)
     ).fetchone()["id"]
     with as_role(conn, "ta_execution"):
-        assert insert_order(conn, verdict_id, order_id="2026-09-28-AAPL-sell")
+        assert insert_order(conn, verdict_id, side="sell")

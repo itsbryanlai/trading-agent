@@ -24,6 +24,8 @@ class ObjectSpec:
     probe_column: str
     # For tables granted UPDATE per column: every column, so each is probed.
     columns_for_update: tuple[str, ...] = ()
+    # For tables granted SELECT per column: every column, so each is probed.
+    columns_for_select: tuple[str, ...] = ()
 
 
 # object name -> spec. Stories add their objects here alongside grants_matrix.GRANTS.
@@ -34,7 +36,23 @@ OBJECTS: dict[str, ObjectSpec] = {
     "decisions": ObjectSpec("table", probe_column="reasoning_md"),
     "decision_reports": ObjectSpec("table", probe_column="report_id"),
     "risk_verdicts": ObjectSpec("table", probe_column="rejection_rule"),
-    "orders": ObjectSpec("table", probe_column="broker_order_id"),
+    "orders": ObjectSpec(
+        "table",
+        probe_column="broker_order_id",
+        columns_for_update=(
+            "id",
+            "risk_verdict_id",
+            "verdict",
+            "submitted_at",
+            "broker_order_id",
+            "status",
+            "fill_price",
+            "fill_qty",
+            "updated_at",
+            "limit_price",
+            "broker_reason",
+        ),
+    ),
     "reports_with_status": ObjectSpec("view", probe_column="status"),
     # US3
     "positions": ObjectSpec("table", probe_column="qty"),
@@ -52,11 +70,21 @@ OBJECTS: dict[str, ObjectSpec] = {
             "daily_starting_equity",
             "updated_at",
         ),
+        columns_for_select=(
+            "id",
+            "trading_paused",
+            "halt_triggered_on",
+            "baseline_trading_day",
+            "daily_starting_equity",
+            "updated_at",
+        ),
     ),
     "system_state_effective": ObjectSpec("view", probe_column="trading_paused"),
     # Feature 002
     "stop_loss_triggers": ObjectSpec("table", probe_column="observed_price"),
     "instrument_reference": ObjectSpec("table", probe_column="exchange_mic"),
+    # Feature 003
+    "execution_refusals": ObjectSpec("table", probe_column="reason"),
 }
 
 
@@ -65,14 +93,21 @@ def ops_for(name: str) -> list[str]:
     if spec.kind == "view":
         return ["S"]
     updates = [f"U:{c}" for c in spec.columns_for_update] or ["U"]
-    return ["S", "I", *updates, "D"]
+    selects = [f"S:{c}" for c in spec.columns_for_select]
+    return ["S", *selects, "I", *updates, "D"]
 
 
 def probe(name: str, op: str) -> sql.Composable:
     spec = OBJECTS[name]
     table = sql.Identifier(name)
     if op == "S":
-        return sql.SQL("SELECT 1 FROM {} WHERE false").format(table)
+        # SELECT * needs every column, so a column-only grant reads as "denied"
+        # here and "allowed" only for its own S:<col> probe.
+        return sql.SQL("SELECT * FROM {} WHERE false").format(table)
+    if op.startswith("S:"):
+        return sql.SQL("SELECT {} FROM {} WHERE false").format(
+            sql.Identifier(op.partition(":")[2]), table
+        )
     if op == "I":
         return sql.SQL("INSERT INTO {} ({}) SELECT NULL WHERE false").format(
             table, sql.Identifier(spec.probe_column)

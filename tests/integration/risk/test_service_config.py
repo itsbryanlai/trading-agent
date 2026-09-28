@@ -48,7 +48,8 @@ def test_a_bad_file_stops_both_entry_points_and_writes_nothing(conn, tmp_path, c
     insert_position(conn)
     decision = make_decision(conn)
     trigger = conn.execute(
-        "INSERT INTO stop_loss_triggers (symbol, observed_price) VALUES ('AAPL', 100) RETURNING id"
+        "INSERT INTO stop_loss_triggers (symbol, observed_price, observed_at) "
+        "VALUES ('AAPL', 100, '2026-09-28 14:00+00') RETURNING id"
     ).fetchone()["id"]
     bad = _config_file(tmp_path, **changes)
 

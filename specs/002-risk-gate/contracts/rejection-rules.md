@@ -15,6 +15,7 @@ When several apply, the verdict names the one listed first for its request type.
 
 | # | Rule | Rejects when |
 |---|---|---|
+| 2a | `stop_loss_trigger_stale` | *trigger only*: observed more than 10 minutes before this evaluation ([ADR 0014](../../../docs/adr/0014-fresh-confirmed-stop-loss-triggers-and-intraday-equity.md); added by `specs/003-execution`). The monitor records a new trigger if the breach is still real. |
 | 2 | `no_position` | no shares of the symbol are held (FR-006, FR-012) |
 | 3 | `stop_loss_not_breached` | *trigger only*: observed price is above `avg_entry_price × (1 − stop_loss_pct/100)` (FR-012) |
 | 4 | `no_account_snapshot_today` | *sell decision with a target above 0% only*: no account snapshot on today's trading day, so the shares to keep can't be computed (FR-018). A 0% sell and a stop-loss exit never hit this. |

@@ -16,7 +16,9 @@ CONTRACT = (
 
 def _contract_rule_names() -> set[str]:
     # Table rows look like: | 3 | `no_account_snapshot_today` | ... |
-    return set(re.findall(r"^\|\s*\d+\s*\|\s*`([a-z_]+)`", CONTRACT.read_text(), re.MULTILINE))
+    return set(
+        re.findall(r"^\|\s*\d+[a-z]?\s*\|\s*`([a-z_]+)`", CONTRACT.read_text(), re.MULTILINE)
+    )
 
 
 def _code_rule_names() -> set[str]:

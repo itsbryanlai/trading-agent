@@ -1,7 +1,9 @@
 """Structural guards (specs/002-risk-gate research G1, G15).
 
-1. Only trading_agent.risk may import the risk-config loader: the Portfolio
-   Manager, in particular, must never read the limits it is judged against.
+1. Only trading_agent.risk and trading_agent.execution may import the
+   risk-config loader (specs/003-execution E12): Execution re-derives the same
+   limits. The Portfolio Manager, in particular, must never read the limits it
+   is judged against.
 2. The pure core does no I/O: no database driver, no calendar, no environment,
    no clock, and no import of the service that does those things.
 """
@@ -13,6 +15,7 @@ from pathlib import Path
 
 SRC = Path(__file__).resolve().parents[3] / "src" / "trading_agent"
 RISK = SRC / "risk"
+EXECUTION = SRC / "execution"
 CORE_MODULES = ("gate.py", "model.py", "rules.py", "config.py")
 FORBIDDEN_IN_CORE = {
     "psycopg",
@@ -38,11 +41,12 @@ def _module_name(path: Path) -> str:
     return ".".join(path.relative_to(SRC.parent).with_suffix("").parts)
 
 
-def test_only_the_risk_package_imports_the_config_loader():
+def test_only_risk_and_execution_import_the_config_loader():
     offenders = [
         _module_name(path)
         for path in SRC.rglob("*.py")
         if RISK not in path.parents
+        and EXECUTION not in path.parents
         and any(name.startswith("trading_agent.risk.config") for name in _imports(path))
     ]
     assert offenders == []
@@ -69,9 +73,46 @@ def test_pure_core_never_reads_the_clock():
         if not path.exists():
             continue
         for node in ast.walk(ast.parse(path.read_text())):
-            if isinstance(node, ast.Attribute) and node.attr in {"now", "today", "utcnow"}:
-                raise AssertionError(f"{filename} calls .{node.attr}() — the clock is an input")
+            # A call such as datetime.now(); reading the injected `ctx.now` is fine.
+            called = isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
+            if called and node.func.attr in {"now", "today", "utcnow"}:
+                name = node.func.attr
+                raise AssertionError(f"{filename} calls .{name}() — the clock is an input")
 
 
 def test_core_modules_exist_so_the_guard_is_not_vacuous():
     assert all((RISK / name).exists() for name in ("model.py", "rules.py", "config.py"))
+
+
+# (owner, attribute) pairs that read the wall clock, called or not.
+_CLOCK_READS = {
+    ("datetime", "now"),
+    ("datetime", "utcnow"),
+    ("datetime", "today"),
+    ("date", "today"),
+    ("time", "time"),
+    ("time", "monotonic"),
+}
+
+
+def _reads_the_clock(node: ast.AST) -> str | None:
+    """`datetime.now`, `date.today`, `datetime.datetime.utcnow`, `time.time` and so
+    on, called or not (e.g. `clock=datetime.now`). The injected `ctx.now` /
+    `session.now` is fine: its owner isn't a clock."""
+    if not isinstance(node, ast.Attribute):
+        return None
+    owner = node.value
+    name = owner.attr if isinstance(owner, ast.Attribute) else getattr(owner, "id", None)
+    return f"{name}.{node.attr}" if (name, node.attr) in _CLOCK_READS else None
+
+
+def test_the_clock_is_never_referenced_in_the_core():
+    # Second review F9: an uncalled reference such as default_factory=datetime.now
+    # reads the clock just as surely as a call.
+    for filename in CORE_MODULES:
+        path = RISK / filename
+        if not path.exists():
+            continue
+        for node in ast.walk(ast.parse(path.read_text())):
+            found = _reads_the_clock(node)
+            assert found is None, f"{filename} references {found}: the clock is an input"

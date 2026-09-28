@@ -22,7 +22,11 @@ def test_matrix_and_objects_describe_the_same_objects():
 
 @pytest.mark.parametrize(("name", "role", "op"), CASES)
 def test_privilege_matches_contract(conn, name, role, op):
-    expected = "allowed" if op in GRANTS[name].get(role, set()) else "denied"
+    granted = GRANTS[name].get(role, set())
+    # A table-level grant covers every column of that kind (S covers S:<col>);
+    # the catalog test below still demands the matrix list exactly what's granted.
+    covered = op in granted or (op[:2] in ("S:", "U:") and op[0] in granted)
+    expected = "allowed" if covered else "denied"
     assert attempt(conn, role, probe(name, op)) == expected
 
 

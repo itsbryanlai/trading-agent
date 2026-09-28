@@ -23,17 +23,26 @@ verdict and turns it into a broker call.
 
 ## Outputs
 
-One `orders` row per submission, with a deterministic id derived from trading
-day + symbol + side — so a process restart after a crash re-derives the same
-id and the broker rejects the duplicate rather than opening a second
-position (same mechanism as `trading-bot`).
+One `orders` row per submission, with a deterministic id
+`{trading_day}-{symbol}-{side}-{first 8 hex of the verdict id}`
+([ADR 0012](../adr/0012-order-identifier-per-verdict.md)), also sent to the
+broker as its client order id. A process restarting after a crash re-derives
+the same id and looks it up at the broker before submitting anything, so it
+finds the existing order instead of opening a second position.
+
+Or one `execution_refusals` row when it declines an approval, naming the reason
+(`specs/003-execution/contracts/refusal-reasons.md`). Every approval ends with
+exactly one of the two.
 
 ## Order construction rule
 
-- **Buys**: a day limit order at the live quote (fetched at submission time),
-  submitted only if that quote is at or under the price ceiling in the Risk
-  Gate's approved order. If the live quote is above the ceiling, the buy is
-  not submitted.
+- **Buys**: a day limit order at the live ask (IEX feed, fetched at submission
+  time and no more than 60 seconds old), submitted only if it is at or under the
+  price ceiling in the Risk Gate's approved order. Above the ceiling, the buy is
+  refused for good; the next Portfolio Manager run decides again. Buys are also
+  refused while the owner has trading paused, and once any account snapshot
+  since the open has been at or below the daily-loss line (the rest of the day,
+  even if equity recovers).
 - **Sells and stop-loss exits**: a day market order, so an exit is never left
   unfilled behind a limit in a falling market.
 
@@ -48,9 +57,19 @@ Added by [ADR 0010](../adr/0010-stop-loss-monitor-and-universe-reference-data.md
 
 - **Stop-loss monitor**: every 30 minutes during market hours, check every held
   position against its average entry price. For each one at or below the
-  configured stop-loss line (`stop_loss_pct`, 20%), record a stop-loss trigger
-  with the observed price and hand it to the Risk Gate. Submit the exit only if
-  the gate approves it. Execution never constructs an exit itself.
+  configured stop-loss line (`stop_loss_pct`, 20%) by its last traded price,
+  confirmed by its current bid also at or below the line (one odd print isn't
+  enough, [ADR 0014](../adr/0014-fresh-confirmed-stop-loss-triggers-and-intraday-equity.md)),
+  record a stop-loss trigger with that price. The gate rejects a trigger more
+  than 10 minutes old; the monitor records a new one if the breach is still real. The Risk Gate evaluates it in its
+  own process with its own credential
+  ([ADR 0013](../adr/0013-deterministic-services-run-their-own-loops.md)), and
+  Execution submits the exit on its next cycle only if the gate approved it.
+  Execution never constructs an exit itself, and never holds the gate's
+  credential.
+- **An account snapshot every stop-loss window**: one per 30-minute window
+  during market hours, so a crossing of the daily-loss line is recorded within
+  30 minutes and no buy follows it that day (ADR 0014).
 - **Daily pre-open account snapshot**: record an `account_snapshots` row every
   trading day before the market opens. The Risk Gate takes the daily-loss
   baseline from it, and without it rejects all new exposure that day.
@@ -73,17 +92,39 @@ Added by [ADR 0010](../adr/0010-stop-loss-monitor-and-universe-reference-data.md
 - **Process crash after submission, before the fill is recorded**: the
   deterministic order id lets the restarted process discover the existing
   broker order rather than resubmitting.
-- **Startup against a non-paper endpoint**: refuse to start at all — same
-  hard requirement as `trading-bot`.
+- **The clock at submission**: the checks run at the start of a cycle, so the
+  clock is read again just before each submission. Nothing is submitted after
+  the close or in its final 30 seconds; Alpaca would hold a late day order for
+  the next session, where it would go out unchecked.
+- **A submission that timed out**: it may be live at the broker without being
+  recorded. Until a lookup settles it, no other buy is submitted and no other
+  exit of the same symbol if it was a sell. A later rejection of the same
+  identifier is treated as a duplicate of the live order if it says so, or
+  within 10 minutes of the timeout; after that it is recorded as a rejection.
+- **A symbol the order identifier can't hold** (e.g. `BRK-B`): refused as
+  `invalid_symbol` before any broker call.
+- **Two Execution processes**: only one runs; a second waits up to 5 minutes
+  for the first to go away, then refuses to start.
+- **Startup against a non-paper endpoint**: refuse to start at all. The paper
+  address is fixed in code; a configured address that differs from it stops
+  startup; and an authenticated account read at that address must succeed.
+  Alpaca documents no account field that marks an account as paper, so the
+  proof is that paper keys differ from live keys and this address serves only
+  paper accounts (`specs/003-execution` research E2).
 - **Approval from an earlier trading day**: never submit it. An approval is
   valid only on the trading day it was approved for; unsubmitted approvals
   lapse at the close (`specs/002-risk-gate` FR-019).
 
 ## Interfaces
 
-- Reads `risk_verdicts` (approved rows only), `positions`.
-- Writes `orders`, updates to `positions` from confirmed fills,
-  `account_snapshots`, and stop-loss triggers.
+- Runs as its own process (`python -m trading_agent.execution`), ticking once a
+  minute and finding new approvals itself; nothing hands them over
+  ([ADR 0013](../adr/0013-deterministic-services-run-their-own-loops.md)).
+- Reads `risk_verdicts` (approved rows only), `positions`, and the manual pause
+  flag (`system_state.trading_paused` only).
+- Writes `orders`, `execution_refusals`, updates to `positions` from confirmed
+  fills (reconciled to the broker's positions), `account_snapshots`, and
+  stop-loss triggers.
 - The only role with Alpaca broker credentials in the entire system.
 
 ## Non-goals

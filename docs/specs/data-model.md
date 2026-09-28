@@ -103,15 +103,24 @@ One row per order Execution actually submits to the broker.
 
 | Column | Type | Notes |
 |---|---|---|
-| `id` | text | deterministic: `{trading_day}-{symbol}-{side}`, also sent as the broker's `client_order_id`, so a restart after a crash can't double-submit |
+| `id` | text | deterministic: `{trading_day}-{symbol}-{side}-{first 8 hex of the verdict id}` ([ADR 0012](../adr/0012-order-identifier-per-verdict.md)), also sent as the broker's `client_order_id`, so a restart after a crash finds the existing order instead of submitting another |
 | `risk_verdict_id` | uuid | FK to an **approved** `risk_verdicts` row — the database rejects an order for a rejected verdict |
 | `submitted_at` | timestamptz | |
 | `broker_order_id` | text | |
-| `status` | enum (`submitted`, `filled`, `partially_filled`, `rejected`, `canceled`) | kept in sync from broker polling/webhook |
-| `fill_price`, `fill_qty` | numeric | once known |
+| `status` | enum (`submitted`, `partially_filled`, `filled`, `rejected`, `canceled`, `expired`) | kept in sync by polling the broker; `expired` is a day order closed out at the end of the session |
+| `limit_price` | numeric | the live ask a buy was submitted at (at or under the verdict's ceiling); none for sells |
+| `broker_reason` | text | the broker's reason when it rejects an order |
+| `fill_price`, `fill_qty` | numeric | cumulative, once known |
 
 Writers: `execution` role only — the only role with this grant, matching the
 only role with broker credentials.
+
+## `execution_refusals`
+
+One row per approved verdict Execution declined to submit, with a named reason
+(`specs/003-execution/contracts/refusal-reasons.md`) and the live numbers it saw.
+Every approved verdict ends with exactly one order or one refusal, never both.
+Writers: `execution` role only. Readers: the journal, the Assistant, the UI.
 
 ## `positions`
 

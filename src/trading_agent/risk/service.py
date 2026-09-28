@@ -85,12 +85,15 @@ def evaluate_stop_loss_trigger(
             return existing
 
         cur.execute(
-            "SELECT symbol, observed_price FROM stop_loss_triggers WHERE id = %s", (trigger_id,)
+            "SELECT symbol, observed_price, observed_at FROM stop_loss_triggers WHERE id = %s",
+            (trigger_id,),
         )
         trigger = cur.fetchone()
         if trigger is None:
             raise LookupError(f"no stop-loss trigger {trigger_id}")
-        request = StopLossRequest(trigger["symbol"], trigger["observed_price"])
+        request = StopLossRequest(
+            trigger["symbol"], trigger["observed_price"], trigger["observed_at"]
+        )
         return _judge_and_record(cur, request, now, config, trigger_id=trigger_id)
 
 
@@ -161,6 +164,7 @@ def _load_context(cur, symbol: str, now: datetime) -> tuple[Context, bool]:
         (day, now),
     )
     snapshot = cur.fetchone()
+    lowest_today = _lowest_equity_since_open(cur, day, now)
 
     # Halt and baseline are judged against this evaluation's own trading day, not
     # the database clock, so the core's inputs are fully determined by `now`.
@@ -202,9 +206,27 @@ def _load_context(cur, symbol: str, now: datetime) -> tuple[Context, bool]:
         cash=snapshot["cash"] if snapshot else None,
         baseline_equity=baseline,
         increase_orders_approved_today=increases_today,
+        lowest_equity_today=lowest_today,
         reference=Reference(**reference_row) if reference_row else None,
     )
     return context, record_baseline
+
+
+def _lowest_equity_since_open(cur, day: date, now: datetime):
+    """The lowest equity among snapshots taken on `day` at or after its open and no
+    later than `now`, so a crossing seen between evaluations isn't forgotten
+    (ADR 0014 §3). Pre-open snapshots are the baseline, not part of the day."""
+    try:
+        open_at = calendar.open_time(day)
+    except ValueError:
+        return None
+    cur.execute(
+        "SELECT min(equity) AS low FROM account_snapshots "
+        "WHERE (taken_at AT TIME ZONE 'America/New_York')::date = %s "
+        "AND taken_at >= %s AND taken_at <= %s",
+        (day, open_at, now),
+    )
+    return cur.fetchone()["low"]
 
 
 def _pre_open_equity(cur, day: date, now: datetime):

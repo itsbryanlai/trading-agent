@@ -77,8 +77,9 @@ def test_order_for_rejected_verdict_impossible(conn):
     assert (
         sqlstate_of(
             conn,
-            "INSERT INTO orders (id, risk_verdict_id, status) VALUES ('x', %s, 'submitted')",
-            (rejected,),
+            "INSERT INTO orders (id, risk_verdict_id, status) "
+            "VALUES ('2026-09-28-AAPL-sell-' || left(%s::text, 8), %s, 'submitted')",
+            (rejected, rejected),
         )
         == FOREIGN_KEY_VIOLATION
     )
@@ -88,8 +89,9 @@ def test_order_for_nonexistent_verdict_impossible(conn):
     assert (
         sqlstate_of(
             conn,
+            "WITH v AS (SELECT gen_random_uuid() AS id) "
             "INSERT INTO orders (id, risk_verdict_id, status) "
-            "VALUES ('x', gen_random_uuid(), 'submitted')",
+            "SELECT '2026-09-28-AAPL-sell-' || left(v.id::text, 8), v.id, 'submitted' FROM v",
         )
         == FOREIGN_KEY_VIOLATION
     )
@@ -97,28 +99,28 @@ def test_order_for_nonexistent_verdict_impossible(conn):
 
 def test_second_order_for_same_verdict_rejected(conn):
     verdict = insert_verdict(conn, insert_decision(conn, [insert_report(conn)]))
-    insert_order(conn, verdict, order_id="2026-09-28-AAPL-buy")
+    insert_order(conn, verdict)
     assert (
         sqlstate_of(
             conn,
             "INSERT INTO orders (id, risk_verdict_id, status) "
-            "VALUES ('2026-09-28-AAPL-sell', %s, 'submitted')",
-            (verdict,),
+            "VALUES ('2026-09-28-AAPL-sell-' || left(%s::text, 8), %s, 'submitted')",
+            (verdict, verdict),
         )
         == UNIQUE_VIOLATION
     )
 
 
-def test_restart_resubmitting_same_day_symbol_side_recognized_as_duplicate(conn):
-    first = insert_verdict(conn, insert_decision(conn, [insert_report(conn)]))
-    second = insert_verdict(conn, insert_decision(conn, [insert_report(conn)]))
-    insert_order(conn, first, order_id="2026-09-28-AAPL-buy")
+def test_restart_re_deriving_the_same_identifier_recognized_as_duplicate(conn):
+    # ADR 0012: the identifier is per verdict, so a restart re-derives the same one.
+    verdict = insert_verdict(conn, insert_decision(conn, [insert_report(conn)]))
+    insert_order(conn, verdict)
     assert (
         sqlstate_of(
             conn,
-            "INSERT INTO orders (id, risk_verdict_id, status) "
-            "VALUES ('2026-09-28-AAPL-buy', %s, 'submitted')",
-            (second,),
+            "INSERT INTO orders (id, risk_verdict_id, status, limit_price) "
+            "VALUES ('2026-09-28-AAPL-buy-' || left(%s::text, 8), %s, 'submitted', 187.25)",
+            (verdict, verdict),
         )
         == UNIQUE_VIOLATION
     )

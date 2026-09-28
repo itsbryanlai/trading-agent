@@ -7,6 +7,7 @@ research.md G3-G4.
 
 from __future__ import annotations
 
+from datetime import timedelta
 from decimal import ROUND_CEILING, ROUND_DOWN, ROUND_FLOOR, Decimal
 
 from trading_agent.risk import rules
@@ -33,6 +34,10 @@ def _ceil(value: Decimal) -> int:
     return int(value.to_integral_value(rounding=ROUND_CEILING))
 
 
+# How long a stop-loss observation stays usable (ADR 0014). Not a risk limit.
+MAX_TRIGGER_AGE = timedelta(minutes=10)
+
+
 def price_ceiling(quote: Decimal, tolerance_pct: Decimal) -> Decimal:
     """The most a buy may pay: quote plus tolerance, rounded down to the cent."""
     return (quote * (1 + tolerance_pct / _HUNDRED)).quantize(_CENT, rounding=ROUND_DOWN)
@@ -57,11 +62,15 @@ def evaluate(request: Request, context: Context, config: RiskConfig) -> GateResu
 
 
 def _loss_line_crossed(ctx: Context, config: RiskConfig) -> bool:
-    """True when today's equity is at or below the loss line and the halt isn't yet recorded."""
+    """True when today's equity, or any snapshot's since the open, is at or below the
+    loss line and the halt isn't yet recorded (FR-009, ADR 0014 §3)."""
     if ctx.halt_active or ctx.equity is None or ctx.baseline_equity is None:
         return False
     line = ctx.baseline_equity * (1 - config.daily_loss_halt_pct / _HUNDRED)
-    return ctx.equity <= line
+    lowest = ctx.equity
+    if ctx.lowest_equity_today is not None:
+        lowest = min(lowest, ctx.lowest_equity_today)
+    return lowest <= line
 
 
 def _stop_loss(request: StopLossRequest, ctx: Context, config: RiskConfig) -> Verdict:
@@ -71,6 +80,9 @@ def _stop_loss(request: StopLossRequest, ctx: Context, config: RiskConfig) -> Ve
     are the gate's own, so a faulty monitor can't force a sale. No pause, halt,
     cap, missing account data or universe rule can block a genuine breach.
     """
+    # A trigger is one observation; an old one may no longer be true (ADR 0014).
+    if ctx.now - request.observed_at > MAX_TRIGGER_AGE:
+        return Verdict.reject(rules.STOP_LOSS_TRIGGER_STALE)
     if ctx.shares_held <= 0 or ctx.avg_entry_price is None:
         return Verdict.reject(rules.NO_POSITION)
     line = ctx.avg_entry_price * (1 - config.stop_loss_pct / _HUNDRED)

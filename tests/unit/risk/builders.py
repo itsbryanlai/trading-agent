@@ -76,8 +76,8 @@ def sell(symbol="AAPL", target=0, quote=200) -> DecisionRequest:
     return DecisionRequest(symbol, "sell", D(target), D(quote))
 
 
-def trigger(symbol="AAPL", observed=160) -> StopLossRequest:
-    return StopLossRequest(symbol, D(observed))
+def trigger(symbol="AAPL", observed=160, observed_at: datetime = NOW) -> StopLossRequest:
+    return StopLossRequest(symbol, D(observed), observed_at)
 
 
 def config(**overrides) -> RiskConfig:

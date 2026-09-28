@@ -1,7 +1,8 @@
 """NYSE (XNYS) market hours, holidays and early closes, with no credential.
 
 Used by the Risk Gate's service to derive `market_open` and `trading_day` and
-to find today's open for the daily-loss baseline. Kept out of the pure core:
+to find today's open for the daily-loss baseline. Execution uses the same
+module for every time judgement, so the two can't disagree (ADR 0013). Kept out of the pure core:
 the core receives these as plain values.
 """
 
@@ -33,7 +34,18 @@ def trading_day(now: datetime) -> date:
     return now.astimezone(_NEW_YORK).date()
 
 
+def is_session(day: date) -> bool:
+    return bool(_XNYS.is_session(pd.Timestamp(day)))
+
+
 def open_time(day: date) -> datetime:
-    if not _XNYS.is_session(pd.Timestamp(day)):
+    if not is_session(day):
         raise ValueError(f"{day} is not an NYSE session")
     return _XNYS.session_open(pd.Timestamp(day)).to_pydatetime().astimezone(UTC)
+
+
+def close_time(day: date) -> datetime:
+    """The session's close in UTC, early closes included."""
+    if not is_session(day):
+        raise ValueError(f"{day} is not an NYSE session")
+    return _XNYS.session_close(pd.Timestamp(day)).to_pydatetime().astimezone(UTC)
