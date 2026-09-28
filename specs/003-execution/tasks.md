@@ -390,16 +390,40 @@ CLAUDE.md: the 30-second no-submit window before the close (H1), holding back bu
 exits while a placement is unresolved (H2), the `invalid_symbol` refusal (M2), the 10-minute
 trigger age (M3), and the bid confirmation (M3).
 
-- [ ] T062 [P] Migration `0008_execution_review.sql`: widen `execution_refusals.reason` CHECK with `invalid_symbol`; amend `contracts/refusal-reasons.md` (done with ADR 0014) and the reasons module and contract test; storage test that `invalid_symbol` is accepted
-- [ ] T063 H1: `Executor` takes a `clock` (default wall clock); `_submit` re-reads it inside the lock and retries (rolls back) unless the market is open and more than `NO_SUBMIT_BEFORE_CLOSE = 30s` from the close; test a tick that starts open and whose clock passes the close before submit, and the 30-second window
-- [ ] T064 H2: while any verdict is unresolved in the "maybe placed" set, buys retry; exits retry only for the same symbol as an unresolved sell; test the reviewer's three-buy and same-symbol scenarios stay inside the reserve and the ceiling
-- [ ] T065 M1: the lapsed sweep skips verdicts in the "maybe placed" set and, for today's verdicts, waits until `close + MAYBE_PLACED_WAIT`; an `OrderRejected` for a verdict that ever timed out is a retry, never a recorded rejection; the fake broker rejects duplicate client ids by default and no longer reveals the order when it does (L6); tests for both reviewer scenarios
-- [ ] T066 M2: validate the order identifier against the database regex before any broker call and refuse `invalid_symbol`; unit and integration tests (e.g. `BRK-B`, lowercase)
-- [ ] T067 M3 (gate): `StopLossRequest` carries `observed_at`; the gate rejects `stop_loss_trigger_stale` when `now − observed_at > 10 min`, after `market_closed`; update rules module, rule contract test, builders and 002 tests that insert triggers (explicit `observed_at`)
-- [ ] T068 M3 (monitor): the broker port's `get_latest_ask` becomes `get_latest_quote` returning ask and bid (adapter maps `bid_price`); the monitor scan requires trade ≤ line and a fresh (≤ 60 s), non-zero bid ≤ line; a bad bid counts as failed; unit and integration tests
-- [ ] T069 M4: record an account snapshot once per stop-loss window during market hours (retried within the window); on a buy, evaluate the loss line right after the pre-buy snapshot and before any other broker call, so a crossing is never rolled back by a later failure; tests
-- [ ] T070 L1: fetch and parse pending approvals inside isolation, one row at a time; test a malformed `approved_order` is logged and the others still run
-- [ ] T071 L2 + L4: order sync and reconciliation run inside one transaction (other readers see only the reconciled state), with reconciliation isolated per symbol; test one bad broker row doesn't block the others
-- [ ] T072 L3: `startup` takes a session-level single-instance advisory lock and refuses to start if another Execution holds it; the runner exits `EXIT_REFUSED`; integration test with two connections; the committed-connections lock check filters to the per-approval key
-- [ ] T073 L5: an order stuck on an unexpected broker status is counted in `TickReport` and logged each tick naming the symbol whose exits it may block
-- [ ] T074 Docs: research E16 (these decisions), data-model (migration 0008), `docs/specs/execution.md`, `docs/specs/risk-gate.md`, gate-interface contract; full offline and integration runs, lint; a planted-bug check for each order-path fix, recorded under Implementation notes
+- [X] T062 [P] Migration `0008_execution_review.sql`: widen `execution_refusals.reason` CHECK with `invalid_symbol`; amend `contracts/refusal-reasons.md` (done with ADR 0014) and the reasons module and contract test; storage test that `invalid_symbol` is accepted
+- [X] T063 H1: `Executor` takes a `clock` (default wall clock); `_submit` re-reads it inside the lock and retries (rolls back) unless the market is open and more than `NO_SUBMIT_BEFORE_CLOSE = 30s` from the close; test a tick that starts open and whose clock passes the close before submit, and the 30-second window
+- [X] T064 H2: while any verdict is unresolved in the "maybe placed" set, buys retry; exits retry only for the same symbol as an unresolved sell; test the reviewer's three-buy and same-symbol scenarios stay inside the reserve and the ceiling
+- [X] T065 M1: the lapsed sweep skips verdicts in the "maybe placed" set and, for today's verdicts, waits until `close + MAYBE_PLACED_WAIT`; an `OrderRejected` for a verdict that ever timed out is a retry, never a recorded rejection; the fake broker rejects duplicate client ids by default and no longer reveals the order when it does (L6); tests for both reviewer scenarios
+- [X] T066 M2: validate the order identifier against the database regex before any broker call and refuse `invalid_symbol`; unit and integration tests (e.g. `BRK-B`, lowercase)
+- [X] T067 M3 (gate): `StopLossRequest` carries `observed_at`; the gate rejects `stop_loss_trigger_stale` when `now − observed_at > 10 min`, after `market_closed`; update rules module, rule contract test, builders and 002 tests that insert triggers (explicit `observed_at`)
+- [X] T068 M3 (monitor): the broker port's `get_latest_ask` becomes `get_latest_quote` returning ask and bid (adapter maps `bid_price`); the monitor scan requires trade ≤ line and a fresh (≤ 60 s), non-zero bid ≤ line; a bad bid counts as failed; unit and integration tests
+- [X] T069 M4: record an account snapshot once per stop-loss window during market hours (retried within the window); on a buy, evaluate the loss line right after the pre-buy snapshot and before any other broker call, so a crossing is never rolled back by a later failure; tests
+- [X] T070 L1: fetch and parse pending approvals inside isolation, one row at a time; test a malformed `approved_order` is logged and the others still run
+- [X] T071 L2 + L4: order sync and reconciliation run inside one transaction (other readers see only the reconciled state), with reconciliation isolated per symbol; test one bad broker row doesn't block the others
+- [X] T072 L3: `startup` takes a session-level single-instance advisory lock and refuses to start if another Execution holds it; the runner exits `EXIT_REFUSED`; integration test with two connections; the committed-connections lock check filters to the per-approval key
+- [X] T073 L5: an order stuck on an unexpected broker status is counted in `TickReport` and logged each tick naming the symbol whose exits it may block
+- [X] T074 Docs: research E16 (these decisions), data-model (migration 0008), `docs/specs/execution.md`, `docs/specs/risk-gate.md`, gate-interface contract; full offline and integration runs, lint; a planted-bug check for each order-path fix, recorded under Implementation notes
+
+### Phase 12 implementation notes
+
+- **Planted-bug checks** (each reverted): no clock re-read before submitting (3 integration
+  failures); no 30-second window before the close (2); no holding back behind an unresolved
+  placement (3); a rejection after a timeout recorded as `rejected` (1); today's approvals lapsing
+  right at the close instead of two minutes after (1); the loss line checked after the quote fetch
+  (the "crossing kept even if the quote then fails" test fails by construction: the snapshot is
+  rolled back); a planted clock call in the gate's core (the narrowed guard still fails).
+- **Dead code removed.** A wait for unresolved placements inside the lapsed sweep could never be
+  reached: submissions stop 30 s before the close and today's approvals lapse two minutes after
+  it, so any wait has run out. The planted-bug check showed it untested; it was removed, and the
+  close delay itself is what's tested.
+- **Test ordering.** Approvals written in one test transaction tie on `evaluated_at` and are
+  processed in verdict-id (random) order. Three new tests first assumed an order; they now assert
+  outcomes that hold whichever goes first, and were run 15 times each without a failure.
+- **The gate's clock guard** flagged any attribute named `now`, including the injected `ctx.now`
+  the stale rule reads; it now flags only calls such as `datetime.now()`, and still fails on one.
+- **Rule and reason numbering.** The two new names are rows `2a` (gate) and `1a` (Execution) so the
+  existing rows keep their numbers; both contract tests accept a lettered row.
+- **Still unverified until a supervised paper run**: Alpaca's handling of a repeated client order
+  id (the fake now assumes rejection, the safer case), and what a restart forgets about unresolved
+  placements (research E16).
+

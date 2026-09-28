@@ -89,7 +89,9 @@ rule that fired.
 - **Stop-loss trigger**: approve a full exit of the shares held only if the
   trigger's observed price really is at or below the stop-loss line under the
   position's average entry price. Otherwise reject, so a faulty monitor can't
-  force a sale. An approved stop-loss exit is exempt from the daily order cap
+  force a sale. A trigger observed more than 10 minutes before the evaluation is
+  rejected as stale (`stop_loss_trigger_stale`,
+  [ADR 0014](../adr/0014-fresh-confirmed-stop-loss-triggers-and-intraday-equity.md)). An approved stop-loss exit is exempt from the daily order cap
   and the daily-loss halt.
 - **No pre-open account snapshot today**: no daily-loss baseline can be
   recorded, so reject every exposure-increasing decision until one exists.

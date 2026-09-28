@@ -20,7 +20,7 @@ from psycopg.rows import dict_row
 
 from trading_agent.execution.alpaca import AlpacaBroker
 from trading_agent.execution.broker import NotPaperTrading
-from trading_agent.execution.service import Executor, NotAutocommit
+from trading_agent.execution.service import AnotherExecutionRunning, Executor, NotAutocommit
 from trading_agent.storage.db import ConfigError, require_env
 
 log = logging.getLogger("trading_agent.execution")
@@ -72,7 +72,7 @@ def main(
             ticks += 1
             if max_ticks is None or ticks < max_ticks:
                 sleep(TICK_SECONDS)
-    except (NotPaperTrading, NotAutocommit) as exc:
+    except (NotPaperTrading, NotAutocommit, AnotherExecutionRunning) as exc:
         log.critical("execution: refusing to start: %s", exc)
         return EXIT_REFUSED
     except psycopg.OperationalError as exc:

@@ -53,6 +53,8 @@ DEFAULT_CONFIG_PATH = Path("config/risk.yaml")
 # One approval at a time, across processes: a key distinct from the gate's
 # (research E5). "exec".
 _LOCK_KEY = 0x65786563
+# Session-level, for the process's lifetime: one Execution at a time. "exe1".
+_SINGLE_INSTANCE_KEY = 0x65786531
 
 # After a submission timed out, wait this long for the broker's lookup to catch
 # up before trying again, so a lagging lookup can't cause a second order (E5).
@@ -76,6 +78,10 @@ UNEVALUATED_AFTER = timedelta(minutes=5)
 
 class NotAutocommit(Exception):
     """Execution needs each unit of work to be a real transaction (research E5)."""
+
+
+class AnotherExecutionRunning(Exception):
+    """Only one Execution may run at a time (research E16)."""
 
 
 @dataclass(frozen=True)
@@ -132,9 +138,14 @@ class Executor:
         database (FR-013); then the connection check (research E5)."""
         self.broker.verify_paper()
         self._require_autocommit()
+        # Held for the connection's lifetime: a second Execution (e.g. an overlapping
+        # redeploy) would sync and reconcile outside the per-approval lock (E16).
+        with self._cursor() as cur:
+            cur.execute("SELECT pg_try_advisory_lock(%s) AS mine", (_SINGLE_INSTANCE_KEY,))
+            if not cur.fetchone()["mine"]:
+                raise AnotherExecutionRunning("another Execution holds the single-instance lock")
         report = TickReport()
-        self._isolated("order sync", report, lambda: self._sync_orders(report))
-        self._isolated("reconciliation", report, lambda: self._reconcile_positions(report))
+        self._isolated("positions", report, lambda: self._positions_pass(report))
 
     def tick(self, now: datetime) -> TickReport:
         """One pass of every duty that is due at `now` (research E13)."""
@@ -143,14 +154,17 @@ class Executor:
         session = session_at(now)
         # Positions first: the gate sizes from them and the monitor measures from
         # them (research E8).
-        self._isolated("order sync", report, lambda: self._sync_orders(report))
-        self._isolated("reconciliation", report, lambda: self._reconcile_positions(report))
+        self._isolated("positions", report, lambda: self._positions_pass(report))
         self._isolated("sweep", report, lambda: self._sweep_lapsed(session, report))
-        for approval in self._pending_approvals(session.today):
+        pending: list[dict] = []
+        self._isolated("approval list", report, lambda: pending.extend(self._pending(session)))
+        for row in pending:
+            # Parsed inside its own unit: one malformed verdict can't stop the rest,
+            # least of all the stop-loss monitor below (research E16).
             self._isolated(
-                f"verdict {approval.verdict_id}",
+                f"verdict {row['id']}",
                 report,
-                lambda a=approval: self._process_approval(a, session, report),
+                lambda r=row: self._process_approval(_approval(r), session, report),
             )
         self._isolated("window snapshot", report, lambda: self._window_snapshot(session, report))
         self._isolated("stop-loss monitor", report, lambda: self._run_monitor(session, report))
@@ -185,7 +199,7 @@ class Executor:
 
     # --- approvals (E5, E6) ------------------------------------------------
 
-    def _pending_approvals(self, today) -> list[Approval]:
+    def _pending(self, session: Session) -> list[dict]:
         with self._cursor() as cur:
             cur.execute(
                 """
@@ -197,10 +211,9 @@ class Executor:
                                   WHERE r.risk_verdict_id = v.id)
                 ORDER BY (v.approved_order->>'side') = 'buy', v.evaluated_at, v.id
                 """,
-                (today,),
+                (session.today,),
             )
-            rows = cur.fetchall()
-        return [Approval(row["id"], ApprovedOrder.from_json(row["approved_order"])) for row in rows]
+            return cur.fetchall()
 
     def _process_approval(self, approval: Approval, session: Session, report: TickReport) -> None:
         try:
@@ -427,6 +440,14 @@ class Executor:
 
     # --- fills and positions (E7, E8) --------------------------------------
 
+    def _positions_pass(self, report: TickReport) -> None:
+        """Fills, then reconciliation, in one transaction: another process (the gate)
+        never sees a fill applied but not yet reconciled (research E16). Each order
+        and each symbol is its own savepoint, so one bad row can't block the rest."""
+        with self.conn.transaction():
+            self._sync_orders(report)
+            self._reconcile_positions(report)
+
     def _sync_orders(self, report: TickReport) -> None:
         with self._cursor() as cur:
             cur.execute(
@@ -449,10 +470,17 @@ class Executor:
         try:
             status = fills.map_status(placed.status, placed.filled_qty)
         except fills.UnexpectedStatus:
+            report.stuck_orders += 1
             log.error(
-                "execution: order %s has unexpected broker status %r; left unchanged",
+                "execution: order %s (%s %s) has unexpected broker status %r and stays open; "
+                "it counts against %s, so %s of %s may be blocked until the owner resolves it",
                 row["id"],
+                row["side"],
+                row["symbol"],
                 placed.status,
+                "shares available to sell" if row["side"] == "sell" else "cash and the position",
+                "exits" if row["side"] == "sell" else "buys",
+                row["symbol"],
             )
             return
         delta = fills.fill_delta(
@@ -493,39 +521,46 @@ class Executor:
         _write_position(cur, symbol, after)
 
     def _reconcile_positions(self, report: TickReport) -> None:
-        """The broker is the record of what is held (FR-011)."""
+        """The broker is the record of what is held (FR-011). Each symbol is its own
+        unit, so one row the table refuses can't block the others (research E16)."""
         broker_positions = {p.symbol: p for p in self.broker.get_positions()}
-        with self.conn.transaction(), self._cursor() as cur:
-            cur.execute("SELECT symbol, qty, avg_entry_price FROM positions FOR UPDATE")
+        with self._cursor() as cur:
+            cur.execute("SELECT symbol, qty, avg_entry_price FROM positions")
             ours = {row["symbol"]: row for row in cur.fetchall()}
-            for symbol in sorted(set(broker_positions) | set(ours)):
-                theirs = broker_positions.get(symbol)
-                mine = ours.get(symbol)
-                if theirs is not None and theirs.qty <= 0:
-                    log.error(
-                        "execution: broker reports %s %s of %s; long-only, left for the owner",
-                        "a short" if theirs.qty < 0 else "zero",
-                        theirs.qty,
-                        symbol,
-                    )
-                    continue
-                want = (
-                    None
-                    if theirs is None
-                    else fills.Holding(theirs.qty, _stored(theirs.avg_entry_price))
-                )
-                have = None if mine is None else fills.Holding(mine["qty"], mine["avg_entry_price"])
-                if want == have:
-                    continue
-                log.warning(
-                    "execution: position %s disagrees with the broker (ours %s, broker's %s); "
-                    "adopting the broker's",
-                    symbol,
-                    have,
-                    want,
-                )
-                _write_position(cur, symbol, want)
-                report.reconciled += 1
+        for symbol in sorted(set(broker_positions) | set(ours)):
+            self._isolated(
+                f"position {symbol}",
+                report,
+                lambda s=symbol: self._reconcile_one(
+                    s, broker_positions.get(s), ours.get(s), report
+                ),
+            )
+
+    def _reconcile_one(self, symbol: str, theirs, mine, report: TickReport) -> None:
+        if theirs is not None and theirs.qty <= 0:
+            log.error(
+                "execution: broker reports %s %s of %s; long-only, left for the owner",
+                "a short" if theirs.qty < 0 else "zero",
+                theirs.qty,
+                symbol,
+            )
+            return
+        want = (
+            None if theirs is None else fills.Holding(theirs.qty, _stored(theirs.avg_entry_price))
+        )
+        have = None if mine is None else fills.Holding(mine["qty"], mine["avg_entry_price"])
+        if want == have:
+            return
+        log.warning(
+            "execution: position %s disagrees with the broker (ours %s, broker's %s); "
+            "adopting the broker's",
+            symbol,
+            have,
+            want,
+        )
+        with self.conn.transaction(), self._cursor() as cur:
+            _write_position(cur, symbol, want)
+        report.reconciled += 1
 
     # --- the stop-loss monitor (FR-014, E13) -------------------------------
 
@@ -684,11 +719,10 @@ class Executor:
             )
             rows = cur.fetchall()
         for row in rows:
-            approval = Approval(row["id"], ApprovedOrder.from_json(row["approved_order"]))
             self._isolated(
-                f"lapsed verdict {approval.verdict_id}",
+                f"lapsed verdict {row['id']}",
                 report,
-                lambda a=approval: self._expire(a, session, report),
+                lambda r=row: self._expire(_approval(r), session, report),
             )
 
     def _expire(self, approval: Approval, session: Session, report: TickReport) -> None:
@@ -779,6 +813,10 @@ def _write_position(cur, symbol: str, holding) -> None:
         """,
         (symbol, holding.qty, _stored(holding.avg_entry_price)),
     )
+
+
+def _approval(row: dict) -> Approval:
+    return Approval(row["id"], ApprovedOrder.from_json(row["approved_order"]))
 
 
 def submittable(at: datetime, trading_day) -> bool:

@@ -68,8 +68,10 @@ def test_a_stop_loss_exit_across_two_processes_is_committed_and_visible(committe
         assert executor.tick(later).submitted == 1
         # Still connected: a lock left held would show here (research E5).
         with _connect(committed_db) as observer:
+            # The per-approval lock ("exec"); the single-instance lock stays held.
             held = observer.execute(
-                "SELECT count(*) AS n FROM pg_locks WHERE locktype = 'advisory'"
+                "SELECT count(*) AS n FROM pg_locks WHERE locktype = 'advisory' AND objid = %s",
+                (0x65786563,),
             ).fetchone()["n"]
         assert held == 0
 
@@ -87,3 +89,17 @@ def test_startup_refuses_a_connection_that_is_not_autocommit(committed_db):
     with psycopg.connect(committed_db, row_factory=dict_row) as conn:
         with pytest.raises(NotAutocommit):
             Executor(FakeBroker(now=NOW), conn, REPO_CONFIG).startup()
+
+
+def test_a_second_execution_refuses_to_start(committed_db):
+    from trading_agent.execution.service import AnotherExecutionRunning
+
+    with (
+        _connect(committed_db, "ta_execution") as one,
+        _connect(committed_db, "ta_execution") as two,
+    ):
+        Executor(FakeBroker(now=NOW), one, REPO_CONFIG).startup()
+        with pytest.raises(AnotherExecutionRunning):
+            Executor(FakeBroker(now=NOW), two, REPO_CONFIG).startup()
+    with _connect(committed_db, "ta_execution") as three:  # released on disconnect
+        Executor(FakeBroker(now=NOW), three, REPO_CONFIG).startup()

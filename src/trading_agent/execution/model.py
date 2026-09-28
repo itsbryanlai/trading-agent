@@ -91,4 +91,5 @@ class TickReport:
     reconciled: int = 0
     triggers: int = 0
     unevaluated_triggers: int = 0
+    stuck_orders: int = 0
     snapshot_taken: bool = False

@@ -7,8 +7,8 @@ What other features call or rely on. Decisions: [research.md](../research.md) E1
 | Call | Used by | Behaviour |
 |---|---|---|
 | `python -m trading_agent.execution` | the worker service (hosting is the orchestrator feature's call, E13) | Runs `startup()`, then `tick()` every 60 seconds until stopped. |
-| `Executor(broker, exec_conn, config_path)` | the runner | Holds the broker port, the connection, and a little per-process memory (the "maybe placed" set, which stop-loss windows succeeded). Losing that memory on restart only repeats harmless work. |
-| `Executor.startup()` | the runner | Paper-only guard (FR-013): raises `NotPaperTrading` and nothing else runs. Then refuses a non-autocommit connection, then one order sync and reconciliation (FR-009). |
+| `Executor(broker, exec_conn, config_path, clock=None)` | the runner | Holds the broker port, the connection, a clock re-read just before each submission (default: the wall clock; research E16), and a little per-process memory (unresolved placements, which stop-loss windows succeeded or have their snapshot). |
+| `Executor.startup()` | the runner | Paper-only guard (FR-013): raises `NotPaperTrading` and nothing else runs. Then refuses a non-autocommit connection, then takes the single-instance lock (raises `AnotherExecutionRunning` if another Execution holds it, research E16), then one order sync and reconciliation (FR-009). |
 | `Executor.tick(now)` | the runner | One pass of every duty that's due at `now`, in the order listed in E13. Returns a `TickReport` (orders submitted and recovered, refusals, retries, errors, fills applied, positions reconciled, triggers recorded, unevaluated triggers, snapshot taken) for logging. |
 
 `exec_conn` is a login in `ta_execution`, opened with `autocommit=True` so each unit of work is a

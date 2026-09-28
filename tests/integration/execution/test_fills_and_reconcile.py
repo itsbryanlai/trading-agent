@@ -168,9 +168,11 @@ def test_an_unexpected_status_leaves_the_order_unchanged(conn, broker, executor,
     [placed] = broker.orders_for(client_id)
     broker.orders[placed.broker_order_id] = dataclasses.replace(placed, status=raw)
     with caplog.at_level(logging.ERROR):
-        run_tick(conn, executor, LATER)
+        report = run_tick(conn, executor, LATER)
     [order], _ = outcomes(conn, verdict)
     assert order["status"] == "submitted" and "replaced" in caplog.text
+    # Review L5: reported every tick, naming what it may block.
+    assert report.stuck_orders == 1 and "buys of AAPL may be blocked" in caplog.text
 
 
 def test_a_rejection_after_acceptance_keeps_a_reason_and_is_never_resubmitted(

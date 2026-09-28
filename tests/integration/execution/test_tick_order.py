@@ -90,3 +90,41 @@ def test_one_failing_order_sync_does_not_stop_the_tick(conn, broker, executor, m
     broker.get_order = flaky
     report = run_tick(conn, executor, NOW + timedelta(minutes=1))
     assert report.errors == 1 and report.fills_applied == 1
+
+
+def test_a_malformed_approval_is_logged_and_everything_else_still_runs(
+    conn, broker, executor, caplog
+):
+    # Research E16 (review L1): a verdict whose approved_order can't be parsed.
+    import json
+
+    seed_baseline(conn)
+    fine = approved_verdict(conn, buy_order())
+    broken = approved_verdict(conn, buy_order(symbol="MSFT"))
+    body = json.dumps({"symbol": "MSFT", "side": "buy"})  # most keys missing
+    conn.execute(
+        "UPDATE risk_verdicts SET approved_order = %s::jsonb WHERE id = %s", (body, broken)
+    )
+    insert_position(conn, "NVDA", qty=10, avg_entry="100")
+    broker.set_position("NVDA", 10, "100")
+    broker.set_trade("NVDA", "70")
+    broker.set_quote("NVDA", "70")
+
+    with caplog.at_level(logging.ERROR):
+        report = run_tick(conn, executor)
+
+    assert report.errors == 1 and str(broken) in caplog.text
+    assert len(outcomes(conn, fine)[0]) == 1
+    assert report.triggers == 1  # the stop-loss monitor still ran
+
+
+def test_one_position_the_table_refuses_does_not_block_the_others(conn, broker, executor, caplog):
+    # Review L2: e.g. an average entry of 0 after a corporate action.
+    broker.set_position("AAPL", 10, "0")
+    broker.set_position("MSFT", 5, "400")
+    with caplog.at_level(logging.ERROR):
+        report = run_tick(conn, executor)
+    held = conn.execute("SELECT symbol FROM positions ORDER BY symbol").fetchall()
+    assert [r["symbol"] for r in held] == ["MSFT"]
+    assert report.reconciled == 1 and report.errors == 1
+    assert "position AAPL" in caplog.text
