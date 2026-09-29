@@ -111,7 +111,7 @@ specs/001-data-model/contracts/role-grants.md  # amended by 004
 ## Things flagged for the owner
 
 - **No risk limit, position sizing or order logic changes.** The universe thresholds in `config/risk.yaml` are untouched. The job only provides the data they are checked against.
-- **Dollar volume is an approximation** (10-day average × previous close), with units inferred from Finnhub's samples. The plausibility check and the owner-run `--check` (quickstart step 4) are the safeguards. A market cap in the wrong unit would be caught only by `--check`, so that step is marked as required before deploying.
+- **Dollar volume is an approximation** (10-day average × previous close), with units inferred from Finnhub's samples. The safeguards are automatic checks (dollar volume ≤ market cap, and a $20 trillion market-cap ceiling added after `/speckit-analyze`) and the owner-run `--check` (quickstart step 4), which stays required before deploying as a human check of the type labels and units.
 - **The seed list ships empty.** Which tickers to seed is your call.
 - **Finnhub account sharing.** If Research later uses the same Finnhub account, the two share its rate limit. `calls_per_minute` must leave room for Research.
 

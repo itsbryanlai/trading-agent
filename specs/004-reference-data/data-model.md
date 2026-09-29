@@ -10,8 +10,8 @@ One existing table is written, one new view is read, and one grant is revoked. M
 | `trading_day` | date | `calendar.trading_day(now)` at insert (ET) |
 | `security_type` | text, CHECK in (`common_stock`, `etf`, `adr`, `other`) | D3 mapping |
 | `exchange_mic` | text | D4 mapping (Nasdaq tiers → `XNAS`; others verbatim) |
-| `market_cap_usd` | numeric(20,2) ≥ 0 | `marketCapitalization` × 10⁶; the job requires > 0 (D5) |
-| `avg_daily_dollar_volume_usd` | numeric(20,2) ≥ 0 | `10DayAverageTradingVolume` × 10⁶ × previous close; must be ≤ market cap (D5) |
+| `market_cap_usd` | numeric(20,2) ≥ 0 | `marketCapitalization` × 10⁶; the job requires > 0 and ≤ $20 trillion (D5) |
+| `avg_daily_dollar_volume_usd` | numeric(20,2) ≥ 0 | `10DayAverageTradingVolume` × 10⁶ × previous close; must be > 0 and ≤ market cap (D5) |
 | `share_price_usd` | numeric(14,4) > 0 | Previous close `pc` |
 | `fetched_at` | timestamptz | Database default `now()` |
 
@@ -19,7 +19,8 @@ Primary key `(symbol, trading_day)`. Rules:
 
 - Inserted with `ON CONFLICT (symbol, trading_day) DO NOTHING`; never updated or deleted (FR-011, FR-022). After 0009 the writer role has no UPDATE.
 - Never inserted for any day but today's (FR-006).
-- Values are rounded to the column scale with `ROUND_HALF_EVEN` before insert, so the stored value is what the gate compares.
+- Values are rounded to the column scale with `ROUND_HALF_EVEN` before insert, so the stored value is what the gate compares; a value that no longer fits its column, or a price that rounds to 0, is `value_out_of_range` (D5).
+- A non-connection database error on one insert is that symbol's failure (`database_error`), never a process exit (D9).
 - History is kept; the Assistant and dashboard can show past days.
 
 ## `reference_candidate_symbols` (new view)
@@ -36,12 +37,14 @@ The only thing the job reads besides `instrument_reference`. Symbols and timesta
 Definition (shape; the migration is the source):
 
 - `position`: every `positions.symbol`.
-- `report`: `reports` with `symbol IS NOT NULL` and `generated_at > now() - interval '10 days'`, grouped by symbol.
-- `decision`: `decisions` with `generated_at > now() - interval '10 days'`, grouped by symbol.
+- `report`: `reports` with `symbol IS NOT NULL`, grouped by symbol.
+- `decision`: `decisions`, grouped by symbol.
+
+No time filter: the exact window is applied in code, and a database-clock filter would break fixed-date tests and drop long-lived active reports (D10).
 
 Owned by the migration admin; not `security_invoker`, so it reads the base tables with the owner's rights. `reports`' row-level security is enabled, not forced, so the owner-run view sees all rows; the policy itself is unchanged.
 
-The job narrows to the FR-001 window in code (D7): a report symbol qualifies if `active_until > now` or `named_at ≥ previous session's open`; a decision symbol if `named_at ≥ previous session's open`; a position always.
+The job narrows to the FR-001 window in code (D10, `calendar.previous_session`): a report symbol qualifies if `active_until > now` or `named_at ≥ previous session's open`; a decision symbol if `named_at ≥ previous session's open`; a position always.
 
 ## Grants (amends `specs/001-data-model/contracts/role-grants.md`)
 

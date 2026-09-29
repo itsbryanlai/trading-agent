@@ -47,12 +47,15 @@ A closed set; each failed or skipped symbol is logged with exactly one.
 | `missing_type` / `missing_mic` | Listed but the field is blank |
 | `missing_market_cap` | Absent, zero or unparseable |
 | `missing_price` | Previous close absent, zero, negative or unparseable |
-| `missing_volume` | 10-day average volume absent, negative or unparseable |
+| `missing_volume` | 10-day average volume absent, zero, negative or unparseable |
+| `implausible_market_cap` | Computed market cap > $20 trillion (a unit error) |
 | `implausible_dollar_volume` | Computed dollar volume > computed market cap |
+| `value_out_of_range` | After rounding, a value doesn't fit its column, or the price rounds to 0 |
 | `provider_unavailable` | Timeout, network or server error for this symbol |
+| `database_error` | The insert failed for a reason other than a lost connection |
 | `rate_limited` | 429 on this symbol's call (the tick stops; retried next tick, not counted toward backoff) |
 
-`KeyRejected` is not per symbol: one error line per tick (FR-019a).
+`KeyRejected` is not per symbol: one error line per tick (FR-019a). Every per-symbol reason except `rate_limited` starts that symbol's backoff (D8), so it is logged once per attempt, not every tick.
 
 ## Log lines
 

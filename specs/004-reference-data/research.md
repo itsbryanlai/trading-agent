@@ -37,7 +37,7 @@ Decisions behind [plan.md](plan.md), numbered D1–D14 so tasks, code comments a
 1. The plausibility check (dollar volume ≤ market cap, FR-010) catches a volume that is really in raw shares (×10⁶ too big).
 2. An owner-run, read-only check (`--check`, D12) prints normalized values for a few well-known symbols before the job is trusted.
 
-A market cap that is really in whole dollars would come out 10⁶ too big, pass everything and approve too much. The `--check` output makes that obvious (Apple at quadrillions), so the quickstart lists it as a required step before deploying.
+A market cap that is really in whole dollars would come out 10⁶ too big. The $20 trillion ceiling (D5, added after `/speckit-analyze` F5) rejects it automatically; the `--check` output is a second, human check.
 
 ## D3. Security-type mapping, fail closed
 
@@ -71,9 +71,11 @@ The docs don't list the full set of strings, so an unknown string becomes `other
 - the symbol is in today's cached US symbol list, with a non-empty type and MIC;
 - `pc` > 0;
 - `marketCapitalization` > 0;
-- `10DayAverageTradingVolume` ≥ 0;
+- `10DayAverageTradingVolume` > 0 (zero means no data, like market cap);
 - every value parses as a finite `Decimal`;
-- the computed dollar volume ≤ the computed market cap.
+- the computed market cap ≤ $20 trillion (`MAX_MARKET_CAP_USD`), about four times the largest company; above it is `implausible_market_cap`. This catches a market cap reported in whole dollars instead of millions (10⁶ too big), which otherwise passes every other check;
+- the computed dollar volume ≤ the computed market cap;
+- after rounding to the column scale, every value still fits its column (`numeric(20,2)`, `numeric(14,4)`) and the price is still > 0; otherwise `value_out_of_range`.
 
 Otherwise the result is `Failure(reason)`. The reasons are a closed set, listed in [contracts/reference-data-interface.md](contracts/reference-data-interface.md).
 
@@ -126,7 +128,7 @@ HTTP outcomes map onto errors:
   4. the seed list.
   
   Ties are broken alphabetically, so the order is deterministic.
-- **Per-symbol backoff after a failure**: 5, 10, 20, then every 30 minutes (FR-014). It is held in memory, so a restart resets it. That only costs a few extra calls.
+- **Per-symbol backoff after a failure**: 5, 10, 20, then every 30 minutes (FR-014), for every per-symbol failure reason, including ones that cost no provider call (`invalid_symbol`, `not_listed`), so a failure is logged once per attempt rather than every tick. `rate_limited` is the exception: it doesn't count. It is held in memory, so a restart resets it. That only costs a few extra calls.
 - **Key rejected**: the rest of that tick is skipped, one error is logged, and the next attempt waits 15 minutes (FR-019a).
 - **Budget**: at 30 calls a minute and 3 calls per symbol, plus 1 bulk list call a day, 200 symbols take about 20 minutes. That is well inside 08:00–09:15 (SC-002).
 
@@ -136,6 +138,7 @@ HTTP outcomes map onto errors:
 
 **Decision**:
 - `INSERT … ON CONFLICT (symbol, trading_day) DO NOTHING`, one autocommit statement per row.
+- A database error on one symbol's insert other than a lost connection (for example a CHECK violation that `normalize` should have prevented) is logged, counted as that symbol's failure (`database_error`) and backed off; it never exits the process. `OperationalError` still exits (FR-019).
 - `trading_day` = `calendar.trading_day(now)` at the moment of the insert.
 - Before fetching a symbol, the service checks whether today's row already exists, so no calls are wasted (FR-011, FR-018).
 - The role has no UPDATE permission (D10), so a changed row is impossible, not just avoided.
@@ -145,10 +148,10 @@ HTTP outcomes map onto errors:
 **Decision**: a new migration, `0009_reference_data.sql`:
 
 1. `REVOKE UPDATE ON instrument_reference FROM ta_reference_data;`
-2. `CREATE VIEW reference_candidate_symbols`, with columns `symbol`, `source` (`position` | `report` | `decision`), `named_at` (the latest `generated_at`; null for positions) and `active_until` (the latest `expires_at` for reports; otherwise null). It only returns report and decision rows from the last 10 days. The view carries no text, reasoning, size or quantity.
+2. `CREATE VIEW reference_candidate_symbols`, with columns `symbol`, `source` (`position` | `report` | `decision`), `named_at` (the latest `generated_at`; null for positions) and `active_until` (the latest `expires_at` for reports; otherwise null). It has no time filter (after `/speckit-analyze` F2–F3: a filter on the database clock would make fixed-date tests expire, and would drop a report still active after 10 days). It is grouped per symbol and source, so it grows with the number of distinct symbols, not reports. The view carries no text, reasoning, size or quantity.
 3. `GRANT SELECT ON reference_candidate_symbols TO ta_reference_data, ta_assistant, ta_dashboard;`. The Assistant and dashboard can read everything (Constitution VII).
 
-The view is owned by the migration admin and is not `security_invoker`, so it runs with the owner's rights. The job's role reads through it with no rights on `positions`, `reports` or `decisions`. The `reports` row-level security policy stays unchanged: RLS is enabled but not forced, so the table owner bypasses it. The exact FR-001 window (since the previous session's open) is applied in Python with the calendar. The view's 10-day bound only limits what is exposed, and it covers any holiday run.
+The view is owned by the migration admin and is not `security_invoker`, so it runs with the owner's rights. The job's role reads through it with no rights on `positions`, `reports` or `decisions`. The `reports` row-level security policy stays unchanged: RLS is enabled but not forced, so the table owner bypasses it. The exact FR-001 window (since the previous session's open) is applied in Python with the calendar, using a new `calendar.previous_session(day)` helper.
 
 `specs/001-data-model/contracts/role-grants.md` and `tests/integration/storage/grants_matrix.py` are amended to match, and the both-ways grants test covers the view.
 
@@ -189,7 +192,9 @@ The owner runs it once with their own key (quickstart), to confirm the units and
   1. read both variables; if either is missing, exit with code 2;
   2. make one read-only provider call (the US symbol list, which is needed anyway). A `KeyRejected`, or a check that can't complete, means exit 2 (FR-019a);
   3. connect with autocommit and keepalives, as Execution does;
-  4. take a single-instance advisory lock with its own key, waiting up to 5 minutes, then exit 2 (FR-017).
+  4. take a single-instance session advisory lock with its own key (`0x72656631`, "ref1"), distinct from Execution's single-instance key `0x65786531` and transaction key `0x65786563` and the gate's `0x7269736B`, waiting up to 5 minutes, then exit 2 (FR-017).
+
+The symbol list fetched at startup is cached tagged with `calendar.trading_day(startup_now)`, and used only on that trading day.
 - **Lost database connection**: exit 3 (FR-019).
 - **Provider errors**: never exit the process.
 

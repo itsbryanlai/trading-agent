@@ -18,6 +18,11 @@
 - Q: What happens when the provider rejects the job's key itself? → A: At startup the job makes one read to check the key and exits if it's rejected, so a misconfigured deploy fails visibly. If the key is rejected later, the job logs one error-level line for that run naming the key rejection, skips the rest of the run, and stays up to try again at the next check.
 - Q: Should the job's role keep the UPDATE permission on `instrument_reference` from migration 0006? → A: No. This feature's migration revokes it; the role can only read and insert, and inserting a row that already exists for that symbol and day is a no-op.
 
+### Session 2026-09-29 (after `/speckit-analyze`)
+
+- Q: Can a stored value be zero? → A: No. FR-005 is aligned with SC-005: price, market cap, average volume and dollar volume must all be above zero, because the provider uses 0 for "no data".
+- Q: What catches a market cap reported in the wrong unit, which would otherwise pass every check? → A: A sanity ceiling: a market cap above $20 trillion (about four times the largest company) fails the symbol (`implausible_market_cap`). It is a data check, not a risk limit, and lives in code, not `config/risk.yaml`.
+
 ## User Scenarios & Testing *(mandatory)*
 
 The "users" of this job are the system's owner, who wants buys to be possible only in symbols that verifiably meet the universe rules in `config/risk.yaml`, and the Risk Gate, which judges every buy against today's reference data for its symbol and rejects the buy (`universe_no_reference_data`) when there is none ([ADR 0010](../../docs/adr/0010-stop-loss-monitor-and-universe-reference-data.md)). The Assistant and dashboard read the same data to explain rejections.
@@ -118,7 +123,7 @@ The owner (through logs now; the Assistant and dashboard later) can see which sy
 **Fetching and recording**
 
 - **FR-004**: For each symbol in the set without a row for today, the job MUST fetch security type, exchange, market cap, average daily dollar volume and share price from the read-only market-data provider, and record them as one row for today's trading day. The share price MUST be the previous session's closing price, whether the symbol is fetched before the open or during the day.
-- **FR-005**: The job MUST write a row only when all five values were obtained and pass sanity checks (share price above zero, market cap and dollar volume not negative, exchange and type present). Otherwise it MUST write nothing for that symbol today.
+- **FR-005**: The job MUST write a row only when all five values were obtained and pass sanity checks (share price, market cap, average volume and dollar volume all above zero; market cap no more than $20 trillion, a ceiling that catches a provider unit error; every value within what the stored columns can hold after rounding; exchange and type present). A zero from the provider means "no data", never a real value. Otherwise it MUST write nothing for that symbol today.
 - **FR-006**: The job MUST NOT copy, carry forward or fall back to a row from an earlier trading day, and MUST NOT write a row for any trading day other than today's.
 - **FR-007**: The job MUST normalize security type to exactly one of `common_stock`, `etf`, `adr`, `other`, mapping anything not clearly one of the first three to `other`.
 - **FR-008**: The job MUST record the exchange as an ISO 10383 operating-exchange code, mapping known market segments to their exchange (for example Nasdaq tiers to XNAS), and record any unmapped code unchanged.
@@ -130,7 +135,7 @@ The owner (through logs now; the Assistant and dashboard later) can see which sy
 
 - **FR-012**: The job MUST run in its own process with its own loop ([ADR 0013](../../docs/adr/0013-deterministic-services-run-their-own-loops.md)), taking every time judgement (trading day, open, close, early closes) from the shared exchange calendar.
 - **FR-013**: On an XNYS trading day, the main run MUST start at the beginning of a pre-open window (08:00 ET) and aim to finish before 09:15 ET. If the job starts later in the day, it MUST run the full set at once.
-- **FR-014**: Between the main run and that day's close, the job MUST periodically rebuild the symbol set, fetch symbols newly in it, and retry symbols that failed, backing off per symbol so a persistently failing symbol is not retried every check.
+- **FR-014**: Between the main run and that day's close, the job MUST periodically rebuild the symbol set, fetch symbols newly in it, and retry symbols that failed, backing off per symbol so a persistently failing symbol (whatever the reason, including an unknown or invalid symbol) is not retried or re-logged every check.
 - **FR-015**: The job MUST do nothing on days that are not XNYS trading days, and MUST NOT fetch after the day's close.
 - **FR-016**: The job MUST stay within the provider's rate limit, slowing down on a rate-limit response rather than abandoning the remaining symbols.
 - **FR-017**: Only one instance of the job MUST run at a time.
@@ -170,7 +175,7 @@ The owner (through logs now; the Assistant and dashboard later) can see which sy
 - **SC-002**: A symbol set of up to 200 symbols completes within the 08:00–09:15 ET window under the provider's free-tier rate limit.
 - **SC-003**: A symbol newly named during market hours has today's row within 5 minutes, when the provider is healthy.
 - **SC-004**: Zero rows are ever written for a trading day other than today's, and zero rows are carried forward from an earlier day (verified by tests over failing-provider scenarios).
-- **SC-005**: Zero rows are written with a missing, zero or negative required value, or with a security type outside the four allowed values.
+- **SC-005**: Zero rows are written with a missing, zero or negative required value, a market cap above $20 trillion, or a security type outside the four allowed values.
 - **SC-006**: A provider outage of any length blocks no sell or stop-loss exit; buys in affected symbols are rejected for missing data, and nothing else changes.
 - **SC-007**: The job's database role can do nothing beyond FR-021 and FR-022, verified by the grants-matrix test against the database's own permission records.
 
