@@ -1,0 +1,14 @@
+# Settings for the universe reference-data job (python -m trading_agent.reference).
+#
+# Schema: specs/004-reference-data/contracts/reference-data-interface.md
+# ("Configuration"). Every key is required and unknown keys are rejected; a bad
+# file means the job refuses to start.
+#
+# Changed only through code review (spec FR-002). No agent writes this file.
+
+# Symbols fetched every trading day, whatever the system is doing.
+seed_symbols: []
+
+# Provider pacing. 30 is half the commonly quoted Finnhub free-tier limit of
+# 60 calls a minute, which is not confirmed (research D8).
+calls_per_minute: 30

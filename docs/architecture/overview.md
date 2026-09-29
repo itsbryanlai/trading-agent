@@ -69,6 +69,14 @@ Full behavior, inputs/outputs, and edge cases for each are in
 |---|---|---|---|
 | Risk Gate | a `decisions` row, `config/risk.yaml`, market-open flag from caller | `risk_verdicts` | nothing (pure function, no credentials) |
 | Execution | an approved `risk_verdicts` row | `orders` | the only broker (Alpaca) credentials in the system |
+| Reference-data job | `reference_candidate_symbols` (held and recently named symbols), a seed list, Finnhub | `instrument_reference`, insert-only | a read-only Finnhub key; cannot trade |
+
+Execution, the Risk Gate's stop-loss trigger runner and the reference-data job each run
+their own loop in their own process ([ADR 0013](../adr/0013-deterministic-services-run-their-own-loops.md)).
+The reference-data job records the universe facts the gate checks every buy against, once per
+symbol per trading day, from 08:00 ET until the close; a symbol without today's row can't be
+bought ([ADR 0010](../adr/0010-stop-loss-monitor-and-universe-reference-data.md) §3,
+[`docs/specs/reference-data.md`](../specs/reference-data.md)).
 
 ## Data
 
@@ -102,7 +110,7 @@ default, write access is scoped to the table(s) that component owns
   a read-only DB role like the Assistant's, plus write access to the single
   `trading_paused` toggle
 - Alpaca paper endpoint for market data and order execution
-- Credentials never committed: Alpaca keys, Anthropic key, Telegram bot
+- Credentials never committed: Alpaca keys, Anthropic key, Finnhub keys, Telegram bot
   token/chat ID, each scoped to the one component that needs them
 
 ## Open items

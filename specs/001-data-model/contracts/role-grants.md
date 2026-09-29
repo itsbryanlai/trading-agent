@@ -52,8 +52,9 @@ that can.
 | `system_state` | — | — | — | S, U(halt_triggered_on, baseline_trading_day, daily_starting_equity, updated_at) | S(trading_paused) ² | — | S | S | S | S, U(trading_paused, updated_at) | — |
 | `system_state_effective` (view) | — | — | — | S | — | — | S | S | S | S | — |
 | `stop_loss_triggers` ¹ | — | — | — | S | S, I | S | — | S | S | — | — |
-| `instrument_reference` ¹ | — | — | — | S | — | — | — | S | S | — | S, I, U |
+| `instrument_reference` ¹ ³ | — | — | — | S | — | — | — | S | S | — | S, I |
 | `execution_refusals` ² | — | — | — | — | S, I | S | — | S | S | — | — |
+| `reference_candidate_symbols` (view) ³ | — | — | — | — | — | — | — | S | S | — | S |
 | `schema_migrations` | — | — | — | — | — | — | — | — | — | — | — |
 
 ¹ Added by `specs/002-risk-gate` (migration `0006`). Execution writes stop-loss triggers and the
@@ -64,6 +65,13 @@ The journal can read triggers so it can trace a stop-loss exit's order back to i
 to the columns that change after submission; it may read the manual pause flag and no other
 `system_state` column (FR-018); `execution_refusals` records approvals it declined to submit, readable
 wherever orders are.
+
+³ Amended by `specs/004-reference-data` (migration `0009`). The reference-data job loses `UPDATE` on
+`instrument_reference`: a day's row is never changed once written, and it inserts with
+`ON CONFLICT DO NOTHING`. Its only read outside that table is `reference_candidate_symbols`, a view
+of held and recently named symbols (symbols and times only). The view runs with its owner's rights,
+so the job has no access to `positions`, `reports` or `decisions`, and the `reports` row-level
+security policies are unchanged (research D10).
 
 Bold `—` marks the two denials the spec calls out by name: the Risk Gate and Execution can never
 read the journal (FR-012), so attribution cannot become a trading input.

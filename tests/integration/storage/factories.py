@@ -85,6 +85,8 @@ OBJECTS: dict[str, ObjectSpec] = {
     "instrument_reference": ObjectSpec("table", probe_column="exchange_mic"),
     # Feature 003
     "execution_refusals": ObjectSpec("table", probe_column="reason"),
+    # Feature 004
+    "reference_candidate_symbols": ObjectSpec("view", probe_column="symbol"),
 }
 
 
