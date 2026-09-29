@@ -68,3 +68,17 @@ def test_is_session():
     assert calendar.is_session(date(2026, 9, 28)) is True
     assert calendar.is_session(date(2026, 9, 26)) is False
     assert calendar.is_session(date(2026, 11, 26)) is False
+
+
+@pytest.mark.parametrize(
+    ("day", "expected"),
+    [
+        (date(2026, 9, 28), date(2026, 9, 25)),  # Monday -> Friday
+        (date(2026, 9, 29), date(2026, 9, 28)),  # an ordinary weekday
+        (date(2026, 11, 27), date(2026, 11, 25)),  # Thanksgiving skipped
+        (date(2026, 9, 26), date(2026, 9, 25)),  # a Saturday -> Friday
+        (date(2026, 11, 26), date(2026, 11, 25)),  # the holiday itself -> Wednesday
+    ],
+)
+def test_previous_session(day, expected):
+    assert calendar.previous_session(day) == expected

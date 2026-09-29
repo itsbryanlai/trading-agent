@@ -49,3 +49,14 @@ def close_time(day: date) -> datetime:
     if not is_session(day):
         raise ValueError(f"{day} is not an NYSE session")
     return _XNYS.session_close(pd.Timestamp(day)).to_pydatetime().astimezone(UTC)
+
+
+def previous_session(day: date) -> date:
+    """The last NYSE session strictly before `day`, whether or not `day` is one.
+
+    Used by the reference-data job's symbol window (specs/004-reference-data D10).
+    """
+    stamp = pd.Timestamp(day)
+    if is_session(day):
+        return _XNYS.previous_session(stamp).date()
+    return _XNYS.date_to_session(stamp, direction="previous").date()

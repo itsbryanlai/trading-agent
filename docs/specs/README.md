@@ -25,5 +25,6 @@ Function signatures, class hierarchies, pseudocode, library choices — those be
 | [`assistant-agent.md`](assistant-agent.md) | Read-only Telegram Q&A |
 | [`risk-gate.md`](risk-gate.md) | Deterministic trade validation |
 | [`execution.md`](execution.md) | Deterministic order submission |
+| [`reference-data.md`](reference-data.md) | Daily universe reference data for the Risk Gate |
 | [`orchestrator.md`](orchestrator.md) | Scheduling, no authority |
 | [`ui-dashboard.md`](ui-dashboard.md) | Monitoring surface |

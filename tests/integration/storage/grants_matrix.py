@@ -135,8 +135,9 @@ GRANTS: dict[str, dict[str, set[str]]] = {
         "ta_assistant": {"S"},
         "ta_dashboard": {"S"},
     },
+    # Feature 004 (migration 0009) revoked the job's UPDATE: rows are never changed.
     "instrument_reference": {
-        "ta_reference_data": {"S", "I", "U"},
+        "ta_reference_data": {"S", "I"},
         "ta_risk_gate": {"S"},
         "ta_assistant": {"S"},
         "ta_dashboard": {"S"},
@@ -145,6 +146,13 @@ GRANTS: dict[str, dict[str, set[str]]] = {
     "execution_refusals": {
         "ta_execution": {"S", "I"},
         "ta_journal": {"S"},
+        "ta_assistant": {"S"},
+        "ta_dashboard": {"S"},
+    },
+    # Feature 004 (migration 0009). The reference-data job's only read outside its
+    # own table: symbols and times, never the base tables.
+    "reference_candidate_symbols": {
+        "ta_reference_data": {"S"},
         "ta_assistant": {"S"},
         "ta_dashboard": {"S"},
     },

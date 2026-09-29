@@ -96,6 +96,18 @@ Per-symbol universe data for one trading day: security type, exchange, market
 cap, average daily dollar volume, and share price. The Risk Gate's universe
 check reads it; a symbol missing today's row fails that check. Writers: a
 dedicated `reference_data` role for the daily reference-data job (ADR 0010).
+The job inserts only, never updates: a day's row is never changed once written
+(`specs/004-reference-data`, migration `0009`).
+
+## `reference_candidate_symbols` (view)
+
+The symbols the reference-data job fetches data for: every held position, and
+every symbol named in a report or decision, with the latest time it was named
+and (for reports) the latest expiry. Symbols and times only, no text, sizes or
+quantities. It runs with its owner's rights, so the job reads it without any
+access to `positions`, `reports` or `decisions`; the job applies the exact
+"recently named" window itself (`specs/004-reference-data` research D10).
+Readers: the `reference_data` role, the Assistant and the dashboard.
 
 ## `orders`
 
