@@ -24,11 +24,12 @@ from trading_agent.reference.provider import (
     KeyRejected,
     Listing,
     MarketDataProvider,
+    NotPermitted,
     ProviderUnavailable,
     RateLimited,
 )
 from trading_agent.reference.schedule import fetch_allowed, open_warning_due
-from trading_agent.reference.symbols import Candidate, build_symbol_set
+from trading_agent.reference.symbols import Candidate, build_symbol_set, is_plausible_ticker
 from trading_agent.risk import calendar
 
 log = logging.getLogger("trading_agent.reference")
@@ -165,15 +166,25 @@ class ReferenceJob:
         if memory.key_retry_at is not None and now < memory.key_retry_at:
             return report
 
-        recorded = self.store.recorded_symbols(day)
-        symbol_set = build_symbol_set(self.store.read_candidates(), self.config.seed_symbols, now)
+        try:
+            recorded = self.store.recorded_symbols(day)
+            candidates = self.store.read_candidates()
+        except psycopg.OperationalError:
+            raise  # a lost connection: the loop exits for a restart (FR-019)
+        except psycopg.Error as exc:
+            # Anything else is retried next tick, never a crash loop (review M3).
+            log.error("reference: database read failed: %s; retrying next tick", type(exc).__name__)
+            report.stopped = "database_error"
+            return report
+        symbol_set = build_symbol_set(candidates, self.config.seed_symbols, now)
         report.candidates = len(symbol_set.ordered) + len(symbol_set.skipped)
 
         if open_warning_due(now, memory.warned_on):
             missing = [s for s in symbol_set.ordered if s not in recorded]
             missing += [f.symbol for f in symbol_set.skipped]
             if missing:
-                log.warning("reference: at open, no data for: %s", ", ".join(missing))
+                shown = ", ".join(_shown(s) for s in missing)
+                log.warning("reference: at open, no data for: %s", shown)
             memory.warned_on = day
 
         for failure in symbol_set.skipped:
@@ -193,7 +204,7 @@ class ReferenceJob:
                 elif self.monotonic() - started >= TICK_BUDGET_SECONDS:
                     report.deferred += 1
                 else:
-                    self._fetch_one(symbol, listings.get(symbol), day, now, report)
+                    self._fetch_isolated(symbol, listings.get(symbol), day, now, report)
         except _Stop as stop:
             report.stopped = stop.reason
             if stop.reason == "key_rejected":
@@ -233,15 +244,32 @@ class ReferenceJob:
         self.symbol_list = (day, listings)
         return listings
 
+    def _fetch_isolated(self, symbol, listing, day, now, report) -> None:
+        """One symbol; an unexpected error fails that symbol only (review M3)."""
+        try:
+            self._fetch_one(symbol, listing, day, now, report)
+        except (_Stop, psycopg.OperationalError):
+            raise
+        except Exception:
+            log.exception("reference: %s: unexpected error", _shown(symbol))
+            self._failed(n.Failure(symbol, n.INTERNAL_ERROR), now, report)
+
     def _fetch_one(self, symbol, listing, day, now, report) -> None:
+        failure = n.listing_failure(symbol, listing)
+        if failure is not None:  # costs no provider call (review M2)
+            self._failed(failure, now, report)
+            return
         try:
             profile = self._call(self.provider.get_profile, symbol)
             quote = self._call(self.provider.get_quote, symbol)
             metrics = self._call(self.provider.get_metrics, symbol)
+        except NotPermitted:
+            self._failed(n.Failure(symbol, n.NOT_PERMITTED), now, report)
+            return
         except ProviderUnavailable:
             self._failed(n.Failure(symbol, n.PROVIDER_UNAVAILABLE), now, report)
             return
-        result = n.normalize(symbol, listing, profile, quote, metrics)
+        result = n.normalize(symbol, listing, profile, quote, metrics, now)
         if isinstance(result, n.Failure):
             self._failed(result, now, report)
             return
@@ -250,7 +278,7 @@ class ReferenceJob:
         except psycopg.OperationalError:
             raise  # a lost connection: the loop exits for a restart (FR-019)
         except psycopg.Error as exc:
-            log.warning("reference: %s insert failed: %s", symbol, type(exc).__name__)
+            log.warning("reference: %s insert failed: %s", _shown(symbol), type(exc).__name__)
             self._failed(n.Failure(symbol, n.DATABASE_ERROR), now, report)
             return
         self._memory.retries.pop(symbol, None)
@@ -282,7 +310,13 @@ class ReferenceJob:
         report.failed += 1
         log.warning(
             "reference: %s failed: %s; next attempt at %s",
-            failure.symbol,
+            _shown(failure.symbol),
             failure.reason,
             next_at.isoformat(),
         )
+
+
+def _shown(symbol) -> str:
+    """Symbols come from LLM-written reports: log anything that isn't a plain
+    ticker as a repr, so it can't forge a log line (review LOW)."""
+    return symbol if is_plausible_ticker(symbol) else repr(symbol)

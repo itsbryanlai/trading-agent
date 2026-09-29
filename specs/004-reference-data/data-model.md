@@ -12,14 +12,14 @@ One existing table is written, one new view is read, and one grant is revoked. M
 | `exchange_mic` | text | D4 mapping (Nasdaq tiers → `XNAS`; others verbatim) |
 | `market_cap_usd` | numeric(20,2) ≥ 0 | `marketCapitalization` × 10⁶; the job requires > 0 and ≤ $20 trillion (D5) |
 | `avg_daily_dollar_volume_usd` | numeric(20,2) ≥ 0 | `10DayAverageTradingVolume` × 10⁶ × previous close; must be > 0 and ≤ market cap (D5) |
-| `share_price_usd` | numeric(14,4) > 0 | Previous close `pc` |
+| `share_price_usd` | numeric(14,4) > 0 | Previous session's close: `pc` or `c` by the quote's time `t`; stale quotes fail (D2) |
 | `fetched_at` | timestamptz | Database default `now()` |
 
 Primary key `(symbol, trading_day)`. Rules:
 
 - Inserted with `ON CONFLICT (symbol, trading_day) DO NOTHING`; never updated or deleted (FR-011, FR-022). After 0009 the writer role has no UPDATE.
 - Never inserted for any day but today's (FR-006).
-- Values are rounded to the column scale with `ROUND_HALF_EVEN` before insert, so the stored value is what the gate compares; a value that no longer fits its column, or a price that rounds to 0, is `value_out_of_range` (D5).
+- Values are rounded **down** (`ROUND_DOWN`) to the column scale before insert, so rounding never lifts a value over a gate floor, so the stored value is what the gate compares; a value that no longer fits its column, or a price that rounds to 0, is `value_out_of_range` (D5).
 - A non-connection database error on one insert is that symbol's failure (`database_error`), never a process exit (D9).
 - History is kept; the Assistant and dashboard can show past days.
 

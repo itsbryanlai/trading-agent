@@ -109,14 +109,23 @@ def test_bad_config_refuses(env, tmp_path):
     assert code == runner.EXIT_REFUSED and "url" not in seen
 
 
-@pytest.mark.parametrize(
-    "error", [KeyRejected("401"), ProviderUnavailable("down"), RateLimited("429")]
-)
-def test_key_check_failure_refuses_before_the_database(env, error):
+def test_rejected_key_refuses_before_the_database(env):
     fake = FakeMarketData()
-    fake.fail("list_us_symbols", error=error)
+    fake.fail("list_us_symbols", error=KeyRejected("401"))
     code, seen, _ = run(fake=fake, max_ticks=1)
     assert code == runner.EXIT_REFUSED and "url" not in seen
+
+
+@pytest.mark.parametrize("error", [ProviderUnavailable("down"), RateLimited("429")])
+def test_an_outage_at_startup_defers_the_key_check_instead_of_exiting(env, caplog, error):
+    # Exiting would only restart into the same call (review M4); the first tick
+    # fetches the list, and a bad key is then caught there (FR-019a).
+    fake = FakeMarketData()
+    fake.fail("list_us_symbols", error=error)
+    code, seen, _ = run(fake=fake, max_ticks=2)
+    assert code == runner.EXIT_OK and "url" in seen
+    assert FakeJob.last.symbol_list is None and len(FakeJob.last.ticks) == 2
+    assert "key check deferred" in caplog.text
 
 
 def test_database_unreachable_exits_3(env):

@@ -11,7 +11,13 @@ import pytest
 
 from tests.unit.reference.support import make_job
 from trading_agent.reference import normalize as n
-from trading_agent.reference.provider import KeyRejected, ProviderUnavailable, RateLimited
+from trading_agent.reference.provider import (
+    KeyRejected,
+    Listing,
+    NotPermitted,
+    ProviderUnavailable,
+    RateLimited,
+)
 from trading_agent.reference.symbols import Candidate
 
 NOW = datetime(2026, 9, 28, 12, 30, tzinfo=UTC)
@@ -126,8 +132,66 @@ def test_a_lost_connection_propagates():
 
 def test_yesterdays_row_is_never_carried_forward():
     job, fake, store, _ = make_job(["AAA"])
+    fake.quote_time = datetime(2026, 9, 25, 11, 0, tzinfo=UTC)
     job.tick(datetime(2026, 9, 25, 12, 30, tzinfo=UTC))  # Friday: recorded
+    fake.quote_time = datetime(2026, 9, 28, 11, 0, tzinfo=UTC)
     fake.fail("get_quote", "AAA", error=ProviderUnavailable("down"))
     job.tick(NOW)  # Monday: provider down
     assert ("AAA", date(2026, 9, 25)) in store.rows
     assert ("AAA", DAY) not in store.rows
+
+
+def test_unlisted_and_conflicting_symbols_cost_no_calls():
+    job, fake, store, _ = make_job(["GONE", "DUP", "OK"])
+    fake.listings.pop("GONE")
+    fake.listings["DUP"] = Listing("DUP", None, None, conflicting=True)
+    report = job.tick(NOW)
+    assert fake.calls_for("GONE") == [] and fake.calls_for("DUP") == []
+    assert report.failed == 2 and {s for s, _ in store.rows} == {"OK"}
+
+
+def test_a_403_on_one_symbol_fails_only_that_symbol(caplog):
+    job, fake, store, _ = make_job(["AAA", "BBB"])
+    fake.fail("get_profile", "AAA", error=NotPermitted("HTTP 403"))
+    with caplog.at_level(logging.WARNING, logger="trading_agent.reference"):
+        report = job.tick(NOW)
+    assert report.stopped is None and report.failed == 1
+    failures = [r.getMessage() for r in caplog.records if "AAA failed" in r.getMessage()]
+    assert len(failures) == 1 and f"failed: {n.NOT_PERMITTED};" in failures[0]
+    assert {s for s, _ in store.rows} == {"BBB"}
+    job.tick(minutes(1))
+    assert fake.calls_for("AAA") == ["get_profile"]  # backed off, not retried a minute later
+
+
+def test_an_unexpected_error_fails_only_that_symbol(caplog):
+    job, fake, store, _ = make_job(["AAA", "BBB"])
+    fake.fail("get_metrics", "AAA", error=RuntimeError("bug"))
+    with caplog.at_level(logging.WARNING, logger="trading_agent.reference"):
+        report = job.tick(NOW)
+    assert report.failed == 1 and {s for s, _ in store.rows} == {"BBB"}
+    assert any(n.INTERNAL_ERROR in r.getMessage() for r in caplog.records)
+
+
+@pytest.mark.parametrize("method", ["recorded_symbols", "read_candidates"])
+def test_a_database_read_error_skips_the_tick_without_crashing(method, caplog):
+    job, fake, store, _ = make_job(["AAA"])
+
+    def broken(*args):
+        raise psycopg.errors.InsufficientPrivilege("denied")
+
+    setattr(store, method, broken)
+    with caplog.at_level(logging.ERROR, logger="trading_agent.reference"):
+        report = job.tick(NOW)
+    assert report.stopped == "database_error" and fake.calls == []
+    assert any("database read failed" in r.getMessage() for r in caplog.records)
+
+
+def test_a_lost_connection_on_read_propagates():
+    job, _, store, _ = make_job(["AAA"])
+
+    def gone(*args):
+        raise psycopg.OperationalError("gone")
+
+    store.recorded_symbols = gone
+    with pytest.raises(psycopg.OperationalError):
+        job.tick(NOW)

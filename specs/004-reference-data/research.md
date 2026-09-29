@@ -24,11 +24,15 @@ Decisions behind [plan.md](plan.md), numbered D1–D14 so tasks, code comments a
 |---|---|---|
 | Security type, exchange MIC | `GET /stock/symbol?exchange=US` (the whole US list in one call, cached for the trading day) | `type` is mapped per D3; `mic` per D4 |
 | Market cap | `GET /stock/profile2?symbol=` → `marketCapitalization` | × 1,000,000 (millions of USD, per the sample: AAPL 1415993) |
-| Previous close | `GET /quote?symbol=` → `pc` | USD as is |
+| Previous close | `GET /quote?symbol=` → `pc`, `c` and `t` (see below) | USD as is |
 | 10-day average volume | `GET /stock/metric?symbol=&metric=all` → `metric.10DayAverageTradingVolume` | × 1,000,000 shares (per the sample: AAPL 32.50147) |
 
 - Average daily dollar volume = 10-day average volume in shares × previous close (spec Clarifications, FR-010).
-- Share price = previous close (FR-004).
+- Share price = previous close (FR-004), chosen by the quote's time `t` (added after the adversarial review, H1):
+  - if `t` is on today's trading day (pre-market or in session), the quote has rolled over, so use `pc`;
+  - if `t` is on the previous session's day, it hasn't rolled yet, so use `c` (that session's last price; possibly an after-hours trade, which `--check` will show);
+  - otherwise, or with no `t`, fail as `stale_quote`. A halted symbol's weeks-old quote can't pass the $5 floor.
+- Market cap must be reported in USD (`profile2` → `currency`); anything else fails as `non_usd_market_cap` (review H2). A company reporting in yen would otherwise be stored as dollars, about 150× too big.
 - `/stock/candle` (historical daily bars) is premium and is not used.
 
 **Why**: this covers all five fields on the free tier with the same read-only key ADR 0010 names, so no new ADR is needed.
@@ -69,13 +73,15 @@ The docs don't list the full set of strings, so an unknown string becomes `other
 
 **Decision**: a symbol gets a row only if all of these hold:
 - the symbol is in today's cached US symbol list, with a non-empty type and MIC;
-- `pc` > 0;
+- the previous close (per D2) > 0, from a quote that isn't stale;
+- the profile's `currency` is `USD`;
+- the symbol isn't listed twice inconsistently (`conflicting_listing`);
 - `marketCapitalization` > 0;
 - `10DayAverageTradingVolume` > 0 (zero means no data, like market cap);
 - every value parses as a finite `Decimal`;
 - the computed market cap ≤ $20 trillion (`MAX_MARKET_CAP_USD`), about four times the largest company; above it is `implausible_market_cap`. This catches a market cap reported in whole dollars instead of millions (10⁶ too big), which otherwise passes every other check;
 - the computed dollar volume ≤ the computed market cap;
-- after rounding to the column scale, every value still fits its column (`numeric(20,2)`, `numeric(14,4)`) and the price is still > 0; otherwise `value_out_of_range`.
+- after rounding **down** to the column scale (so rounding never lifts a value over a gate floor; review), every value still fits its column (`numeric(20,2)`, `numeric(14,4)`) and is still > 0; otherwise `value_out_of_range`. Decimal overflow or an invalid quantize from extreme exponents is also `value_out_of_range`, never an exception (review M3).
 
 Otherwise the result is `Failure(reason)`. The reasons are a closed set, listed in [contracts/reference-data-interface.md](contracts/reference-data-interface.md).
 
@@ -95,9 +101,10 @@ HTTP outcomes map onto errors:
 
 | Response | Error |
 |---|---|
-| 401 or 403 | `KeyRejected` |
+| 401, or 403 on the symbol list | `KeyRejected` |
+| 403 on a per-symbol call | `NotPermitted`: that symbol's failure (`not_permitted`), backed off (review M1) |
 | 429 | `RateLimited` |
-| other 4xx or 5xx, timeout, network error, or unparseable JSON | `ProviderUnavailable` |
+| other 4xx or 5xx, timeout, network error, truncated or malformed response (`http.client.HTTPException`, converge T041), or unparseable JSON | `ProviderUnavailable` |
 | 200 with an empty object | a missing value, handled by D5 |
 
 **Alternatives**:
@@ -121,6 +128,8 @@ HTTP outcomes map onto errors:
 
 - **Pacer**: calls are spaced at `60 / calls_per_minute` seconds. `calls_per_minute` comes from `config/reference_data.yaml`, default 30: half the commonly quoted free limit of 60 a minute, which is not confirmed. On `RateLimited`, the pass stops, and the next tick carries on after at least 60 seconds (FR-016).
 - **Work per tick**: each tick spends at most about 50 seconds fetching, then returns. The next tick rebuilds the candidate set. A symbol named during a long morning run is therefore picked up within a tick or two (SC-003), instead of waiting for a 20-minute pass to finish.
+- **Listing first**: `not_listed`, `conflicting_listing`, `missing_type` and `missing_mic` are decided from the cached symbol list before any per-symbol call, so a made-up ticker costs nothing (review M2).
+- **Isolation**: an unexpected error while handling one symbol fails that symbol (`internal_error`, logged with a traceback); a database read error other than a lost connection skips the tick. Neither ends the process (review M3).
 - **Order within a tick**, most likely to be bought first:
   1. symbols from reports still active or decisions made today;
   2. held positions;
@@ -190,7 +199,7 @@ The owner runs it once with their own key (quickstart), to confirm the units and
 - **Environment**: `REFERENCE_DATA_FINNHUB_API_KEY` and `REFERENCE_DATA_DATABASE_URL` only (FR-020). The key's name is scoped to this component (Constitution: each component's credential is distinct). Whether it is a different Finnhub account from Research's later key is the owner's choice. If they share an account, they share its rate limit, and `calls_per_minute` must leave room for Research.
 - **Startup**:
   1. read both variables; if either is missing, exit with code 2;
-  2. make one read-only provider call (the US symbol list, which is needed anyway). A `KeyRejected`, or a check that can't complete, means exit 2 (FR-019a);
+  2. make one read-only provider call (the US symbol list, which is needed anyway). A `KeyRejected` means exit 2. An outage or rate limit doesn't: the check is deferred to the first tick, which fetches the list itself, because exiting would only restart the process into the same call (FR-019a as amended; review M4);
   3. connect with autocommit and keepalives, as Execution does;
   4. take a single-instance session advisory lock with its own key (`0x72656631`, "ref1"), distinct from Execution's single-instance key `0x65786531` and transaction key `0x65786563` and the gate's `0x7269736B`, waiting up to 5 minutes, then exit 2 (FR-017).
 

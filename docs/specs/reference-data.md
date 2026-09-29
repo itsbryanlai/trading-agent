@@ -32,7 +32,9 @@ written and never written for any other day. History is kept.
 How values are derived:
 - Average daily dollar volume = the provider's 10-day average volume × the
   previous session's closing price.
-- Share price = the previous session's closing price.
+- Share price = the previous session's closing price, chosen by the quote's own time.
+  A quote older than the previous session (e.g. a halted symbol) fails closed.
+- Market cap must be reported in US dollars; values are rounded down, never up.
 - Security types the provider doesn't clearly label as common stock, ETF or ADR
   become `other`.
 - Exchange codes are recorded at the exchange level (Nasdaq tiers become
@@ -54,7 +56,9 @@ Nothing is fetched on non-trading days or after the close.
 
 Fail closed, per symbol. A missing row costs a skipped buy; a wrong row costs
 real exposure. Any of the following writes nothing for that symbol today:
-- a provider error;
+- a provider error, or a 403 for that one symbol;
+- a stale quote, or a market cap reported in another currency;
+- a symbol listed twice inconsistently;
 - a missing or zero value;
 - a market cap above $20 trillion (a unit error);
 - a dollar volume above the market cap;
@@ -66,10 +70,11 @@ After a failure, the symbol is logged, backed off (5, 10, 20, then every
 
 Other failures:
 - **Rate limit:** the job slows down and carries on next minute.
-- **Key rejected at startup:** the process refuses to start.
+- **Key rejected at startup:** the process refuses to start. A provider outage at
+  startup doesn't stop it; the first run retries.
 - **Key rejected later:** one error per run, and a retry 15 minutes later.
 - **Lost database connection:** the process exits so the platform restarts it.
-- **Implausible tickers:** skipped and logged, never sent to the provider.
+- **Implausible tickers:** skipped and logged safely (quoted), never sent to the provider.
 
 Sells and stop-loss exits never depend on this data, so no failure here can
 block an exit.

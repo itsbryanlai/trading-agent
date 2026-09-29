@@ -8,9 +8,9 @@ Frozen dataclasses. Numbers are `Decimal` exactly as the provider sent them (no 
 
 | Value | Fields |
 |---|---|
-| `Listing` | `symbol`, `type` (provider string), `mic` (provider string) |
-| `Profile` | `symbol`, `market_cap_millions` |
-| `Quote` | `symbol`, `previous_close` |
+| `Listing` | `symbol`, `type` (provider string), `mic` (provider string), `conflicting` (the list named it more than once, differently; type and mic are then `None`) |
+| `Profile` | `symbol`, `market_cap_millions`, `currency` (the currency market cap is reported in) |
+| `Quote` | `symbol`, `current` (`c`), `previous_close` (`pc`), `timestamp` (`t`, when `current` was set, timezone-aware; `None` if absent or unusable) |
 | `Metrics` | `symbol`, `avg_volume_10d_millions` |
 
 ## Calls
@@ -18,9 +18,9 @@ Frozen dataclasses. Numbers are `Decimal` exactly as the provider sent them (no 
 | Call | Returns | Raises |
 |---|---|---|
 | `list_us_symbols()` | `dict[str, Listing]` keyed by symbol | `KeyRejected`, `RateLimited`, `ProviderUnavailable` |
-| `get_profile(symbol)` | `Profile` (fields `None` if the provider returned `{}`) | same |
-| `get_quote(symbol)` | `Quote` | same |
-| `get_metrics(symbol)` | `Metrics` | same |
+| `get_profile(symbol)` | `Profile` (fields `None` if the provider returned `{}`) | `KeyRejected` (401), `NotPermitted` (403), `RateLimited`, `ProviderUnavailable` |
+| `get_quote(symbol)` | `Quote` | as `get_profile` |
+| `get_metrics(symbol)` | `Metrics` | as `get_profile` |
 
 There is deliberately nothing that writes, and nothing that trades: the provider can't, and the port doesn't model it.
 
@@ -28,7 +28,7 @@ There is deliberately nothing that writes, and nothing that trades: the provider
 
 - The key travels only in the `X-Finnhub-Token` header; it never appears in a URL, log line, exception message or `repr`.
 - 10-second timeout per call; no retries inside the adapter.
-- Status mapping: 401/403 → `KeyRejected`; 429 → `RateLimited`; any other non-200, timeout, connection error or unparseable body → `ProviderUnavailable`.
+- Status mapping: 401 → `KeyRejected`; 403 → `KeyRejected` on the symbol list, `NotPermitted` on a per-symbol call (the plan doesn't cover that symbol; adversarial review M1); 429 → `RateLimited`; any other non-200, timeout, connection error, truncated or malformed response (`http.client.HTTPException`) or unparseable body → `ProviderUnavailable`.
 - Strings and numbers are converted to `Decimal` at the boundary; a non-finite or unparseable number becomes `None` (then a failure in `normalize`), never zero.
 - No provider type escapes the adapter.
 

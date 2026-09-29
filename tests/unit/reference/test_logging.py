@@ -15,17 +15,14 @@ from trading_agent.reference.symbols import Candidate
 
 NOW = datetime(2026, 9, 28, 12, 30, tzinfo=UTC)
 OPEN = datetime(2026, 9, 28, 13, 30, tzinfo=UTC)
-FAKE_KEY = "test-key-not-real"
-FAKE_URL = "postgresql://ta_reference_data:fake-password@localhost/x"
 
 
 @pytest.fixture
 def logs(caplog):
+    # FR-023 (no key or connection string in logs) is tested where the key and URL
+    # actually reach the code: test_finnhub_adapter.py and test_main.py.
     caplog.set_level(logging.DEBUG, logger="trading_agent.reference")
-    yield caplog
-    for record in caplog.records:
-        message = record.getMessage()
-        assert FAKE_KEY not in message and FAKE_URL not in message
+    return caplog
 
 
 def messages(caplog, level):
@@ -59,7 +56,17 @@ def test_quiet_when_there_is_nothing_to_do(logs):
 def test_invalid_symbols_are_logged(logs):
     job, _, _, _ = make_job([], candidates=[Candidate("bad$", "position", None, None)])
     job.tick(NOW)
-    assert any("bad$ failed: invalid_symbol" in m for m in messages(logs, logging.WARNING))
+    assert any("'bad$' failed: invalid_symbol" in m for m in messages(logs, logging.WARNING))
+
+
+def test_a_symbol_cannot_forge_a_log_line(logs):
+    forged = "X\nreference: day=2026-09-28 candidates=0 recorded=999"
+    job, _, _, _ = make_job([], candidates=[Candidate(forged, "position", None, None)])
+    job.tick(NOW)
+    job.tick(OPEN)
+    assert logs.records
+    for record in logs.records:
+        assert "\n" not in record.getMessage()
 
 
 def test_open_warning_names_the_missing_once(logs):

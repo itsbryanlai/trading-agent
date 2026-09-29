@@ -27,6 +27,7 @@ from trading_agent.reference.config import DEFAULT_CONFIG_PATH, ReferenceConfigE
 from trading_agent.reference.finnhub import FinnhubProvider
 from trading_agent.reference.provider import (
     KeyRejected,
+    NotPermitted,
     ProviderError,
     ProviderUnavailable,
     RateLimited,
@@ -72,7 +73,9 @@ def main(
 ) -> int:
     args = list(sys.argv[1:] if argv is None else argv)
     if args[:1] == ["--check"]:
-        return _check(args[1:], provider_factory=provider_factory, sleep=sleep, out=out)
+        return _check(
+            args[1:], provider_factory=provider_factory, sleep=sleep, clock=clock, out=out
+        )
     if args:
         log.critical("reference: unknown arguments %s", args)
         return EXIT_REFUSED
@@ -87,12 +90,18 @@ def main(
 
     provider = provider_factory(key)
     started_at = clock()
+    symbol_list = None
     try:
         # The key check (FR-019a), and today's symbol list while we're at it.
-        listings = provider.list_us_symbols()
-    except ProviderError as exc:
-        log.critical("reference: refusing to start: market-data key check failed: %s", exc)
+        symbol_list = (calendar.trading_day(started_at), provider.list_us_symbols())
+    except KeyRejected as exc:
+        log.critical("reference: refusing to start: market-data key rejected: %s", exc)
         return EXIT_REFUSED
+    except ProviderError as exc:
+        # An outage or rate limit isn't a misconfiguration: exiting would only make
+        # the platform restart us into the same call (review M4). The first tick
+        # fetches the list, and a bad key is then caught there (FR-019a).
+        log.warning("reference: market-data key check deferred: %s", exc)
 
     try:
         conn = connect(
@@ -122,7 +131,7 @@ def main(
             config,
             sleep=sleep,
             monotonic=monotonic,
-            symbol_list=(calendar.trading_day(started_at), listings),
+            symbol_list=symbol_list,
         )
         ticks = 0
         while max_ticks is None or ticks < max_ticks:
@@ -167,7 +176,7 @@ def _take_lock(conn, lock_wait: timedelta, lock_retry: timedelta, sleep) -> None
         sleep(lock_retry.total_seconds())
 
 
-def _check(symbols, *, provider_factory, sleep, out) -> int:
+def _check(symbols, *, provider_factory, sleep, clock, out) -> int:
     """Owner-run, read-only: print what the job would record (D12). No database."""
     try:
         provider = provider_factory(require_env(KEY_VARIABLE))
@@ -197,13 +206,20 @@ def _check(symbols, *, provider_factory, sleep, out) -> int:
         except RateLimited:
             out(f"{symbol} failed: {n.RATE_LIMITED}")
             continue
+        except NotPermitted:
+            out(f"{symbol} failed: {n.NOT_PERMITTED}")
+            continue
         except ProviderUnavailable:
             out(f"{symbol} failed: {n.PROVIDER_UNAVAILABLE}")
             continue
-        result = n.normalize(symbol, listing, profile, quote, metrics)
-        raw = f"(provider type={listing.type!r} mic={listing.mic!r})" if listing else ""
+        result = n.normalize(symbol, listing, profile, quote, metrics, clock())
+        # What the mappings and the stale-quote rule received (quickstart step 4).
+        when = quote.timestamp.isoformat() if quote.timestamp else None
+        raw = (f"(provider type={listing.type!r} mic={listing.mic!r} " if listing else "(") + (
+            f"currency={profile.currency!r} c={quote.current} pc={quote.previous_close} t={when})"
+        )
         if isinstance(result, n.Failure):
-            out(f"{symbol} failed: {result.reason} {raw}".rstrip())
+            out(f"{symbol} failed: {result.reason} {raw}")
         else:
             out(
                 f"{symbol} {result.security_type} {result.exchange_mic} "

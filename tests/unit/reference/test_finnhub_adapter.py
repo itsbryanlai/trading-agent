@@ -4,9 +4,11 @@ API description."""
 
 from __future__ import annotations
 
+import http.client
 import io
 import json
 import logging
+from datetime import UTC, datetime
 from decimal import Decimal
 from urllib.error import HTTPError, URLError
 from urllib.parse import parse_qs, urlsplit
@@ -14,7 +16,15 @@ from urllib.parse import parse_qs, urlsplit
 import pytest
 
 from trading_agent.reference.finnhub import BASE_URL, FinnhubProvider
-from trading_agent.reference.provider import KeyRejected, ProviderUnavailable, RateLimited
+from trading_agent.reference.provider import (
+    KeyRejected,
+    NotPermitted,
+    ProviderUnavailable,
+    RateLimited,
+)
+
+# 2026-09-28 11:00 UTC as Unix seconds.
+MONDAY_0700_ET = int(datetime(2026, 9, 28, 11, 0, tzinfo=UTC).timestamp())
 
 KEY = "test-key-not-real"
 
@@ -71,13 +81,16 @@ def test_symbol_list():
 
 
 def test_profile_quote_metrics_paths_and_values():
-    opener = Opener({"marketCapitalization": 1415993, "name": "Apple Inc"})
-    assert provider(opener).get_profile("AAPL").market_cap_millions == Decimal("1415993")
+    opener = Opener({"marketCapitalization": 1415993, "currency": "USD", "name": "Apple Inc"})
+    profile = provider(opener).get_profile("AAPL")
+    assert profile.market_cap_millions == Decimal("1415993") and profile.currency == "USD"
     assert _url(opener).path.endswith("/stock/profile2")
     assert parse_qs(_url(opener).query) == {"symbol": ["AAPL"]}
 
-    opener = Opener({"c": 151.1, "pc": 150.25, "t": 1})
-    assert provider(opener).get_quote("AAPL").previous_close == Decimal("150.25")
+    opener = Opener({"c": 151.1, "pc": 150.25, "t": MONDAY_0700_ET})
+    quote = provider(opener).get_quote("AAPL")
+    assert quote.previous_close == Decimal("150.25") and quote.current == Decimal("151.1")
+    assert quote.timestamp == datetime(2026, 9, 28, 11, 0, tzinfo=UTC)
     assert _url(opener).path.endswith("/quote")
     assert parse_qs(_url(opener).query) == {"symbol": ["AAPL"]}
 
@@ -116,7 +129,7 @@ def _http_error(code):
     ("error", "expected"),
     [
         (_http_error(401), KeyRejected),
-        (_http_error(403), KeyRejected),
+        (_http_error(403), NotPermitted),  # one symbol outside the plan (review M1)
         (_http_error(429), RateLimited),
         (_http_error(404), ProviderUnavailable),
         (_http_error(500), ProviderUnavailable),
@@ -124,6 +137,10 @@ def _http_error(code):
         (URLError("no route"), ProviderUnavailable),
         (TimeoutError("slow"), ProviderUnavailable),
         (ConnectionResetError("reset"), ProviderUnavailable),
+        # Not OSError or ValueError (converge T041).
+        (http.client.IncompleteRead(b"par", 10), ProviderUnavailable),
+        (http.client.BadStatusLine("junk"), ProviderUnavailable),
+        (http.client.LineTooLong("header"), ProviderUnavailable),
     ],
 )
 def test_errors_map_to_the_port(error, expected):
@@ -155,3 +172,41 @@ def test_no_retries_inside_the_adapter():
     with pytest.raises(ProviderUnavailable):
         provider(opener).get_quote("X")
     assert len(opener.requests) == 1
+
+
+def test_a_403_on_the_symbol_list_or_any_401_is_the_key():
+    with pytest.raises(KeyRejected):
+        provider(Opener(error=_http_error(403))).list_us_symbols()
+    with pytest.raises(KeyRejected):
+        provider(Opener(error=_http_error(401))).get_profile("X")
+
+
+def test_a_truncated_body_is_unavailable():
+    class Truncated(Response):
+        def read(self, *args):
+            raise http.client.IncompleteRead(b"par", 10)
+
+    def opener(request, timeout):
+        return Truncated(b"")
+
+    with pytest.raises(ProviderUnavailable):
+        provider(opener).get_quote("X")
+
+
+@pytest.mark.parametrize("t", [0, -5, "1790593200", True, None, 1e30])
+def test_unusable_quote_times_are_none(t):
+    assert provider(Opener({"c": 1, "pc": 1, "t": t})).get_quote("X").timestamp is None
+
+
+def test_conflicting_duplicate_listings_fail_closed():
+    opener = Opener(
+        [
+            {"symbol": "DUP", "type": "Common Stock", "mic": "XNYS"},
+            {"symbol": "DUP", "type": "Unit", "mic": "OTCM"},
+            {"symbol": "SAME", "type": "Common Stock", "mic": "XNGS"},
+            {"symbol": "SAME", "type": "Common Stock", "mic": "XNGS"},
+        ]
+    )
+    listings = provider(opener).list_us_symbols()
+    assert listings["DUP"].conflicting and listings["DUP"].type is None
+    assert not listings["SAME"].conflicting and listings["SAME"].mic == "XNGS"

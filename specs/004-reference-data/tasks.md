@@ -316,6 +316,21 @@ Serves all stories (FR-012, FR-017, FR-019, FR-019a, FR-020, D12, D13).
 
 ---
 
+## Phase 10: Fixes from the adversarial review (spec Clarifications 2026-09-30)
+
+- [X] T042 H1: the quote carries `c`, `pc` and `t`; `normalize.previous_close` takes `pc` when `t` is on today's trading day, `c` when it is on the previous session's day, and otherwise fails `stale_quote` (`src/trading_agent/reference/{provider,finnhub,normalize}.py`; tests in `test_normalize.py` and `test_finnhub_adapter.py`)
+- [X] T043 H2: the profile carries `currency`; anything but USD fails `non_usd_market_cap` (`normalize.py`; `test_normalize.py`)
+- [X] T044 M1: 403 on a per-symbol call raises `NotPermitted` and fails only that symbol (`not_permitted`, backed off); 401, or 403 on the symbol list, stays `KeyRejected` (`finnhub.py`, `service.py`; `test_finnhub_adapter.py`, `test_service_failures.py`)
+- [X] T045 M2: `normalize.listing_failure` runs before any per-symbol call (`service.py`; `test_unlisted_and_conflicting_symbols_cost_no_calls`)
+- [X] T046 M3: `DecimalException` in `normalize` becomes `value_out_of_range`; an unexpected error on one symbol becomes `internal_error`; a non-connection database read error skips the tick (`normalize.py`, `service.py`; property test with extreme exponents, `test_service_failures.py`)
+- [X] T047 M4: at startup only a rejected key exits; an outage or 429 defers the key check to the first tick (`__main__.py`; `test_main.py`), amending FR-019a
+- [X] T048 Round all three stored values down, never up (`normalize.py`; `test_rounding_is_down_so_it_never_lifts_a_value_over_a_floor`)
+- [X] T049 A symbol listed twice with different type or exchange is `conflicting_listing` (`finnhub.py`, `normalize.py`; adapter and normalize tests)
+- [X] T050 Symbols that aren't plain tickers are logged as a repr, so they can't forge a log line (`service.py`; `test_a_symbol_cannot_forge_a_log_line`)
+- [X] T051 Tests: property test that `normalize` never raises (extreme exponents, timestamps, currencies); an integration test on a real autocommit connection (`tests/integration/reference/test_autocommit.py`); the vacuous key-in-logs check in `test_logging.py` removed (FR-023 is covered by the adapter and main tests)
+- [X] T052 Docs: spec Clarifications and FR-004/FR-005/FR-019a, research D2/D5/D6/D8/D13, data model, both contracts, `docs/specs/reference-data.md`, quickstart (`--check` shows `c`/`pc`/`t`/currency; the view-ownership deployment note)
+- [X] T053 Mutation pass over the fixes (see notes)
+
 ## Dependencies & execution order
 
 - **Setup (T001–T003)**: no dependencies.
@@ -382,3 +397,17 @@ Serves all stories (FR-012, FR-017, FR-019, FR-019a, FR-020, D12, D13).
   - removing `ta_risk_gate`'s unused SELECT on `system_state_effective`;
   - deployment config;
   - the owner-run live `--check` (quickstart step 4), which is required before deploying.
+
+---
+
+## Phase 9: Convergence
+
+- [X] T041 Map `http.client.HTTPException` (e.g. `IncompleteRead`, `BadStatusLine`, `LineTooLong`, which are not `OSError`/`ValueError`) raised by the opener or `response.read()` to `ProviderUnavailable` in `FinnhubProvider._get` (`src/trading_agent/reference/finnhub.py`), so a malformed or truncated response can't escape `tick()` and end the process; add cases to `tests/unit/reference/test_finnhub_adapter.py` and mutation-check per FR-019 and contracts/market-data-port.md "Guarantees" (partial)
+- **Converge and adversarial review (T041–T053)**: converge found T041. The adversarial review
+  found H1, H2, M1–M4 and three LOW issues, and all of them were applied with the owner's approval.
+  A second mutation pass covered 42 mutations, the original 25 plus 17 for the fixes. One survived
+  at first: removing the `NotPermitted` handler, because the generic per-symbol isolation still
+  failed just that symbol, as `internal_error`. The 403 test now checks the logged reason, and the
+  mutation is caught.
+- **Still for the owner**: the live `--check` (quickstart step 4) is the only way to confirm
+  whether Finnhub's `c` can be an after-hours price when the quote hasn't rolled over (research D2).

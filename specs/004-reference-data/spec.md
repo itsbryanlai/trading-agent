@@ -23,6 +23,15 @@
 - Q: Can a stored value be zero? → A: No. FR-005 is aligned with SC-005: price, market cap, average volume and dollar volume must all be above zero, because the provider uses 0 for "no data".
 - Q: What catches a market cap reported in the wrong unit, which would otherwise pass every check? → A: A sanity ceiling: a market cap above $20 trillion (about four times the largest company) fails the symbol (`implausible_market_cap`). It is a data check, not a risk limit, and lives in code, not `config/risk.yaml`.
 
+### Session 2026-09-30 (after the adversarial review)
+
+- Q: How is the previous close known to be the previous session's, not an older one? → A: From the quote's own time. If it is on today's trading day (pre-market or in session), the quote has rolled over and its previous-close field is the previous session's close; if it is on the previous session's day, the quote hasn't rolled yet and its last price is that session's close. Any other time (missing, or older, e.g. a halted symbol) fails the symbol as `stale_quote`.
+- Q: What if the provider reports market cap in another currency? → A: Fail closed (`non_usd_market_cap`) unless the profile's currency is USD. Foreign issuers reporting in other currencies can't be bought; that is the safe direction.
+- Q: Does a 403 on one symbol mean the key is rejected? → A: No. Only a 401, or a 403 on the symbol list, is a key rejection. A 403 on one symbol's request fails that symbol (`not_permitted`) and backs it off; the other symbols carry on.
+- Q: Should a provider outage or rate limit at startup stop the process? → A: No, only a rejected key does. Otherwise the key check is deferred to the first tick, which fetches the list itself; exiting would only restart the process into the same call. Amends FR-019a.
+- Q: How are values rounded to the stored precision? → A: Down, never up, so rounding can't lift a value over a gate floor (e.g. $4.99995 is stored as $4.9999, not $5.0000).
+- Q: What if the symbol list names a symbol twice with different types or exchanges? → A: Fail closed (`conflicting_listing`); which entry is right is unknowable.
+
 ## User Scenarios & Testing *(mandatory)*
 
 The "users" of this job are the system's owner, who wants buys to be possible only in symbols that verifiably meet the universe rules in `config/risk.yaml`, and the Risk Gate, which judges every buy against today's reference data for its symbol and rejects the buy (`universe_no_reference_data`) when there is none ([ADR 0010](../../docs/adr/0010-stop-loss-monitor-and-universe-reference-data.md)). The Assistant and dashboard read the same data to explain rejections.
@@ -96,7 +105,9 @@ The owner (through logs now; the Assistant and dashboard later) can see which sy
 ### Edge Cases
 
 - **Held position, no data**: a held symbol with no row can still be sold and stop-loss exited; only buys need reference data. The job still tries to fetch it because a PM may want to add to it.
-- **Key rejected by the provider**: see FR-019a. It is reported once per run, not once per symbol.
+- **Key rejected by the provider**: see FR-019a. It is reported once per run, not once per symbol. A 403 on one symbol's request is that symbol's failure (`not_permitted`), not a key rejection.
+- **Stale quote**: a halted or delisted symbol whose quote is older than the previous session fails as `stale_quote`, so a days-old price never passes the $5 floor.
+- **Symbol text from reports**: a candidate that isn't a plain ticker is logged as a quoted repr, so a newline in an LLM-written symbol can't forge a log line.
 - **Symbol the provider doesn't know** (delisted, renamed, typo in a report): treated like any failure; no row, logged, retried at the normal cadence rather than every tick.
 - **Malformed symbol** in a report or decision (`decisions.symbol` has no format check): the job skips symbols that don't look like a US ticker, logs them, and never sends them to the provider.
 - **Exchange segment codes**: the provider may report a market segment (for example a Nasdaq tier) rather than the exchange itself. The job records the exchange-level code the gate expects (XNYS, XNAS or XASE) for known segments; anything it can't map is recorded as reported, so the gate's listing check rejects it.
@@ -122,8 +133,8 @@ The owner (through logs now; the Assistant and dashboard later) can see which sy
 
 **Fetching and recording**
 
-- **FR-004**: For each symbol in the set without a row for today, the job MUST fetch security type, exchange, market cap, average daily dollar volume and share price from the read-only market-data provider, and record them as one row for today's trading day. The share price MUST be the previous session's closing price, whether the symbol is fetched before the open or during the day.
-- **FR-005**: The job MUST write a row only when all five values were obtained and pass sanity checks (share price, market cap, average volume and dollar volume all above zero; market cap no more than $20 trillion, a ceiling that catches a provider unit error; every value within what the stored columns can hold after rounding; exchange and type present). A zero from the provider means "no data", never a real value. Otherwise it MUST write nothing for that symbol today.
+- **FR-004**: For each symbol in the set without a row for today, the job MUST fetch security type, exchange, market cap, average daily dollar volume and share price from the read-only market-data provider, and record them as one row for today's trading day. The share price MUST be the previous session's closing price, whether the symbol is fetched before the open or during the day, taken from the quote according to the quote's own time; a quote whose time is missing or older than the previous session MUST fail the symbol (Clarifications 2026-09-30).
+- **FR-005**: The job MUST write a row only when all five values were obtained and pass sanity checks (share price, market cap, average volume and dollar volume all above zero; market cap no more than $20 trillion, a ceiling that catches a provider unit error; every value within what the stored columns can hold after rounding; exchange and type present; market cap reported in USD; the symbol listed exactly once, or consistently). Values are rounded down to the stored precision. A zero from the provider means "no data", never a real value. Otherwise it MUST write nothing for that symbol today.
 - **FR-006**: The job MUST NOT copy, carry forward or fall back to a row from an earlier trading day, and MUST NOT write a row for any trading day other than today's.
 - **FR-007**: The job MUST normalize security type to exactly one of `common_stock`, `etf`, `adr`, `other`, mapping anything not clearly one of the first three to `other`.
 - **FR-008**: The job MUST record the exchange as an ISO 10383 operating-exchange code, mapping known market segments to their exchange (for example Nasdaq tiers to XNAS), and record any unmapped code unchanged.
@@ -141,7 +152,7 @@ The owner (through logs now; the Assistant and dashboard later) can see which sy
 - **FR-017**: Only one instance of the job MUST run at a time.
 - **FR-018**: Running the job twice for the same day MUST produce the same rows as running it once (idempotent).
 - **FR-019**: On a lost database connection the process MUST exit so the platform restarts it (ADR 0013 §5). Per-symbol provider failures MUST NOT stop the process.
-- **FR-019a**: At startup the job MUST make one read-only call with its market-data key and exit if the key is rejected (or the check can't complete). If the key is rejected after startup, the job MUST log one error-level line for that run naming the key rejection, skip the rest of the run, and keep running.
+- **FR-019a**: At startup the job MUST make one read-only call with its market-data key and exit if the key is rejected (a 401, or a 403 on that call). If the check can't complete (an outage or rate limit), the job MUST NOT exit: it logs a warning and the first tick repeats the call (amended 2026-09-30). If the key is rejected after startup, the job MUST log one error-level line for that run naming the key rejection, skip the rest of the run, and keep running.
 
 **Credentials and access**
 

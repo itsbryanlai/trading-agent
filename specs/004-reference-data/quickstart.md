@@ -53,6 +53,8 @@ Confirm by eye:
 - Dollar volumes are plausible (billions for AAPL) and below market cap.
 - `AAPL`/`MSFT` show `common_stock` on `XNAS`; `BRK.B` `common_stock` on `XNYS`; `SPY` `etf` (on `ARCX`, so the gate would reject it — expected).
 - If a common stock shows `other`, note the provider's type string it printed; widening D3's mapping is a reviewed change.
+- Each line prints the quote's `c`, `pc` and time `t`. Before the open, `t` should be either today (pre-market; `pc` is used) or the previous session (`c` is used). Check that the stored price matches the previous session's official close. If `t` shows an after-hours time, `c` may be an after-hours trade rather than the close: note it, and we decide whether to tighten D2.
+- `currency` should be `USD` for US companies; a foreign issuer reporting in another currency fails as `non_usd_market_cap` (expected).
 
 ## Running
 
@@ -63,3 +65,5 @@ REFERENCE_DATA_FINNHUB_API_KEY=... REFERENCE_DATA_DATABASE_URL=... .venv/bin/pyt
 ```
 
 No deployment config exists yet. Whichever feature first writes the Railway config must start this alongside `python -m trading_agent.execution` and `python -m trading_agent.risk`, each with only its own environment variables. The `ta_reference_data` role needs a login user created at deploy time (as for the other roles).
+
+The `reference_candidate_symbols` view reads `reports` with its owner's rights, which relies on the migration admin owning `reports` (or being a superuser), since `reports` has row-level security enabled but not forced. On Railway, confirm the account behind `ADMIN_DATABASE_URL` owns the tables it created; if the view returned no report symbols, this is the first thing to check.
