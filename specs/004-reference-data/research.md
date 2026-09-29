@@ -76,6 +76,7 @@ The docs don't list the full set of strings, so an unknown string becomes `other
 - the previous close (per D2) > 0, from a quote that isn't stale;
 - the profile's `currency` is `USD`;
 - the symbol isn't listed twice inconsistently (`conflicting_listing`);
+- the symbol isn't a share-class ticker (`.` or `-`). The owner's live check on 2026-09-29 returned BRK.A's volume (about 270 shares a day) for BRK.B, so share classes fail closed as `share_class_unverified` until a reliable per-class source exists;
 - `marketCapitalization` > 0;
 - `10DayAverageTradingVolume` > 0 (zero means no data, like market cap);
 - every value parses as a finite `Decimal`;

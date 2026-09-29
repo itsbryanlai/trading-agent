@@ -40,14 +40,14 @@ def key_only(monkeypatch):
 def test_prints_one_line_per_symbol_and_writes_nothing():
     fake = FakeMarketData()
     fake.add("AAPL", market_cap_millions="1415993", previous_close="150.25")
-    fake.add("BRK.B", mic="XNYS", market_cap_millions="100", avg_volume_10d_millions="10")
+    fake.add("BRK.B", mic="XNYS")
     code, lines = check(["AAPL", "BRK.B", "bad$"], fake)
     assert code == runner.EXIT_OK
     assert lines[0].startswith("AAPL common_stock XNAS market_cap_usd=1,415,993,000,000.00")
     # What the mappings and the stale-quote rule received, for the owner to check.
     assert "provider type='Common Stock' mic='XNGS' currency='USD' c=201 pc=150.25" in lines[0]
     assert "t=2026-09-28T11:00:00+00:00" in lines[0]
-    assert lines[1].startswith("BRK.B failed: implausible_dollar_volume")
+    assert lines[1].startswith("BRK.B failed: share_class_unverified")
     assert lines[2] == "bad$ failed: invalid_symbol"
     assert FAKE_KEY not in "\n".join(lines)
 

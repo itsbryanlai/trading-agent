@@ -44,6 +44,7 @@ A closed set; each failed or skipped symbol is logged with exactly one.
 |---|---|
 | `invalid_symbol` | Fails the ticker check |
 | `not_listed` | Absent from today's US symbol list (checked before any per-symbol call, so it costs none) |
+| `share_class_unverified` | A share-class ticker (`.` or `-`, e.g. `BRK.B`): the provider's volume was seen to belong to the other class. Decided before any call |
 | `conflicting_listing` | The US list names the symbol more than once with different types or exchanges |
 | `missing_type` / `missing_mic` | Listed but the field is blank |
 | `non_usd_market_cap` | The profile's market-cap currency isn't USD, or is missing |

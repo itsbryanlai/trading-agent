@@ -39,22 +39,45 @@ New scenarios, all with the fake provider:
 .venv/bin/ruff check src tests && .venv/bin/ruff format --check src tests
 ```
 
-## 4. Owner-run live check (required once before deploying; read-only)
+## 4. Owner-run live check (required before deploying; read-only)
 
-Touches only Finnhub with the owner's read-only key — never the broker, never the database. Run by the owner, not by an assistant or a test:
+Touches only Finnhub with the owner's read-only key — never the broker, never the database. Run by the owner, not by an assistant or a test. The key is typed into the terminal, never into a file or a chat:
 
 ```bash
-REFERENCE_DATA_FINNHUB_API_KEY=... .venv/bin/python -m trading_agent.reference --check AAPL MSFT BRK.B SPY
+read -s REFERENCE_DATA_FINNHUB_API_KEY && export REFERENCE_DATA_FINNHUB_API_KEY
 ```
 
-Confirm by eye:
+```bash
+.venv/bin/python -m trading_agent.reference --check AAPL MSFT BRK.B SPY
+```
 
-- Market caps are in the trillions/billions of dollars (not ×10⁶ off) — validates D2's unit.
-- Dollar volumes are plausible (billions for AAPL) and below market cap.
-- `AAPL`/`MSFT` show `common_stock` on `XNAS`; `BRK.B` `common_stock` on `XNYS`; `SPY` `etf` (on `ARCX`, so the gate would reject it — expected).
-- If a common stock shows `other`, note the provider's type string it printed; widening D3's mapping is a reviewed change.
-- Each line prints the quote's `c`, `pc` and time `t`. Before the open, `t` should be either today (pre-market; `pc` is used) or the previous session (`c` is used). Check that the stored price matches the previous session's official close. If `t` shows an after-hours time, `c` may be an after-hours trade rather than the close: note it, and we decide whether to tighten D2.
-- `currency` should be `USD` for US companies; a foreign issuer reporting in another currency fails as `non_usd_market_cap` (expected).
+```bash
+unset REFERENCE_DATA_FINNHUB_API_KEY
+```
+
+Each line prints the stored values, then what the provider sent: `type`, `mic`, `currency`, and the quote's `c`, `pc` and time `t`. The output never contains the key.
+
+### Expected results (from the owner's run on 2026-09-29, during the session)
+
+| Symbol | Result | What it confirms |
+|---|---|---|
+| AAPL | `common_stock XNAS`, market cap $4.94T, dollar volume $13.3bn/day, price = `pc` | Market cap is in millions (≈ price × shares outstanding); volume is in millions of shares; Finnhub sends `XNAS` directly (the tier-code mapping in D4 is a safety net) |
+| MSFT | `common_stock XNAS`, $3.78T, $12.2bn/day | Same |
+| BRK.B | `failed: share_class_unverified` | On that run, BRK.B's 10-day volume came back as about 270 shares a day: BRK.A's volume, not BRK.B's. Share-class tickers (`.` or `-`) now fail closed without any call (spec Clarifications 2026-09-30) |
+| SPY | `failed: non_usd_market_cap` | ETFs have no company profile, so no currency. The gate would reject SPY anyway (ETF on `ARCX`), so this is expected |
+
+Also check by eye:
+
+- The stored price equals the **previous session's official close** (compare with any quote site).
+- A common stock showing `other`: note the `type=` string it printed; widening D3's mapping is a reviewed change.
+- A foreign issuer reporting in another currency fails as `non_usd_market_cap` (expected).
+
+### Still to run: once before 09:30 ET on a trading day
+
+The 2026-09-29 run was during the session, so every quote had rolled over (`t` today, price from `pc`). A pre-open run exercises the other branch of D2. Look at `t`:
+
+- If `t` is today (pre-market), the price comes from `pc` and should be the previous close.
+- If `t` is the previous session's day, the price comes from `c`. If `t` is an evening time (after 16:00 ET), `c` may be an after-hours trade rather than the official close. In that case, note the difference, and we decide whether to tighten D2.
 
 ## Running
 

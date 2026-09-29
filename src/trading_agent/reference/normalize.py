@@ -22,6 +22,7 @@ from trading_agent.risk import calendar
 # Failure reasons: exactly contracts/reference-data-interface.md "Failure reasons".
 INVALID_SYMBOL = "invalid_symbol"
 NOT_LISTED = "not_listed"
+SHARE_CLASS_UNVERIFIED = "share_class_unverified"
 CONFLICTING_LISTING = "conflicting_listing"
 MISSING_TYPE = "missing_type"
 MISSING_MIC = "missing_mic"
@@ -41,6 +42,7 @@ INTERNAL_ERROR = "internal_error"
 ALL_REASONS = (
     INVALID_SYMBOL,
     NOT_LISTED,
+    SHARE_CLASS_UNVERIFIED,
     CONFLICTING_LISTING,
     MISSING_TYPE,
     MISSING_MIC,
@@ -106,6 +108,14 @@ def listing_failure(symbol: str, listing: Listing | None) -> Failure | None:
     so a made-up ticker costs nothing (review M2)."""
     if listing is None:
         return Failure(symbol, NOT_LISTED)
+    if "." in symbol or "-" in symbol:
+        # A share-class ticker (BRK.B, BF-B). The owner's live check showed the
+        # provider's volume for BRK.B is BRK.A's (about 270 shares a day). That
+        # direction only rejects buys, but a quiet class given its busy sibling's
+        # volume would pass the liquidity floor wrongly, and the job can't tell
+        # which way a mix-up goes. Fail closed until a reliable source is chosen
+        # (spec Clarifications 2026-09-30).
+        return Failure(symbol, SHARE_CLASS_UNVERIFIED)
     if listing.conflicting:
         return Failure(symbol, CONFLICTING_LISTING)
     if not (listing.type or "").strip():

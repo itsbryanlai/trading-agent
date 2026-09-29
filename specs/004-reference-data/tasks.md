@@ -330,6 +330,7 @@ Serves all stories (FR-012, FR-017, FR-019, FR-019a, FR-020, D12, D13).
 - [X] T051 Tests: property test that `normalize` never raises (extreme exponents, timestamps, currencies); an integration test on a real autocommit connection (`tests/integration/reference/test_autocommit.py`); the vacuous key-in-logs check in `test_logging.py` removed (FR-023 is covered by the adapter and main tests)
 - [X] T052 Docs: spec Clarifications and FR-004/FR-005/FR-019a, research D2/D5/D6/D8/D13, data model, both contracts, `docs/specs/reference-data.md`, quickstart (`--check` shows `c`/`pc`/`t`/currency; the view-ownership deployment note)
 - [X] T053 Mutation pass over the fixes (see notes)
+- [X] T054 Share-class tickers (`.` or `-`) fail closed as `share_class_unverified` in `normalize.listing_failure`, before any call. The owner's live `--check` on 2026-09-29 returned BRK.A's volume for BRK.B. Quickstart step 4 now records that run's results and the pre-open run still to do (`normalize.py`; tests in `test_normalize.py`, `test_service_failures.py`, `test_check_mode.py`)
 
 ## Dependencies & execution order
 
@@ -411,3 +412,7 @@ Serves all stories (FR-012, FR-017, FR-019, FR-019a, FR-020, D12, D13).
   mutation is caught.
 - **Still for the owner**: the live `--check` (quickstart step 4) is the only way to confirm
   whether Finnhub's `c` can be an after-hours price when the quote hasn't rolled over (research D2).
+- **Live check, 2026-09-29 (owner, during the session)**: it confirmed the market-cap unit (millions)
+  and the volume unit (millions of shares), and that Finnhub sends `XNAS` directly. It found BRK.B's
+  volume was BRK.A's, which led to T054. SPY fails as `non_usd_market_cap` because ETFs have no
+  profile; that is expected. A pre-open run is still needed, to check the `c` branch of D2.

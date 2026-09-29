@@ -31,6 +31,7 @@
 - Q: Should a provider outage or rate limit at startup stop the process? → A: No, only a rejected key does. Otherwise the key check is deferred to the first tick, which fetches the list itself; exiting would only restart the process into the same call. Amends FR-019a.
 - Q: How are values rounded to the stored precision? → A: Down, never up, so rounding can't lift a value over a gate floor (e.g. $4.99995 is stored as $4.9999, not $5.0000).
 - Q: What if the symbol list names a symbol twice with different types or exchanges? → A: Fail closed (`conflicting_listing`); which entry is right is unknowable.
+- Q: The owner's live `--check` returned about 270 shares a day for BRK.B, which is BRK.A's volume. How are share-class tickers handled? → A: Fail closed (`share_class_unverified`) for any ticker with a class separator (`.` or `-`), before any provider call. The observed mix-up only rejected buys, but the reverse (a quiet class given its busy sibling's volume) would pass the liquidity floor wrongly, and the job can't tell which way a mix-up goes. Revisit if a reliable per-class source is chosen (that would need an ADR).
 
 ## User Scenarios & Testing *(mandatory)*
 
@@ -106,6 +107,7 @@ The owner (through logs now; the Assistant and dashboard later) can see which sy
 
 - **Held position, no data**: a held symbol with no row can still be sold and stop-loss exited; only buys need reference data. The job still tries to fetch it because a PM may want to add to it.
 - **Key rejected by the provider**: see FR-019a. It is reported once per run, not once per symbol. A 403 on one symbol's request is that symbol's failure (`not_permitted`), not a key rejection.
+- **Share-class tickers** (`BRK.B`, `BF-B`): fail closed (`share_class_unverified`) until a reliable per-class volume source exists, so they can't be bought.
 - **Stale quote**: a halted or delisted symbol whose quote is older than the previous session fails as `stale_quote`, so a days-old price never passes the $5 floor.
 - **Symbol text from reports**: a candidate that isn't a plain ticker is logged as a quoted repr, so a newline in an LLM-written symbol can't forge a log line.
 - **Symbol the provider doesn't know** (delisted, renamed, typo in a report): treated like any failure; no row, logged, retried at the normal cadence rather than every tick.
@@ -134,7 +136,7 @@ The owner (through logs now; the Assistant and dashboard later) can see which sy
 **Fetching and recording**
 
 - **FR-004**: For each symbol in the set without a row for today, the job MUST fetch security type, exchange, market cap, average daily dollar volume and share price from the read-only market-data provider, and record them as one row for today's trading day. The share price MUST be the previous session's closing price, whether the symbol is fetched before the open or during the day, taken from the quote according to the quote's own time; a quote whose time is missing or older than the previous session MUST fail the symbol (Clarifications 2026-09-30).
-- **FR-005**: The job MUST write a row only when all five values were obtained and pass sanity checks (share price, market cap, average volume and dollar volume all above zero; market cap no more than $20 trillion, a ceiling that catches a provider unit error; every value within what the stored columns can hold after rounding; exchange and type present; market cap reported in USD; the symbol listed exactly once, or consistently). Values are rounded down to the stored precision. A zero from the provider means "no data", never a real value. Otherwise it MUST write nothing for that symbol today.
+- **FR-005**: The job MUST write a row only when all five values were obtained and pass sanity checks (share price, market cap, average volume and dollar volume all above zero; market cap no more than $20 trillion, a ceiling that catches a provider unit error; every value within what the stored columns can hold after rounding; exchange and type present; market cap reported in USD; the symbol listed exactly once, or consistently; not a share-class ticker). Values are rounded down to the stored precision. A zero from the provider means "no data", never a real value. Otherwise it MUST write nothing for that symbol today.
 - **FR-006**: The job MUST NOT copy, carry forward or fall back to a row from an earlier trading day, and MUST NOT write a row for any trading day other than today's.
 - **FR-007**: The job MUST normalize security type to exactly one of `common_stock`, `etf`, `adr`, `other`, mapping anything not clearly one of the first three to `other`.
 - **FR-008**: The job MUST record the exchange as an ISO 10383 operating-exchange code, mapping known market segments to their exchange (for example Nasdaq tiers to XNAS), and record any unmapped code unchanged.

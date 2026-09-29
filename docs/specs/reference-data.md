@@ -59,6 +59,8 @@ real exposure. Any of the following writes nothing for that symbol today:
 - a provider error, or a 403 for that one symbol;
 - a stale quote, or a market cap reported in another currency;
 - a symbol listed twice inconsistently;
+- a share-class ticker such as BRK.B (the provider was seen to return the other
+  class's volume);
 - a missing or zero value;
 - a market cap above $20 trillion (a unit error);
 - a dollar volume above the market cap;

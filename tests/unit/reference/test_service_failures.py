@@ -141,13 +141,14 @@ def test_yesterdays_row_is_never_carried_forward():
     assert ("AAA", DAY) not in store.rows
 
 
-def test_unlisted_and_conflicting_symbols_cost_no_calls():
-    job, fake, store, _ = make_job(["GONE", "DUP", "OK"])
+def test_unlisted_conflicting_and_share_class_symbols_cost_no_calls():
+    job, fake, store, _ = make_job(["GONE", "DUP", "BRK.B", "OK"])
     fake.listings.pop("GONE")
     fake.listings["DUP"] = Listing("DUP", None, None, conflicting=True)
     report = job.tick(NOW)
-    assert fake.calls_for("GONE") == [] and fake.calls_for("DUP") == []
-    assert report.failed == 2 and {s for s, _ in store.rows} == {"OK"}
+    for symbol in ("GONE", "DUP", "BRK.B"):
+        assert fake.calls_for(symbol) == []
+    assert report.failed == 3 and {s for s, _ in store.rows} == {"OK"}
 
 
 def test_a_403_on_one_symbol_fails_only_that_symbol(caplog):

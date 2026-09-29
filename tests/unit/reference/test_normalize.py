@@ -157,6 +157,8 @@ def test_after_a_holiday_the_previous_session_is_before_the_holiday():
     [
         ({"listed": False}, n.NOT_LISTED),
         ({"conflicting": True}, n.CONFLICTING_LISTING),
+        ({"symbol": "BRK.B"}, n.SHARE_CLASS_UNVERIFIED),
+        ({"symbol": "BF-B"}, n.SHARE_CLASS_UNVERIFIED),
         ({"currency": "JPY"}, n.NON_USD_MARKET_CAP),
         ({"currency": None}, n.NON_USD_MARKET_CAP),
         ({"currency": ""}, n.NON_USD_MARKET_CAP),
@@ -186,7 +188,7 @@ def test_after_a_holiday_the_previous_session_is_before_the_holiday():
 def test_failures(kwargs, reason):
     result = run(**kwargs)
     assert isinstance(result, n.Failure)
-    assert result == n.Failure("AAPL", reason)
+    assert result == n.Failure(kwargs.get("symbol", "AAPL"), reason)
 
 
 def test_exactly_twenty_trillion_is_allowed():
@@ -220,3 +222,9 @@ def test_failure_reasons_match_the_contract_table():
     for cell in re.findall(r"^\| ([^|]+) \|", section, re.M):
         documented.update(re.findall(r"`([a-z_]+)`", cell))
     assert documented == set(n.ALL_REASONS)
+
+
+def test_share_class_tickers_fail_before_any_value_is_needed():
+    listing = Listing("BRK.B", "Common Stock", "XNYS")
+    assert n.listing_failure("BRK.B", listing) == n.Failure("BRK.B", n.SHARE_CLASS_UNVERIFIED)
+    assert n.listing_failure("GOOGL", Listing("GOOGL", "Common Stock", "XNGS")) is None
