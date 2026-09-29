@@ -8,6 +8,16 @@
 
 **Input**: User description: "Feature 004: universe reference-data job (ADR 0010 decision 3, ADR 0013). A deterministic daily job, its own component with the existing ta_reference_data role and instrument_reference table (migration 0006), that uses a read-only Finnhub key (never a trading credential) to record, per symbol, listing/security type, exchange MIC, market cap, average daily dollar volume, and share price, so the Risk Gate's universe check can pass buys. Decisions from the owner: (1) Symbol set = symbols the system actually touches: currently held positions, symbols named in recent analyst reports and PM decisions, plus a small configured seed list. (2) Runs as its own loop per ADR 0013: main run in a pre-open window (~08:00–09:15 ET) on XNYS trading days, plus intraday retries for symbols missed or newly named. (3) Failure is fail-closed per symbol: a failed fetch writes no row for today (gate rejects buys of it), never falls back to yesterday's data, logs, and retries later; sells are never affected. Open item: whether Finnhub's free tier provides average daily dollar volume (historical candles may be premium) is being researched in parallel; mark as needing clarification rather than assuming."
 
+## Clarifications
+
+### Session 2026-09-29
+
+- Q: Where does average daily dollar volume come from, given the read-only provider's free tier doesn't serve daily price history? → A: The provider's free 10-day average trading volume × the previous session's closing price. Same read-only key, so it stays within ADR 0010 and needs no new ADR. The volume figure's unit (millions of shares) is known only from the provider's sample response, so a plausibility check guards against a unit mistake: a row whose dollar volume exceeds its market cap is not written.
+- Q: How should the job's database role find out which symbols to fetch? → A: Through one new read-only view that lists only the candidate symbols (held, recently reported, recently decided). The view runs with its owner's rights, so the job's role gets SELECT on that view alone and no access to positions, reports or decisions, and the `reports` row-level security policy is unchanged.
+- Q: Which price is recorded as the share price? → A: Always the previous session's closing price, whenever the symbol is fetched. It is the same price used for dollar volume (FR-010), and a rerun records the same value.
+- Q: What happens when the provider rejects the job's key itself? → A: At startup the job makes one read to check the key and exits if it's rejected, so a misconfigured deploy fails visibly. If the key is rejected later, the job logs one error-level line for that run naming the key rejection, skips the rest of the run, and stays up to try again at the next check.
+- Q: Should the job's role keep the UPDATE permission on `instrument_reference` from migration 0006? → A: No. This feature's migration revokes it; the role can only read and insert, and inserting a row that already exists for that symbol and day is a no-op.
+
 ## User Scenarios & Testing *(mandatory)*
 
 The "users" of this job are the system's owner, who wants buys to be possible only in symbols that verifiably meet the universe rules in `config/risk.yaml`, and the Risk Gate, which judges every buy against today's reference data for its symbol and rejects the buy (`universe_no_reference_data`) when there is none ([ADR 0010](../../docs/adr/0010-stop-loss-monitor-and-universe-reference-data.md)). The Assistant and dashboard read the same data to explain rejections.
@@ -81,12 +91,13 @@ The owner (through logs now; the Assistant and dashboard later) can see which sy
 ### Edge Cases
 
 - **Held position, no data**: a held symbol with no row can still be sold and stop-loss exited; only buys need reference data. The job still tries to fetch it because a PM may want to add to it.
+- **Key rejected by the provider**: see FR-019a. It is reported once per run, not once per symbol.
 - **Symbol the provider doesn't know** (delisted, renamed, typo in a report): treated like any failure; no row, logged, retried at the normal cadence rather than every tick.
 - **Malformed symbol** in a report or decision (`decisions.symbol` has no format check): the job skips symbols that don't look like a US ticker, logs them, and never sends them to the provider.
 - **Exchange segment codes**: the provider may report a market segment (for example a Nasdaq tier) rather than the exchange itself. The job records the exchange-level code the gate expects (XNYS, XNAS or XASE) for known segments; anything it can't map is recorded as reported, so the gate's listing check rejects it.
 - **Security types**: anything the provider doesn't clearly identify as common stock, ETF or ADR is recorded as `other`, so the listing check rejects it. Uncertainty never becomes `common_stock`.
 - **Mixed units from the provider** (for example market cap in millions): the job converts to US dollars before recording; the stored values are always whole US-dollar amounts as the gate reads them.
-- **Pre-open share price** is necessarily the previous session's closing or last price, not today's; the gate's share-price floor is a coarse filter and this is acceptable.
+- **Share price is the previous close**, even for symbols fetched during the day, so it can differ from the live price. The gate's $5 floor is a coarse filter and this is acceptable; Execution checks the live price before any buy.
 - **Early-close days and half days** are ordinary trading days. The pre-open window is the same; the intraday pick-up stops at that day's close.
 - **Job down all morning**: if the job starts after the window, it runs the full set immediately on a trading day (catch-up) rather than waiting for tomorrow.
 - **Two job processes at once** (a redeploy overlap): only one runs; the second waits or exits, as Execution's single-instance lock does.
@@ -106,13 +117,13 @@ The owner (through logs now; the Assistant and dashboard later) can see which sy
 
 **Fetching and recording**
 
-- **FR-004**: For each symbol in the set without a row for today, the job MUST fetch security type, exchange, market cap, average daily dollar volume and share price from the read-only market-data provider, and record them as one row for today's trading day.
+- **FR-004**: For each symbol in the set without a row for today, the job MUST fetch security type, exchange, market cap, average daily dollar volume and share price from the read-only market-data provider, and record them as one row for today's trading day. The share price MUST be the previous session's closing price, whether the symbol is fetched before the open or during the day.
 - **FR-005**: The job MUST write a row only when all five values were obtained and pass sanity checks (share price above zero, market cap and dollar volume not negative, exchange and type present). Otherwise it MUST write nothing for that symbol today.
 - **FR-006**: The job MUST NOT copy, carry forward or fall back to a row from an earlier trading day, and MUST NOT write a row for any trading day other than today's.
 - **FR-007**: The job MUST normalize security type to exactly one of `common_stock`, `etf`, `adr`, `other`, mapping anything not clearly one of the first three to `other`.
 - **FR-008**: The job MUST record the exchange as an ISO 10383 operating-exchange code, mapping known market segments to their exchange (for example Nasdaq tiers to XNAS), and record any unmapped code unchanged.
 - **FR-009**: The job MUST convert all monetary values to US dollars in the units the gate compares against `config/risk.yaml`.
-- **FR-010**: Average daily dollar volume MUST be computed over [NEEDS CLARIFICATION: which window and from which source? The read-only provider's free tier may not serve daily price/volume history. Options: the provider's own average-volume figure × price, a paid provider tier, or another read-only source — pending the parallel research; a source change needs an ADR].
+- **FR-010**: Average daily dollar volume MUST be the provider's 10-day average daily trading volume (converted to shares) multiplied by the previous session's closing price. If the result exceeds the symbol's market cap (more than 100% of the company traded per day, a sign of a unit error), the job MUST treat the fetch as failed and write no row.
 - **FR-011**: Once a symbol has a row for today, the job MUST NOT fetch it again that day, and MUST NOT change that row.
 
 **Schedule and retries**
@@ -124,13 +135,14 @@ The owner (through logs now; the Assistant and dashboard later) can see which sy
 - **FR-016**: The job MUST stay within the provider's rate limit, slowing down on a rate-limit response rather than abandoning the remaining symbols.
 - **FR-017**: Only one instance of the job MUST run at a time.
 - **FR-018**: Running the job twice for the same day MUST produce the same rows as running it once (idempotent).
-- **FR-019**: On a lost database connection the process MUST exit so the platform restarts it (ADR 0013 §5). Provider failures MUST NOT stop the process.
+- **FR-019**: On a lost database connection the process MUST exit so the platform restarts it (ADR 0013 §5). Per-symbol provider failures MUST NOT stop the process.
+- **FR-019a**: At startup the job MUST make one read-only call with its market-data key and exit if the key is rejected (or the check can't complete). If the key is rejected after startup, the job MUST log one error-level line for that run naming the key rejection, skip the rest of the run, and keep running.
 
 **Credentials and access**
 
 - **FR-020**: The job MUST hold only its own database login (`ta_reference_data`) and the read-only market-data key. It MUST NOT hold or read any broker credential or any other component's database login.
-- **FR-021**: The job's database role MUST be able to insert and read `instrument_reference`, and to read only the columns it needs to build the symbol set (the symbol and time columns of positions, reports and decisions). Nothing else. This amends `specs/001-data-model/contracts/role-grants.md`, and the grants-matrix test MUST match the database both ways.
-- **FR-022**: The job MUST NOT write to any table other than `instrument_reference`, and MUST NOT delete rows from it.
+- **FR-021**: The job's database role MUST be able to read and insert `instrument_reference` (its UPDATE permission from migration 0006 is revoked), and to read one candidate-symbols view that exposes only symbols (held positions, and symbols named in reports and decisions within the FR-001 window). It MUST have no access to `positions`, `reports`, `decisions` or any other table, and the `reports` row-level security policy MUST stay unchanged. This amends `specs/001-data-model/contracts/role-grants.md`, and the grants-matrix test MUST match the database both ways.
+- **FR-022**: The job MUST NOT write to any table other than `instrument_reference`, and MUST NOT update or delete rows in it. Inserting a row for a symbol and day that already has one MUST leave the existing row unchanged.
 - **FR-023**: The job MUST never log the market-data key or the database connection string.
 
 **Visibility**
@@ -145,7 +157,8 @@ The owner (through logs now; the Assistant and dashboard later) can see which sy
 ### Key Entities
 
 - **Instrument reference row** (existing `instrument_reference`, migration 0006): one symbol on one trading day — security type, exchange code, market cap, average daily dollar volume, share price, and when it was fetched. Written only by this job; read by the Risk Gate, Assistant and dashboard. Kept as history; never deleted or rewritten.
-- **Symbol set**: the day's list of symbols to fetch, derived each time from positions, reports, decisions and the seed list. Not stored.
+- **Candidate symbols view**: a read-only list of symbols that are held or were named in reports or decisions within the FR-001 window. Symbols only: no text, reasoning, sizes or quantities. The only thing the job can read outside `instrument_reference`.
+- **Symbol set**: the day's list of symbols to fetch: the candidate symbols view plus the seed list. Not stored.
 - **Seed list**: a short, version-controlled list of symbols to fetch every trading day regardless of activity.
 - **Market-data provider**: an external, read-only source that cannot trade. Its key belongs to this job alone.
 
