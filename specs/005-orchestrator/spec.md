@@ -8,6 +8,16 @@
 
 **Input**: User description: "Feature 005: the orchestrator (docs/specs/orchestrator.md, ADR 0003, ADR 0011, ADR 0013). A scheduler with no decision authority that starts the LLM agents (Research, Opportunistic Identifier, Portfolio Manager) on their cadences; Execution, the gate's trigger runner and the reference-data job run their own loops and are not scheduled by it. Owner decisions: (1) Each agent is started as its own process (python -m trading_agent.<agent>) with only that agent's environment variables and a per-agent timeout; agents not yet built are disabled in config; tests use fake agent commands, never model calls. (2) The orchestrator records its own runs in an orchestrator-owned table (agent, start, end, outcome) so "last PM run" survives restarts, and reads only the latest report's creation time through a single-value view, never report contents; plus trading_paused. New grants for ta_orchestrator in a new migration. (3) Schedule defaults (config values): Research daily pre-market 08:30 ET; PM morning session 10:00 ET; Opportunistic Identifier every 60 minutes, 10:00-15:00 ET; timeouts Research 15 min, OI 10 min, PM 10 min; PM event-driven runs >=30 min apart and none after 15:30 ET (ADR 0011). (4) Research runs daily pre-market only; the config supports an optional intraday interval for Research, off by default; news-triggered Research is decided in the Research feature. (5) Event-driven PM runs start 5 minutes after the newest report (so the reference-data job can record new symbols), respect the 30-minute spacing and 15:30 cutoff, and only begin after the morning session. trading_paused skips PM invocations only. Only XNYS trading days. Owner preferences recorded for later features (not this one): the Opportunistic Identifier uses design A (deterministic code pre-screens the universe, one LLM call reviews a shortlist of ~20 names); model choice open, Haiku 4.5 preferred so far."
 
+## Clarifications
+
+### Session 2026-09-30
+
+- Q: Where do the agents' credentials live, given the orchestrator starts every agent? → A: On the one worker service. The orchestrator passes each agent only the variable names listed for it in configuration, refuses at startup any configuration that would pass a broker credential or another component's database login, and never reads the values itself.
+- Q: Do the reports a failed or timed-out PM run was looking at still count as new? → A: Yes. The failed run counts toward the 30-minute spacing, so there's no retry loop, but not toward "reports considered". The next allowed run (at most one every 30 minutes, never after the cutoff) retries them.
+- Q: When does the PM stop running on early-close days? → A: 30 minutes before that day's close (15:30 normally, 12:30 on a 13:00 close), keeping ADR 0011's purpose. The Opportunistic Identifier's last hourly slot follows the same rule.
+- Q: What does the orchestrator do after downtime that missed the morning's Research run or PM morning session? → A: It runs each once, Research first, if still before the PM cutoff. The morning session starts after Research finishes or times out. The Opportunistic Identifier runs for the current slot only; missed slots are never backfilled.
+- Q: If trading is paused when the morning session is due and resumed later that day, how does the PM catch up? → A: The morning session's slot counts as done once it has been run or skipped for the pause. After resuming, the normal event-driven rule sees the unconsidered pre-open reports and starts one PM run (before the cutoff). There is no special resume logic.
+
 ## User Scenarios & Testing *(mandatory)*
 
 The "users" of the orchestrator are the system's owner, who wants the analysts and the Portfolio Manager to run on a predictable cadence without supervising them, and the three LLM agents it starts: Research, the Opportunistic Identifier and the Portfolio Manager (PM).
@@ -115,9 +125,9 @@ Every start, finish, skip and failure is recorded with the agent, the reason and
 
 ### Edge Cases
 
-- **Early-close days**: the PM cutoff becomes 30 minutes before that day's close (12:30 ET on a 13:00 close), and the Opportunistic Identifier's last hourly slot is the last one at least 30 minutes before the close. The morning session is unchanged.
+- **Early-close days**: the PM cutoff becomes 30 minutes before that day's close (12:30 ET on a 13:00 close), and the Opportunistic Identifier's last hourly slot is the last one at least 30 minutes before the close. The morning session is unchanged. (Clarifications.) Because the cutoff is always at least 30 minutes before the close, the 15:30 ceiling in FR-015 still holds on every day.
 - **A report written exactly at the cutoff or in the 5-minute wait window before it**: no run starts after the cutoff, so it waits until the next trading day's morning session.
-- **A failed or timed-out PM run**: it counts toward the 30-minute spacing, but the reports it saw count as not yet considered, so the next allowed run picks them up. This avoids both a retry loop and silently dropping reports.
+- **A failed or timed-out PM run**: it counts toward the 30-minute spacing, but the reports it saw count as not yet considered, so the next allowed run picks them up. This avoids both a retry loop and silently dropping reports. (Clarifications.) An interrupted run (the orchestrator stopped mid-run) is treated the same way.
 - **A report written while a PM run is in progress**: it counts as new and triggers the next run under the normal rules.
 - **The report-time view can't be read**: no event-driven PM run starts until it can. Scheduled runs still happen. The failure is logged.
 - **Clock and time zones**: every time judgement (trading day, open, close, early close) comes from the shared exchange calendar in ET, never the host's local time.
@@ -145,6 +155,7 @@ Every start, finish, skip and failure is recorded with the agent, the reason and
 - **FR-006**: At most one run of the same agent MUST be in progress at a time. A slot that arrives while the previous run is still going MUST be skipped and logged. Different agents MAY run at the same time.
 - **FR-007**: An agent can be enabled or disabled in configuration. A disabled agent MUST never be started. This feature ships with all three disabled, because none exists yet.
 - **FR-008**: The orchestrator MUST refuse to start if any agent's configuration would pass it a broker credential or another component's database login.
+- **FR-008a**: The orchestrator MUST NOT read, log or record the value of any variable it passes to an agent. It only copies the listed names from its own environment into that agent's. A listed variable that is missing is passed as absent, and the agent reports its own error.
 
 **Schedule**
 
@@ -152,7 +163,7 @@ Every start, finish, skip and failure is recorded with the agent, the reason and
 - **FR-010**: Research MUST run once a day at its configured pre-market time (default 08:30 ET). The configuration MUST support an optional intraday interval for Research, off by default.
 - **FR-011**: The Opportunistic Identifier MUST run at its configured interval within its configured window (default every 60 minutes, 10:00–15:00 ET). The last slot MUST be at least 30 minutes before the close on early-close days.
 - **FR-012**: The PM's morning session MUST run once a day at its configured time after the open (default 10:00 ET).
-- **FR-013**: After the morning session has started that day, an event-driven PM run MUST start when all of the following hold:
+- **FR-013**: Once the morning session's slot is done that day (run, or skipped for the pause; Clarifications), an event-driven PM run MUST start when all of the following hold:
   - (a) a report exists that is newer than the start of the last *successful* PM run;
   - (b) at least 5 minutes have passed since the newest report;
   - (c) at least 30 minutes have passed since the start of the last PM run of any outcome;
@@ -165,14 +176,14 @@ Every start, finish, skip and failure is recorded with the agent, the reason and
 
 - **FR-016**: Before starting any PM run, the orchestrator MUST read the pause flag. If it is set, or can't be read, the PM MUST NOT be started, and the skip MUST be recorded with its reason.
 - **FR-017**: The pause MUST NOT affect Research or the Opportunistic Identifier.
-- **FR-018**: A morning session skipped because of the pause MUST NOT be run later as a "morning session". The event-driven rule (FR-013) covers the reports it would have considered once the pause is lifted.
+- **FR-018**: A morning session skipped because of the pause MUST be recorded as skipped, and MUST NOT be run later as a "morning session". Its slot counts as done, so the event-driven rule (FR-013) covers the reports it would have considered once the pause is lifted.
 
 **Failures and restarts**
 
 - **FR-019**: An agent run that exits unsuccessfully, can't be started, or times out MUST be recorded with its outcome, and MUST NOT be retried before its next scheduled slot (or, for the PM, before the event-driven rule allows).
 - **FR-020**: On startup, the orchestrator MUST work out the day's state from its recorded runs, the latest report time and the calendar:
   - It MUST NOT repeat a run already recorded for a slot.
-  - It MUST run Research and the PM's morning session once each if they were missed and it is still before the PM cutoff.
+  - It MUST run Research and the PM's morning session once each if they were missed and it is still before the PM cutoff (Clarifications). A slot counts as missed if no run or skip is recorded for it today.
   - It MUST run the Opportunistic Identifier for the current slot only, never backfilling earlier ones.
   - A caught-up morning session MUST start only after a caught-up Research run has finished (or timed out), so the PM sees Research's report.
 - **FR-021**: Only one orchestrator instance MUST run at a time.
@@ -212,10 +223,8 @@ Every start, finish, skip and failure is recorded with the agent, the reason and
 ## Assumptions
 
 - **Agent entry points**: each agent will be a runnable module, `python -m trading_agent.<agent>`, that exits with status 0 on success. Each agent feature will confirm its command and variable names and enable its entry.
-- **Credentials**: the orchestrator's process environment holds the variables it passes to agents, because they run in the same service. It never uses them itself. Constitution III's separation is kept by passing each agent only its own variables, and by refusing broker credentials (FR-008).
+- **Credentials** (Clarifications): every agent's variables are set on the one worker service. The orchestrator never reads them (FR-008a). Constitution III's separation is kept by passing each agent only its own variables and refusing broker credentials and other components' logins (FR-008). Separate services per agent, or a secrets store, were considered and not chosen for now.
 - **Tick**: the orchestrator checks what is due about once a minute. That is fine for these cadences, which are measured in minutes and hours.
-- **Early-close days**: the ADR 0011 cutoff (15:30, which is 30 minutes before a normal close) is applied as "30 minutes before the close". That makes it 12:30 on a 13:00 close.
-- **Failed runs**: a failed or timed-out PM run counts toward spacing but not toward "reports considered", so the next allowed run retries them. This is the conservative reading of the orchestrator spec's "no runaway loop, don't silently drop".
 - **Agent timeouts**: default timeouts (Research 15 minutes, Opportunistic Identifier 10 minutes, PM 10 minutes) are configuration and can be tuned per agent later.
 - **Deployment**: Railway configuration is out of scope, as for features 003 and 004. The orchestrator must be startable as its own process with only its own variables plus the agents' variables.
 - **Out of scope**: the agents themselves, news-triggered Research, the Assistant, the dashboard, and alerts. Owner preferences recorded here for the Opportunistic Identifier's own feature are also not decided by this feature: design A (plain code pre-screens the universe, then one LLM call reviews a shortlist of about 20 names), and Qwen3.7-Plus as the preferred model. Using a non-Anthropic model needs its own ADR, and a constitution amendment (the constitution names the `anthropic` SDK for every LLM agent), in that feature, before any code.
