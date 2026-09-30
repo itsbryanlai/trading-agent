@@ -1,6 +1,6 @@
 # Research: Orchestrator
 
-Decisions behind [plan.md](plan.md), numbered O1–O15 so tasks, code comments and reviews can cite them.
+Decisions behind [plan.md](plan.md), numbered O1–O16 so tasks, code comments and reviews can cite them.
 
 ## O1. A pure planner, a launcher port, and a thin service
 
@@ -31,7 +31,13 @@ Decisions behind [plan.md](plan.md), numbered O1–O15 so tasks, code comments a
 - **Outcome**: exit 0 is `succeeded`, anything else is `failed`, and a launch error (such as a missing module) is `failed` with the error type.
 - **Timeouts**: at the timeout, the orchestrator sends SIGTERM to the process group, and SIGKILL 10 seconds later if it is still alive. The run is recorded as `timed_out`. Using the process group means a hung agent's own children are stopped too.
 
-**Why**: this is the owner's clarification: each agent runs as its own process, with a timeout. Not waiting on the child keeps the tick responsive, so one long run never delays another agent's slot (SC-005).
+- **Its own session is a trade-off** (fixed after `/speckit-analyze` P1). `start_new_session=True` puts the agent in a new process group, so a timeout kills its whole tree. But it also means the agent does **not** die with the orchestrator. So:
+  - **On a normal stop** (SIGTERM from the platform during a redeploy, SIGINT, or the loop ending), a signal handler and a `finally` block stop every running group (SIGTERM, then SIGKILL after the grace period) and record those runs as `interrupted` before exiting (FR-005a).
+  - **The process-group id** of each run is recorded in `orchestrator_runs.pgid` as soon as it starts.
+  - **After a crash**, where no handler ran, startup reaps the orphans; see O12.
+- **Grace period**: 10 s by default, injectable for tests. `stop()` blocks the tick for at most that long, which is acceptable at these cadences.
+
+**Why**: this is the owner's clarification: each agent runs as its own process, with a timeout. Not waiting on the child keeps the tick responsive, so one long run never delays another agent's slot (SC-005). [ADR 0015](../../docs/adr/0015-orchestrator-starts-agents-with-their-own-credentials.md) records the process and credential shape.
 
 ## O4. Each agent's environment: its own prefix plus a small fixed base
 
@@ -47,8 +53,9 @@ Decisions behind [plan.md](plan.md), numbered O1–O15 so tasks, code comments a
 ## O5. Run records: `orchestrator_runs` (migration 0010)
 
 **Decision**: one row per run or skipped slot. The schema is in [data-model.md](data-model.md).
-- **Duplicates**: a partial unique index on `(agent, trading_day, reason, slot_at)` for scheduled, morning-session and catch-up rows makes a duplicate slot impossible, even across a restart race (FR-020, SC-006).
-- **Writes**: rows are inserted as `running` and updated once, to their outcome. `ta_orchestrator` gets `SELECT, INSERT` and `UPDATE (finished_at, outcome, detail)` only. No DELETE: records are kept (FR-024).
+- **One key per slot** (fixed after `/speckit-analyze` D1). Every row except event-driven ones carries a `slot_key`: `research_daily`, `research@HH:MM` for the optional intraday runs, `morning_session`, or `oi@HH:MM`. One unique index on `(agent, trading_day, slot_key)` covers every reason. So an on-time morning session and a catch-up morning session can't both exist, and neither can two copies of any slot, even across a restart race (FR-020, FR-023a, SC-006). Event-driven rows have a null `slot_key`.
+- **Record before start** (fixed after R1). The row is inserted as `running` **before** the process starts, with `started_at` set to the orchestrator's clock; the insert is what claims the slot. Then the process starts and its `pgid` is written. If the start raises `LaunchFailed`, the row becomes `failed`. If the connection is lost in between, the slot is claimed but nothing runs: a restart treats the row as interrupted, and it counts as a missed run, not a double one. That is the safe direction.
+- **Writes**: rows are updated once, to their outcome, plus the `pgid` update just after the start. `ta_orchestrator` gets `SELECT, INSERT` and `UPDATE (pgid, finished_at, outcome, detail)` only. No DELETE: records are kept (FR-024).
 
 ## O6. The latest report time: a one-value view
 
@@ -67,7 +74,8 @@ Decisions behind [plan.md](plan.md), numbered O1–O15 so tasks, code comments a
 ## O8. Event-driven PM rule and morning-session gating (FR-013, FR-014, FR-018)
 
 **Decision**: these are pure functions of the day's records.
-- **Morning slot done**: a PM record exists today with reason `morning_session` (any outcome, including `skipped`), or with reason `catch_up` for the morning session.
+- **Morning slot done**: a PM record exists today with `slot_key = 'morning_session'`, whatever its reason (`morning_session` or `catch_up`) and outcome, including `skipped`.
+- **Research daily done**: a Research record exists today with `slot_key = 'research_daily'`, any reason or outcome (fixed after D1).
 - **Last PM start**: the latest `started_at` over all PM records with a start (any day), used for the spacing.
 - **Last successful PM start**: the latest `started_at` over PM records with outcome `succeeded`.
 - **Due**: all of the following hold:
@@ -85,7 +93,9 @@ Decisions behind [plan.md](plan.md), numbered O1–O15 so tasks, code comments a
 **Decision**: `cutoff(day) = min(pm_last_start (15:30 ET), close(day) − 30 min)`, with the close from `calendar.close_time`.
 - **Identifier slots**: every `interval` from `window_start`, up to `min(window_end, cutoff)`.
 - **Research**: its daily time, plus optional intraday slots when `interval` is set.
-- **Missed slots**: a slot counts as missed if `now` is past it and it has no record. Only the current slot (the latest one at or before `now`) may run for the Identifier. For Research's daily slot and the morning session, a missed slot runs once if `now` is still before the cutoff, recorded with reason `catch_up` (clarification 4).
+- **Missed slots**: a slot counts as missed if `now` is past it and it has no record. Only the current slot (the latest one at or before `now`) may run for the Identifier and for Research's optional intraday runs. Those are never backfilled. Research's daily slot and the morning session run once if missed, as long as `now` is still before the cutoff (clarification 4).
+- **On time or catch-up** (fixed after A1): a daily slot started within one tick (30 s) of its time is recorded with its normal reason (`scheduled` or `morning_session`). Started later, it is `catch_up`. The one exception is a morning session held back only because Research is still running (O10). That is still `morning_session`, whatever the delay. The difference is a label for the owner; the one slot key means the rules treat both the same.
+- **Order within a tick**: the planner returns starts in a fixed order: Research, then the PM, then the Identifier. A morning session is never started in the same tick as a Research start (O10).
 
 ## O10. Order and concurrency
 
@@ -107,26 +117,33 @@ Decisions behind [plan.md](plan.md), numbered O1–O15 so tasks, code comments a
 1. Read the environment (`ORCHESTRATOR_DATABASE_URL` only) and the config, and validate the prefix rule (O4). Any failure exits with code 2.
 2. Connect with autocommit and keepalives.
 3. Take the single-instance advisory lock `0x6f726368` ("orch"), waiting 5 minutes. This key is distinct from Execution's `0x65786531` and `0x65786563`, the gate's `0x7269736B`, and the reference job's `0x72656631`. If the wait runs out, exit with code 2.
-4. Mark any `running` rows as `interrupted`, with `finished_at = now` (FR-023). Their processes died with the previous orchestrator's process group, or are orphaned. The orchestrator can't adopt them, so it records the truth.
-5. Tick.
+4. **Reap orphans** (fixed after P1). For each `running` row with a `pgid`, check whether that process group is still alive and is still running that agent: its leader's command line contains the agent's module, read from `/proc/<pgid>/cmdline` where available. If so, stop the group (SIGTERM, then SIGKILL after the grace period). Checking the command line guards against stopping an unrelated process that happens to have reused the id. Then mark the row `interrupted`, with `finished_at = now` (FR-023). Rows without a `pgid` (claimed but never started) become `interrupted` too.
+5. Install the SIGTERM and SIGINT handlers (O3), then tick.
 
-A lost database connection exits with code 3 (FR-022). Children are then left to run to completion, and are recorded as `interrupted` on restart.
+A lost database connection exits with code 3 (FR-022). The `finally` block still stops every running group first. It can't record them while the connection is down, so the next startup marks them `interrupted` through step 4, and finds their groups already gone.
 
 ## O13. Configuration: `config/schedule.yaml`, strict and bounded
 
 **Decision**: one entry per agent: `enabled`, `module`, `env` (list of names), `timeout_minutes`, and the cadence fields. There is also a PM block with `morning_session`, `min_spacing_minutes`, `report_wait_minutes`, `last_start` and `before_close_minutes`. The loader is as strict as `risk.yaml`'s:
 - `module` must match `^trading_agent\.[a-z_]+$`;
 - times are `HH:MM` in ET;
-- `min_spacing_minutes` must be at least 30, `last_start` no later than 15:30, and `before_close_minutes` at least 30 (FR-015: never looser than ADR 0011);
+- `min_spacing_minutes` must be at least 30, `last_start` no later than 15:30, `before_close_minutes` at least 30, and `report_wait_minutes` between 5 and 60 (FR-015: never looser than ADR 0011 or the spec);
+- `morning_session` must be at or after 09:30 and before `last_start`, and Research's `daily_at` before 09:30;
 - timeouts are between 1 and 120 minutes.
 
 It ships with all three agents `enabled: false` (FR-007).
+
+## O16. Where timestamps come from
+
+**Decision** (fixed after U1): every time the orchestrator stores (`started_at`, `finished_at`, `slot_at`) comes from its injected clock, like every decision it makes. `reports.generated_at` comes from the database's `now()`. Rules (a) and (b) of FR-013 compare the two, so a clock difference between the orchestrator's host and the database shifts the 5-minute wait by that amount. Railway hosts are NTP-synced, so the difference is well under a second, and it is tolerated. The integration tests use explicit report times, never `now()`, because `now()` is frozen inside a test transaction.
 
 ## O14. Tests
 
 **Decision**:
 - **Planner**: table tests plus Hypothesis properties (SC-003, SC-004, SC-006: re-planning from the same records starts nothing twice).
 - **Service**: tested with a fake launcher and an in-memory record store.
+- **Restart property** (fixed after G3): restart at a random time in a random day. Records written before the restart stay, `running` ones become `interrupted`, and planning resumes. The property is: no slot started twice, and the daily Research run and the morning session each happen at most once, and at least once if they were still due before the cutoff.
+- **Hung agent** (SC-005): a service test where one agent hangs past its timeout while the others' slots arrive. The others start on time, and the hung one is stopped within one tick of its timeout.
 - **Launcher**: the real one is tested with actual child processes running `tests/fakes/agent.py`, a stand-in that exits 0, exits 1, sleeps past its timeout, spawns a child, or prints the names of its environment variables. No model calls and no network (FR-028). The network guard stays as it is.
 - **Migration 0010**: integration tests, plus the both-ways grants matrix.
 - **Mutation checks**: the planner's rules are mutation-checked, as before.

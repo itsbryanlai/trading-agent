@@ -18,6 +18,13 @@
 - Q: What does the orchestrator do after downtime that missed the morning's Research run or PM morning session? → A: It runs each once, Research first, if still before the PM cutoff. The morning session starts after Research finishes or times out. The Opportunistic Identifier runs for the current slot only; missed slots are never backfilled.
 - Q: If trading is paused when the morning session is due and resumed later that day, how does the PM catch up? → A: The morning session's slot counts as done once it has been run or skipped for the pause. After resuming, the normal event-driven rule sees the unconsidered pre-open reports and starts one PM run (before the cutoff). There is no special resume logic.
 
+### Session 2026-09-30 (after `/speckit-analyze`)
+
+- Q: What happens to running agents when the orchestrator stops, crashes or is redeployed? → A: On a normal stop, including the platform's SIGTERM during a redeploy, it stops every running agent's process group before exiting. Each run records its process-group id. At startup, before marking unfinished runs as interrupted, it stops any recorded group that is still alive and still running that agent. An agent never outlives its timeout unsupervised, and never overlaps a new run of itself.
+- Q: Which comes first, recording a run or starting its process? → A: Recording. The run's record claims its slot first, so a restart can never start the same slot again. If the process then fails to start, the record becomes `failed`.
+- Q: When is a run a catch-up rather than an on-time run? → A: A daily slot (Research's pre-market run, the morning session) started more than one tick (about 30 seconds) after its time, because the orchestrator wasn't running then, is recorded as a catch-up. Every slot has one key, so it can be claimed once whatever the reason recorded. A morning session held back while Research is still running is still the morning session, not a catch-up.
+- Q: Where do the agents' credentials live? (recorded as an ADR) → A: See [ADR 0015](../../docs/adr/0015-orchestrator-starts-agents-with-their-own-credentials.md), which records the first clarification above as a decision about the system's shape.
+
 ## User Scenarios & Testing *(mandatory)*
 
 The "users" of the orchestrator are the system's owner, who wants the analysts and the Portfolio Manager to run on a predictable cadence without supervising them, and the three LLM agents it starts: Research, the Opportunistic Identifier and the Portfolio Manager (PM).
@@ -151,7 +158,8 @@ Every start, finish, skip and failure is recorded with the agent, the reason and
 **Starting agents**
 
 - **FR-004**: Each agent MUST be started as its own separate process with a configured command, given only the environment variables configured for that agent. It MUST NOT receive the orchestrator's own database login.
-- **FR-005**: Each agent MUST have a configured timeout. A run still going at its timeout MUST be stopped and recorded as timed out.
+- **FR-005**: Each agent MUST have a configured timeout. A run still going at its timeout MUST be stopped (its whole process group) and recorded as timed out.
+- **FR-005a**: When the orchestrator stops normally, including on the platform's SIGTERM, it MUST stop every running agent's process group and record those runs as interrupted before exiting. Each run MUST record its process-group id, so that a later startup can stop an agent left running by a crash (FR-023).
 - **FR-006**: At most one run of the same agent MUST be in progress at a time. A slot that arrives while the previous run is still going MUST be skipped and logged. Different agents MAY run at the same time.
 - **FR-007**: An agent can be enabled or disabled in configuration. A disabled agent MUST never be started. This feature ships with all three disabled, because none exists yet.
 - **FR-008**: The orchestrator MUST refuse to start if any agent's configuration would pass it a broker credential or another component's database login.
@@ -170,7 +178,7 @@ Every start, finish, skip and failure is recorded with the agent, the reason and
   - (d) the time is before the PM cutoff: 15:30 ET, or 30 minutes before the close on early-close days;
   - (e) trading is not paused.
 - **FR-014**: A report written before that day's morning session MUST NOT trigger a separate event-driven run; the morning session covers it.
-- **FR-015**: The schedule values (times, intervals, window, timeouts, the 5-minute wait, the 30-minute spacing, the cutoff) MUST come from version-controlled configuration, changed only through code review. The spacing and the cutoff MUST NOT be configurable to values looser than [ADR 0011](../../docs/adr/0011-event-driven-portfolio-manager-runs.md): no less than 30 minutes apart, and no later than 15:30 ET.
+- **FR-015**: The schedule values (times, intervals, window, timeouts, the 5-minute wait, the 30-minute spacing, the cutoff) MUST come from version-controlled configuration, changed only through code review. They MUST NOT be configurable to values looser than [ADR 0011](../../docs/adr/0011-event-driven-portfolio-manager-runs.md) or this spec: spacing at least 30 minutes, cutoff no later than 15:30 ET and at least 30 minutes before the close, and the report wait at least 5 minutes. The morning session must be at or after the open and before the cutoff, and Research's daily time before the open.
 
 **Pause**
 
@@ -184,11 +192,12 @@ Every start, finish, skip and failure is recorded with the agent, the reason and
 - **FR-020**: On startup, the orchestrator MUST work out the day's state from its recorded runs, the latest report time and the calendar:
   - It MUST NOT repeat a run already recorded for a slot.
   - It MUST run Research and the PM's morning session once each if they were missed and it is still before the PM cutoff (Clarifications). A slot counts as missed if no run or skip is recorded for it today.
-  - It MUST run the Opportunistic Identifier for the current slot only, never backfilling earlier ones.
+  - It MUST run the Opportunistic Identifier, and any optional intraday Research slot, for the current slot only, never backfilling earlier ones.
   - A caught-up morning session MUST start only after a caught-up Research run has finished (or timed out), so the PM sees Research's report.
 - **FR-021**: Only one orchestrator instance MUST run at a time.
 - **FR-022**: On a lost database connection the orchestrator MUST exit so the platform restarts it. A failing agent MUST NOT stop the orchestrator.
-- **FR-023**: If the orchestrator stops while an agent run is in progress, the unfinished run MUST be recorded as interrupted on the next startup, not left looking as if it is still running.
+- **FR-023**: If the orchestrator stops while an agent run is in progress, the next startup MUST first stop that run's process group if it is still alive and still running that agent, then record the run as interrupted. It MUST NOT be left looking as if it is still running.
+- **FR-023a**: The orchestrator MUST record a run before starting its process, so the record claims the slot. A process that then fails to start MUST be recorded as failed. Every slot MUST be claimable only once per day, whatever reason its record gives.
 
 **Records and access**
 
@@ -223,7 +232,7 @@ Every start, finish, skip and failure is recorded with the agent, the reason and
 ## Assumptions
 
 - **Agent entry points**: each agent will be a runnable module, `python -m trading_agent.<agent>`, that exits with status 0 on success. Each agent feature will confirm its command and variable names and enable its entry.
-- **Credentials** (Clarifications): every agent's variables are set on the one worker service. The orchestrator never reads them (FR-008a). Constitution III's separation is kept by passing each agent only its own variables and refusing broker credentials and other components' logins (FR-008). Separate services per agent, or a secrets store, were considered and not chosen for now.
+- **Credentials** (Clarifications; [ADR 0015](../../docs/adr/0015-orchestrator-starts-agents-with-their-own-credentials.md)): every agent's variables are set on the one worker service. The orchestrator never reads them (FR-008a). Constitution III's separation is kept by passing each agent only its own variables and refusing broker credentials and other components' logins (FR-008). Separate services per agent, or a secrets store, were considered and not chosen for now.
 - **Tick**: the orchestrator checks what is due about once a minute. That is fine for these cadences, which are measured in minutes and hours.
 - **Agent timeouts**: default timeouts (Research 15 minutes, Opportunistic Identifier 10 minutes, PM 10 minutes) are configuration and can be tuned per agent later.
 - **Deployment**: Railway configuration is out of scope, as for features 003 and 004. The orchestrator must be startable as its own process with only its own variables plus the agents' variables.

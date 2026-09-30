@@ -24,7 +24,7 @@ research:
   module: trading_agent.research
   env: []                      # names only; each must start with RESEARCH_
   timeout_minutes: 15
-  daily_at: "08:30"            # ET
+  daily_at: "08:30"            # ET, before 09:30
   interval_minutes: null       # optional intraday runs; null = off
 opportunistic_identifier:
   enabled: false
@@ -39,9 +39,9 @@ portfolio_manager:
   module: trading_agent.portfolio_manager
   env: []                      # PORTFOLIO_MANAGER_*
   timeout_minutes: 10
-  morning_session: "10:00"
+  morning_session: "10:00"     # at/after 09:30, before the cutoff
   min_spacing_minutes: 30      # >= 30 (ADR 0011)
-  report_wait_minutes: 5
+  report_wait_minutes: 5       # 5–60
   last_start: "15:30"          # <= 15:30 (ADR 0011)
   before_close_minutes: 30     # >= 30; the cutoff is the earlier of this and last_start
 ```
@@ -52,7 +52,7 @@ Every key is required and unknown keys are rejected. The bounds are in research 
 
 - **Entry point**: `python -m trading_agent.<agent>`, exiting with 0 on success and non-zero on failure.
 - **Environment**: the agent receives only its listed `<PREFIX>*` variables plus `PATH`, `HOME`, `LANG`, `LC_ALL`, `TZ` and `PYTHONPATH`.
-- **Stopping**: it may be sent SIGTERM at its timeout, and SIGKILL 10 s later. It must be safe to stop at any point, and safe to run again. For the PM, that safety comes from target weights plus the gate (ADR 0011).
+- **Stopping**: it may be sent SIGTERM at its timeout, or when the orchestrator shuts down, and SIGKILL 10 s later. It must be safe to stop at any point, and safe to run again. For the PM, that safety comes from target weights plus the gate (ADR 0011).
 - **Logs**: it writes its own logs to stdout and stderr.
 
 ## Run outcomes and skip reasons
@@ -62,7 +62,7 @@ Every key is required and unknown keys are rejected. The bounds are in research 
 | `succeeded` | Exit status 0 |
 | `failed` | Non-zero exit (`detail` holds the exit status), or the launch failed (`detail` holds the error type) |
 | `timed_out` | Stopped at the timeout |
-| `interrupted` | Still `running` when the orchestrator restarted |
+| `interrupted` | Stopped by the orchestrator's own shutdown, or still `running` when it restarted after a crash (its process group was stopped first if still alive) |
 | `skipped` | `detail`: `trading paused`, `pause flag unreadable`, or `previous run in progress` |
 
 ## Log lines
@@ -73,4 +73,6 @@ Every key is required and unknown keys are rejected. The bounds are in research 
 | WARNING | Skip, failure or timeout | `orchestrator: <agent> <reason> <outcome>: <detail>` |
 | WARNING | A PM run is due but paused, once per pause episode | `orchestrator: portfolio_manager due but trading paused` |
 | ERROR | The report-time view or the pause flag is unreadable | `orchestrator: cannot read <what>: <error type>` |
+| WARNING | Startup found a `running` row | `orchestrator: <agent> run from <started_at> interrupted (process group <stopped \| already gone>)` |
+| INFO | Shutdown | `orchestrator: stopping <n> running agent(s)` |
 | CRITICAL | Refused to start, or lost the database | The reason. Never a variable's value or the connection string |

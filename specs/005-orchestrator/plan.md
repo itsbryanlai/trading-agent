@@ -47,7 +47,7 @@
 | II. Analysts propose, PM decides | It only sequences agents and can't alter, approve or block their output (FR-003). It never reads report contents. | Pass |
 | III. Least privilege at the database | Its own role. It writes only its own run table, reads a one-value view, and reads **only** `trading_paused` (0010 narrows the broader 0005 grant). Each agent's variables are isolated by prefix. Enforced by the both-ways grants test. | Pass |
 | IV. Autonomous, one hard stop | No approval gate is added. The pause is the owner's manual toggle, only read here; the orchestrator can't set it. | Pass |
-| V. Spec and ADR first | Covered by ADRs 0003, 0011 and 0013 (own loop). The new grant was foreseen by ADR 0011, and narrowing an existing grant needs no ADR. `docs/specs/orchestrator.md` and `data-model.md` are updated to reference 005. | Pass |
+| V. Spec and ADR first | Covered by ADRs 0003, 0011 and 0013 (own loop), plus the new [ADR 0015](../../docs/adr/0015-orchestrator-starts-agents-with-their-own-credentials.md) (agents as processes; their credentials on the orchestrator's service, each passed only its own). The new grant was foreseen by ADR 0011, and narrowing an existing grant needs no ADR. `docs/specs/orchestrator.md` and `data-model.md` are updated to reference 005. | Pass |
 | VI. Paper only | Not affected. | Pass |
 | VII. Assistant and dashboard read-only | They get SELECT on the run records and the new view. No new writes. | Pass |
 
@@ -63,7 +63,7 @@ Re-check after design: all pass. The design adds one table, one view and one con
 specs/005-orchestrator/
 ├── spec.md
 ├── plan.md                        # this file
-├── research.md                    # O1–O15
+├── research.md                    # O1–O16
 ├── data-model.md                  # orchestrator_runs, latest_report_time, grants delta
 ├── quickstart.md
 ├── contracts/
@@ -109,7 +109,7 @@ specs/001-data-model/contracts/role-grants.md   # amended by 005
 - **A grant is narrowed.** Since migration 0005, `ta_orchestrator` has been able to read the whole `system_state` row, including the daily starting equity and the halt state. That is account data the orchestrator must never read (FR-002, ADR 0003). Migration 0010 cuts it to the `trading_paused` column only. This tightens a permission; it doesn't loosen one.
 - **No risk limit, sizing or order logic changes.** ADR 0011's spacing and cutoff are enforced as minimums in the config loader.
 - **Variable naming for agents.** Each agent's variables must start with its prefix (`RESEARCH_`, `OPPORTUNISTIC_IDENTIFIER_`, `PORTFOLIO_MANAGER_`). Agents will read, for example, `RESEARCH_ANTHROPIC_API_KEY`. This also covers the Identifier's future Qwen key.
-- **Agents that outlive an orchestrator crash** keep running, and are recorded as `interrupted` on restart (O12). The orchestrator doesn't adopt or kill them after a crash. Each agent's own timeout discipline is its own feature's concern.
+- **Agents never outlive the orchestrator unsupervised** (fixed after `/speckit-analyze` P1). On shutdown or redeploy it stops every running agent's process group. After a crash, its next startup stops any recorded group still running that agent before marking the run interrupted (research O3, O12).
 
 ## Complexity Tracking
 
