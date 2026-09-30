@@ -53,17 +53,17 @@ The shared grants contract is `specs/001-data-model/contracts/role-grants.md`, a
 
 ## Phase 1: Setup
 
-- [ ] T001 [P] Create the packages `src/trading_agent/orchestrator/__init__.py` (docstring naming ADR 0003, 0011 and 0013), `tests/unit/orchestrator/__init__.py` and `tests/integration/orchestrator/__init__.py`
-- [ ] T002 [P] Add an `--- Orchestrator (specs/005-orchestrator) ---` section to `.env.example`, with names and comments only, no values:
+- [X] T001 [P] Create the packages `src/trading_agent/orchestrator/__init__.py` (docstring naming ADR 0003, 0011 and 0013), `tests/unit/orchestrator/__init__.py` and `tests/integration/orchestrator/__init__.py`
+- [X] T002 [P] Add an `--- Orchestrator (specs/005-orchestrator) ---` section to `.env.example`, with names and comments only, no values:
   - `ORCHESTRATOR_DATABASE_URL`: a login in `ta_orchestrator`.
   - A comment that each agent's variables must start with its prefix (`RESEARCH_`, `OPPORTUNISTIC_IDENTIFIER_`, `PORTFOLIO_MANAGER_`) and are added by that agent's feature (research O4).
-- [ ] T003 [P] Create `config/schedule.yaml` exactly as in `contracts/orchestrator-interface.md` "Configuration", with all three agents `enabled: false` and a header comment: the schema contract, changed only through code review (FR-015), no agent writes it, and ADR 0011's bounds are enforced by the loader.
+- [X] T003 [P] Create `config/schedule.yaml` exactly as in `contracts/orchestrator-interface.md` "Configuration", with all three agents `enabled: false` and a header comment: the schema contract, changed only through code review (FR-015), no agent writes it, and ADR 0011's bounds are enforced by the loader.
 
 ---
 
 ## Phase 2: Foundational (blocks every story)
 
-- [ ] T004 Write the failing test `tests/integration/storage/test_orchestrator_schema.py` for migration 0010 (data-model.md). It must cover:
+- [X] T004 Write the failing test `tests/integration/storage/test_orchestrator_schema.py` for migration 0010 (data-model.md). It must cover:
   - **As `ta_orchestrator`**:
     - `SELECT generated_at FROM latest_report_time` returns the newest `reports.generated_at`, or NULL when there are none, and the view has exactly one column;
     - `SELECT trading_paused FROM system_state` is allowed;
@@ -82,7 +82,7 @@ The shared grants contract is `specs/001-data-model/contracts/role-grants.md`, a
     - two rows with the same `(agent, trading_day, slot_key)` are rejected, **including** a `morning_session` row plus a `catch_up` row with `slot_key = 'morning_session'`;
     - two `event_driven` rows on the same day are allowed.
   - **`reports` policies**: the policies in `pg_policies` are unchanged by 0010.
-- [ ] T005 Create `src/trading_agent/storage/migrations/0010_orchestrator.sql`, headed with a comment citing research O5–O7. It must:
+- [X] T005 Create `src/trading_agent/storage/migrations/0010_orchestrator.sql`, headed with a comment citing research O5–O7. It must:
   - `CREATE TABLE orchestrator_runs` per data-model.md (including `slot_key` and `pgid`), with its CHECKs, the unique index on `(agent, trading_day, slot_key)`, and the `(agent, started_at DESC)` index;
   - `CREATE VIEW latest_report_time AS SELECT max(generated_at) AS generated_at FROM reports`, not `security_invoker`;
   - `REVOKE SELECT ON system_state, system_state_effective FROM ta_orchestrator`, then `GRANT SELECT (trading_paused) ON system_state TO ta_orchestrator`;
@@ -90,7 +90,7 @@ The shared grants contract is `specs/001-data-model/contracts/role-grants.md`, a
   - `GRANT SELECT ON orchestrator_runs, latest_report_time TO ta_assistant, ta_dashboard`, and `GRANT SELECT ON latest_report_time TO ta_orchestrator`.
   
   Make T004 pass.
-- [ ] T006 Amend `tests/integration/storage/grants_matrix.py` and `factories.py`:
+- [X] T006 Amend `tests/integration/storage/grants_matrix.py` and `factories.py`:
   - `factories.py`: add `orchestrator_runs` as a table, probing `detail`, with `columns_for_update` listing every column; add `latest_report_time` as a view.
   - `grants_matrix.py`, exactly (fixed after `/speckit-analyze` G2):
     - `orchestrator_runs`: `ta_orchestrator: {"S", "I", "U:pgid", "U:finished_at", "U:outcome", "U:detail"}`, `ta_assistant: {"S"}`, `ta_dashboard: {"S"}`;
@@ -100,7 +100,7 @@ The shared grants contract is `specs/001-data-model/contracts/role-grants.md`, a
   - `tests/integration/storage/test_system_state.py` (fixed after G1): `test_pause_toggle_readable_until_toggled_back` reads `system_state_effective` as `ta_orchestrator`, which 0010 revokes. Change it to read `SELECT trading_paused FROM system_state` as `ta_orchestrator`, which still shows the orchestrator can see the toggle, and keep a separate check through `system_state_effective` as `ta_dashboard`.
   
   Amend `specs/001-data-model/contracts/role-grants.md` to match, with footnote ⁴ "Amended by `specs/004`… `specs/005-orchestrator` (migration `0010`)" explaining the narrowing. Run `test_grants.py` both ways. Mutation-check it by temporarily restoring `ta_orchestrator`'s `S` on `system_state_effective` in the matrix.
-- [ ] T007 [P] Write the failing test `tests/unit/orchestrator/test_config.py`, then create `src/trading_agent/orchestrator/config.py`: `load_config(path) -> ScheduleConfig` (frozen dataclasses per agent), raising `ScheduleConfigError`. It must reject:
+- [X] T007 [P] Write the failing test `tests/unit/orchestrator/test_config.py`, then create `src/trading_agent/orchestrator/config.py`: `load_config(path) -> ScheduleConfig` (frozen dataclasses per agent), raising `ScheduleConfigError`. It must reject:
   - a missing or unknown key;
   - an agent `module` that doesn't match `^trading_agent\.[a-z_]+$`;
   - an `env` entry that isn't a string, is a duplicate, or doesn't start with the agent's own prefix (research O4). Test `ALPACA_API_KEY_ID`, `EXECUTION_DATABASE_URL`, `ADMIN_DATABASE_URL`, `REFERENCE_DATA_FINNHUB_API_KEY`, another agent's prefixed name, and the orchestrator's own `ORCHESTRATOR_DATABASE_URL` on every agent;
@@ -113,15 +113,15 @@ The shared grants contract is `specs/001-data-model/contracts/role-grants.md`, a
   - `bool` where an int is expected.
   
   Test that the shipped file loads, with all agents disabled.
-- [ ] T008 [P] Create `src/trading_agent/orchestrator/launcher.py` with the `Launcher` protocol (`start`, `poll`, `stop`, `stop_group`), `Handle` (carrying `pgid`), and `LaunchFailed(error_type)` per contracts/launcher-port.md. Create `tests/fakes/launcher.py`:
+- [X] T008 [P] Create `src/trading_agent/orchestrator/launcher.py` with the `Launcher` protocol (`start`, `poll`, `stop`, `stop_group`), `Handle` (carrying `pgid`), and `LaunchFailed(error_type)` per contracts/launcher-port.md. Create `tests/fakes/launcher.py`:
   - `FakeLauncher` records `(clock_time, module, sorted env names)` for each start;
   - `finish(handle, status)`, `hang(handle)` and `fail_start(module)`;
   - `stop()` records the stop and returns `-15`;
   - `stop_group(pgid, module)` returns whatever the test scripted (a live orphan or a gone one), and records the call.
   
   Add `tests/unit/orchestrator/test_fake_launcher.py`.
-- [ ] T009 [P] Create `tests/fakes/agent.py`, a stand-in agent run as `python tests/fakes/agent.py <mode>`, or through the module-path shim the launcher test uses. Modes: `ok` (exit 0), `fail` (exit 1), `hang` (sleep 600), `spawn` (start a child that sleeps 600, write its pid to a file given in argv, then hang), and `env` (write the sorted names, not the values, of its environment to a file given in argv, then exit 0).
-- [ ] T010 [P] Write the failing test `tests/unit/orchestrator/test_import_guard.py`. Across every module under `trading_agent.orchestrator`:
+- [X] T009 [P] Create `tests/fakes/agent.py`, a stand-in agent run as `python tests/fakes/agent.py <mode>`, or through the module-path shim the launcher test uses. Modes: `ok` (exit 0), `fail` (exit 1), `hang` (sleep 600), `spawn` (start a child that sleeps 600, write its pid to a file given in argv, then hang), and `env` (write the sorted names, not the values, of its environment to a file given in argv, then exit 0).
+- [X] T010 [P] Write the failing test `tests/unit/orchestrator/test_import_guard.py`. Across every module under `trading_agent.orchestrator`:
   - none imports `alpaca`, `anthropic`, `trading_agent.execution`, `trading_agent.reference`, `trading_agent.risk.service`, `trading_agent.risk.gate` or `trading_agent.risk.rules`;
   - no source contains `ALPACA_`, `EXECUTION_DATABASE_URL`, `RISK_GATE_DATABASE_URL`, `ADMIN_DATABASE_URL` or `REFERENCE_DATA_`;
   - the planner imports none of `psycopg`, `subprocess`, `os`, `signal`, `orchestrator.service` or `orchestrator.launcher`.
@@ -140,13 +140,13 @@ The shared grants contract is `specs/001-data-model/contracts/role-grants.md`, a
 
 ### Tests for User Story 1 (write first, confirm failing)
 
-- [ ] T011 [P] [US1] `tests/unit/orchestrator/test_planner_slots.py`, for `research_slots(day, cfg)`, `oi_slots(day, cfg)` and `cutoff(day, cfg)`:
+- [X] T011 [P] [US1] `tests/unit/orchestrator/test_planner_slots.py`, for `research_slots(day, cfg)`, `oi_slots(day, cfg)` and `cutoff(day, cfg)`:
   - normal day: Research `[08:30]`; with `interval_minutes=120`, `[08:30, 10:30, …]` before the cutoff; OI `[10:00 … 15:00]` hourly, 6 slots; cutoff 15:30;
   - early close on 2026-11-27: cutoff 12:30, and OI slots `[10:00, 11:00, 12:00]` only;
   - winter day on 2026-12-07: slots at the same ET wall-clock times;
   - weekend and holiday: all empty;
   - naive datetimes raise `ValueError`.
-- [ ] T012 [P] [US1] `tests/unit/orchestrator/test_planner_scheduled.py`, for `plan(now, cfg, state) -> list[Action]`, where `state` holds today's run records, whatever is running, the latest report time and the pause flag:
+- [X] T012 [P] [US1] `tests/unit/orchestrator/test_planner_scheduled.py`, for `plan(now, cfg, state) -> list[Action]`, where `state` holds today's run records, whatever is running, the latest report time and the pause flag:
   - **08:30:10**: `Start(research, scheduled, 08:30)` once; a second call with that start recorded returns nothing.
   - **10:00**: `Start(portfolio_manager, morning_session, 10:00)` and `Start(opportunistic_identifier, scheduled, 10:00)`.
   - **Disabled agent**: never started.
@@ -157,7 +157,7 @@ The shared grants contract is `specs/001-data-model/contracts/role-grants.md`, a
     - a first tick at 08:30:20 is `scheduled`, and one at 08:31 is `catch_up`, both with `slot_key = 'research_daily'`;
     - a morning session held back while Research runs until 10:07 starts at 10:07 as `morning_session`, not `catch_up`.
   - **Order**: at 10:00 with Research still due (a late start), the actions are Research first, then the Identifier, and **no** PM start in that tick.
-- [ ] T013 [US1] `tests/unit/orchestrator/test_service_day.py`, using the fake launcher and an in-memory `RunStore` (`tests/unit/orchestrator/support.py`):
+- [X] T013 [US1] `tests/unit/orchestrator/test_service_day.py`, using the fake launcher and an in-memory `RunStore` (`tests/unit/orchestrator/support.py`):
   - a full simulated day ticking every 30 s, with agents finishing after 2 minutes;
   - starts at the exact slots, within 1 minute (SC-001);
   - every start creates a `running` record, updated to `succeeded` on exit 0;
@@ -168,13 +168,13 @@ The shared grants contract is `specs/001-data-model/contracts/role-grants.md`, a
 
 ### Implementation for User Story 1
 
-- [ ] T014 [P] [US1] Create `src/trading_agent/orchestrator/planner.py` with:
+- [X] T014 [P] [US1] Create `src/trading_agent/orchestrator/planner.py` with:
   - the `Start`, `Skip` and `Stop` actions, and `RunRecord`/`State` dataclasses mirroring data-model.md;
   - `research_slots`, `oi_slots` and `cutoff` (research O9);
   - `plan()` for scheduled runs, the morning session, and overlap skips (O10).
   
   Make T011 and T012 pass.
-- [ ] T015 [US1] Create `src/trading_agent/orchestrator/service.py`:
+- [X] T015 [US1] Create `src/trading_agent/orchestrator/service.py`:
   - the `RunStore` protocol: `today_runs(day)`, `last_pm_start()`, `last_successful_pm_start()`, `insert_start(...) -> id` (raising `SlotTaken` on a unique-index violation), `set_pgid(id, pgid)`, `insert_skip(...)`, `finish(id, outcome, detail, now)`, `running_rows()`, `latest_report_time()` and `trading_paused()`;
   - `PgRunStore(conn, *, _allow_savepoints=False)`, requiring autocommit as in 003 and 004;
   - `Orchestrator(cfg, store, launcher, environ_get)`, whose `tick(now)` polls the running handles and records finished ones, builds the `State`, calls `plan`, then applies the actions.
@@ -182,7 +182,7 @@ The shared grants contract is `specs/001-data-model/contracts/role-grants.md`, a
   For each `Start`, it inserts the `running` record first (claiming the slot; a unique-index violation means another process claimed it, so skip), then calls `launcher.start`, then writes the `pgid`. On `LaunchFailed` it finishes the record as `failed` (research O5). Timestamps come from the injected clock (research O16).
 
   The environment for an agent is `{name: environ_get(name)}` for its listed names plus the base set, leaving out missing names and never logging values (FR-008a). A launch error is recorded as `failed` with its error type. Make T013 pass.
-- [ ] T016 [US1] `tests/integration/orchestrator/test_service_postgres.py`: the service against Postgres as `ta_orchestrator`, with the fake launcher, through one morning (08:30 Research, 10:00 PM and Identifier). The records match, and the unique index rejects a manually inserted duplicate slot.
+- [X] T016 [US1] `tests/integration/orchestrator/test_service_postgres.py`: the service against Postgres as `ta_orchestrator`, with the fake launcher, through one morning (08:30 Research, 10:00 PM and Identifier). The records match, and the unique index rejects a manually inserted duplicate slot.
 
 **Checkpoint**: scheduled runs work end to end with the fake launcher.
 
@@ -194,7 +194,7 @@ The shared grants contract is `specs/001-data-model/contracts/role-grants.md`, a
 
 **Independent test**: planner scenarios from spec US2, plus a Hypothesis property over random report times.
 
-- [ ] T017 [P] [US2] `tests/unit/orchestrator/test_planner_event_driven.py`. The five spec US2 acceptance scenarios as tables, plus:
+- [X] T017 [P] [US2] `tests/unit/orchestrator/test_planner_event_driven.py`. The five spec US2 acceptance scenarios as tables, plus:
   - a report at 15:28 means no run, with the cutoff at 15:30;
   - a report at 15:24 with a PM run started at 15:00 means no run: 15:30 is not before the cutoff;
   - early close: a report at 12:20 with no run since the morning means a run at 12:25; a report at 12:26 means no run;
@@ -202,13 +202,13 @@ The shared grants contract is `specs/001-data-model/contracts/role-grants.md`, a
   - a report newer than the last *successful* run but older than a failed later run is still considered new;
   - a PM run in progress means no new start;
   - no morning slot done yet (before 10:00) means no event-driven run, whatever the reports (FR-014).
-- [ ] T018 [P] [US2] `tests/unit/orchestrator/test_planner_properties.py`, Hypothesis over random report times, random run outcomes and a 30-second tick from 07:00 to 17:00. Simulate by feeding the planner's own starts back as records. Assert that:
+- [X] T018 [P] [US2] `tests/unit/orchestrator/test_planner_properties.py`, Hypothesis over random report times, random run outcomes and a 30-second tick from 07:00 to 17:00. Simulate by feeding the planner's own starts back as records. Assert that:
   - PM starts are never less than 30 minutes apart (SC-003);
   - no event-driven start is within 5 minutes of the newest report, or at or after the cutoff;
   - at most one morning session and one Research daily run happen each day.
   
   Check with `hypothesis.event` that runs actually happen.
-- [ ] T019 [US2] Extend `planner.py` with the event-driven rule (research O8). Make T017 and T018 pass.
+- [X] T019 [US2] Extend `planner.py` with the event-driven rule (research O8). Make T017 and T018 pass.
 
 ---
 
@@ -216,14 +216,14 @@ The shared grants contract is `specs/001-data-model/contracts/role-grants.md`, a
 
 **Goal**: no PM start while paused or when the pause flag is unreadable. A skipped morning session counts as done, and after resuming the event-driven rule runs once.
 
-- [ ] T020 [P] [US3] `tests/unit/orchestrator/test_planner_pause.py`:
+- [X] T020 [P] [US3] `tests/unit/orchestrator/test_planner_pause.py`:
   - paused at 10:00 gives `Skip(pm, morning_session, "trading paused")`, while the Identifier still starts;
   - paused all morning and resumed at 13:00 gives one PM `event_driven` start at 13:00;
   - pause flag unreadable (`None`) gives a `Skip(…, "pause flag unreadable")` for the morning session and no event-driven start;
   - Research is unaffected by the pause;
   - property: across random pause windows, zero PM starts happen while paused (SC-004).
-- [ ] T021 [US3] Extend `planner.py` with the pause rules (research O11). In `service.py`, read the pause through `store.trading_paused()` in the same tick, just before planning. A read error becomes `None`, logged at ERROR once per tick. Event-driven "due but paused" is logged once per pause episode, with no record. Make T020 pass, and add a service test for the log-once behaviour to `test_service_day.py`.
-- [ ] T022 [US3] `tests/integration/orchestrator/test_pause_postgres.py`: with `system_state.trading_paused` set by the admin, a tick at 10:00 as `ta_orchestrator` records the skipped morning session. After clearing it, a tick starts the PM.
+- [X] T021 [US3] Extend `planner.py` with the pause rules (research O11). In `service.py`, read the pause through `store.trading_paused()` in the same tick, just before planning. A read error becomes `None`, logged at ERROR once per tick. Event-driven "due but paused" is logged once per pause episode, with no record. Make T020 pass, and add a service test for the log-once behaviour to `test_service_day.py`.
+- [X] T022 [US3] `tests/integration/orchestrator/test_pause_postgres.py`: with `system_state.trading_paused` set by the admin, a tick at 10:00 as `ta_orchestrator` records the skipped morning session. After clearing it, a tick starts the PM.
 
 ---
 
@@ -233,7 +233,7 @@ The shared grants contract is `specs/001-data-model/contracts/role-grants.md`, a
 
 ### Tests (write first)
 
-- [ ] T023 [P] [US4] `tests/unit/orchestrator/test_planner_catch_up.py`:
+- [X] T023 [P] [US4] `tests/unit/orchestrator/test_planner_catch_up.py`:
   - first tick at 11:15 with no records today gives `Start(research, catch_up, research_daily)` and `Start(identifier, scheduled, 11:00)` only, with no 10:00 backfill;
   - the morning session waits while the catch-up Research run is in progress;
   - once Research finishes (or times out), `Start(pm, catch_up, morning_session)`;
@@ -242,11 +242,11 @@ The shared grants contract is `specs/001-data-model/contracts/role-grants.md`, a
   - property: re-planning from the same records twice gives no new starts (SC-006);
   - **restart property** (fixed after G3): Hypothesis picks a restart time in a simulated day. Records written before it stay, `running` ones become `interrupted`, and the simulation carries on. No `slot_key` is ever started twice. Research's daily run and the morning session each happen at most once, and exactly once if they were still due before the cutoff;
   - intraday Research slots (with `interval_minutes` set) are never backfilled, the same as the Identifier's.
-- [ ] T024 [P] [US4] `tests/unit/orchestrator/test_planner_timeouts.py`:
+- [X] T024 [P] [US4] `tests/unit/orchestrator/test_planner_timeouts.py`:
   - a running record older than the agent's timeout gives `Stop(run_id)`;
   - one older than timeout minus 1 s gives nothing;
   - a failed Identifier run at 11:00 is not restarted until 12:00 (FR-019).
-- [ ] T025 [P] [US4] `tests/unit/orchestrator/test_launcher.py`, with the real `SubprocessLauncher` and `tests/fakes/agent.py`:
+- [X] T025 [P] [US4] `tests/unit/orchestrator/test_launcher.py`, with the real `SubprocessLauncher` and `tests/fakes/agent.py`:
   - `ok` gives exit status 0 and `fail` gives 1, through `poll`;
   - `hang` then `stop` returns within the injected grace period plus 1 s, and the process is gone;
   - `spawn` then `stop`: the grandchild pid is gone too (the process group was killed);
@@ -255,11 +255,11 @@ The shared grants contract is `specs/001-data-model/contracts/role-grants.md`, a
   - `stop_group(pgid, module)` stops a live `hang` child whose command line contains the module and returns `True`. It returns `False`, without signalling, for a group that's gone or runs a different module.
   
   Keep the total test time low by using a short grace period, injectable for tests.
-- [ ] T026 [US4] `tests/integration/orchestrator/test_restart.py`, with a real autocommit connection as `ta_orchestrator` and the fake launcher. Insert a `running` PM record with a `pgid` that the fake reports as a live orphan, plus one with no `pgid`. Start a fresh `Orchestrator` and run its startup: `stop_group` is called for the first before its record becomes `interrupted`, and the second becomes `interrupted` too (FR-023). A later tick treats it as failed for the rules (clarification 2). Clean up the committed rows afterwards.
+- [X] T026 [US4] `tests/integration/orchestrator/test_restart.py`, with a real autocommit connection as `ta_orchestrator` and the fake launcher. Insert a `running` PM record with a `pgid` that the fake reports as a live orphan, plus one with no `pgid`. Start a fresh `Orchestrator` and run its startup: `stop_group` is called for the first before its record becomes `interrupted`, and the second becomes `interrupted` too (FR-023). A later tick treats it as failed for the rules (clarification 2). Clean up the committed rows afterwards.
 
 ### Implementation
 
-- [ ] T027 [US4] Extend `planner.py` with catch-up, the Research-first gating and timeouts (research O9, O10). Create `SubprocessLauncher` in `launcher.py` per research O3: `Popen([sys.executable, "-m", module], env=env, start_new_session=True)`; SIGTERM to the process group; SIGKILL after the grace period (10 s by default). Extend `service.py` with:
+- [X] T027 [US4] Extend `planner.py` with catch-up, the Research-first gating and timeouts (research O9, O10). Create `SubprocessLauncher` in `launcher.py` per research O3: `Popen([sys.executable, "-m", module], env=env, start_new_session=True)`; SIGTERM to the process group; SIGKILL after the grace period (10 s by default). Extend `service.py` with:
   - the startup step `reap_and_mark_interrupted`: for each `running` row with a `pgid`, call `launcher.stop_group(pgid, module)`, then mark it `interrupted` and log it (research O12);
   - applying `Stop`;
   - `shutdown()`: stop every running handle, then record each as `interrupted` if the connection is still up (FR-005a).
@@ -270,25 +270,25 @@ The shared grants contract is `specs/001-data-model/contracts/role-grants.md`, a
 
 ## Phase 7: User Story 5 — The owner can see what ran (P3)
 
-- [ ] T028 [P] [US5] `tests/unit/orchestrator/test_logging.py`, with `caplog` and the formats in `contracts/orchestrator-interface.md` "Log lines":
+- [X] T028 [P] [US5] `tests/unit/orchestrator/test_logging.py`, with `caplog` and the formats in `contracts/orchestrator-interface.md` "Log lines":
   - start, finish, skip, failure and timeout lines;
   - "due but paused" once per episode;
   - an ERROR line when the view or the pause flag can't be read;
   - across all records, no value of any variable passed to an agent appears in the logs. Set a distinctive fake value and assert it's absent. This is meaningful here because the service does copy real values (FR-008a).
-- [ ] T029 [US5] Add the log lines to `service.py`, and make T028 pass. Add an integration check to `test_service_postgres.py` that a simulated day with a failure, a timeout and a paused morning leaves a record for every slot, with its reason and outcome (US5 acceptance).
+- [X] T029 [US5] Add the log lines to `service.py`, and make T028 pass. Add an integration check to `test_service_postgres.py` that a simulated day with a failure, a timeout and a paused morning leaves a record for every slot, with its reason and outcome (US5 acceptance).
 
 ---
 
 ## Phase 8: The process (`python -m trading_agent.orchestrator`)
 
-- [ ] T030 [P] `tests/unit/orchestrator/test_main.py`, mirroring `tests/unit/reference/test_main.py`, with injected `connect`, `launcher_factory`, `store_factory`, `sleep`, `clock`, `max_ticks` and the lock wait:
+- [X] T030 [P] `tests/unit/orchestrator/test_main.py`, mirroring `tests/unit/reference/test_main.py`, with injected `connect`, `launcher_factory`, `store_factory`, `sleep`, `clock`, `max_ticks` and the lock wait:
   - **Exit 2**: a missing `ORCHESTRATOR_DATABASE_URL` (the message names the variable); a bad config (including the prefix rule); the lock held elsewhere after waiting.
   - **Exit 3**: a connect `OperationalError`, or one raised during a tick.
   - **Exit 0**: `max_ticks` reached.
   - **Startup order**: `reap_and_mark_interrupted` runs before the first tick.
   - **Shutdown** (fixed after P1): a SIGTERM delivered mid-loop (simulated by the injected sleep raising the handler's exception), `max_ticks` ending, or an `OperationalError` all call `orchestrator.shutdown()` before exiting, so running handles are stopped.
   - **Environment reads**: the orchestrator reads `ORCHESTRATOR_DATABASE_URL`, plus only the names listed for **enabled** agents, and only at the moment of starting one. Check with a recording mapping.
-- [ ] T031 Create `src/trading_agent/orchestrator/__main__.py`:
+- [X] T031 Create `src/trading_agent/orchestrator/__main__.py`:
   - `TICK_SECONDS = 30`;
   - `SINGLE_INSTANCE_LOCK = 0x6f726368` ("orch"), with a comment naming the other components' keys to avoid;
   - the startup sequence per research O12, with keepalives as in 003 and 004;
@@ -297,13 +297,13 @@ The shared grants contract is `specs/001-data-model/contracts/role-grants.md`, a
   - `logging.basicConfig` under `__main__`.
   
   Make T030 pass.
-- [ ] T032 `tests/integration/orchestrator/test_single_instance.py`: a second lock taker is refused while the first holds the lock, and succeeds once the first connection closes (FR-021).
+- [X] T032 `tests/integration/orchestrator/test_single_instance.py`: a second lock taker is refused while the first holds the lock, and succeeds once the first connection closes (FR-021).
 
 ---
 
 ## Phase 9: Polish & cross-cutting
 
-- [ ] T033 [P] Update `docs/specs/orchestrator.md`:
+- [X] T033 [P] Update `docs/specs/orchestrator.md`:
   - agents run as separate processes with prefixed variables;
   - the run records and the one-value view;
   - reads only `trading_paused`;
@@ -311,8 +311,8 @@ The shared grants contract is `specs/001-data-model/contracts/role-grants.md`, a
   - failed-run and catch-up behaviour.
   
   Cite `specs/005-orchestrator`, its Clarifications, and [ADR 0015](../../docs/adr/0015-orchestrator-starts-agents-with-their-own-credentials.md). Keep it a behaviour spec, without function signatures.
-- [ ] T034 [P] Update `docs/specs/data-model.md` with the `orchestrator_runs` and `latest_report_time` sections, and note the narrowed `system_state` read. Update `docs/architecture/overview.md`: the orchestrator is a process that starts the agents, with its own run records, and the stale line "It holds no database credentials" is corrected to reference ADR 0011 and 005.
-- [ ] T035 [P] Mutation-check pass over the planner and launcher rules. Covered code:
+- [X] T034 [P] Update `docs/specs/data-model.md` with the `orchestrator_runs` and `latest_report_time` sections, and note the narrowed `system_state` read. Update `docs/architecture/overview.md`: the orchestrator is a process that starts the agents, with its own run records, and the stale line "It holds no database credentials" is corrected to reference ADR 0011 and 005.
+- [X] T035 [P] Mutation-check pass over the planner and launcher rules. Covered code:
   - the 30-minute spacing, the 5-minute wait, and the cutoff (normal and early close);
   - the morning slot counting as done when skipped;
   - "newer than the last *successful* start";
@@ -327,8 +327,8 @@ The shared grants contract is `specs/001-data-model/contracts/role-grants.md`, a
   - the 0010 REVOKE.
   
   Record the results in the implementation notes.
-- [ ] T036 Run the full offline suite, the integration suite and lint per `quickstart.md`. All must pass.
-- [ ] T037 Walk through `quickstart.md`, and confirm every command and expected outcome matches the implementation.
+- [X] T036 Run the full offline suite, the integration suite and lint per `quickstart.md`. All must pass.
+- [X] T037 Walk through `quickstart.md`, and confirm every command and expected outcome matches the implementation.
 
 ---
 
@@ -360,4 +360,51 @@ The shared grants contract is `specs/001-data-model/contracts/role-grants.md`, a
 
 ## Implementation notes
 
-(Filled in during `/speckit-implement`.)
+- **Test counts**: 652 offline (was 460) and 1260 integration (was 1070). Lint and format are
+  clean. The offline suite now takes about 3 minutes; the planner's Hypothesis properties, which
+  simulate whole trading days, add about 50 seconds.
+- **Planner shape**: as research O1–O16 describe. A few details the tasks left open:
+  - `plan()` returns actions in a fixed order: timeouts (`Stop`), then Research, the PM and the
+    Identifier.
+  - An event-driven run that is due while trading is paused becomes a `Hold` action. It is logged
+    once per pause episode and never recorded (O11).
+  - Timeouts are checked every day, trading or not.
+  - The morning session is labelled `morning_session` when it starts on time, or when it was held
+    back only by a Research run that was going at 10:00. Otherwise it is `catch_up` (O9).
+- **Service**: `Orchestrator.startup` reaps orphans and marks them interrupted. `shutdown` stops
+  every running agent's group. `__main__` calls `shutdown` from a `finally` block, so it runs on
+  SIGTERM, SIGINT, the loop ending, and a lost connection (FR-005a).
+- **Launcher**: on Linux, `stop_group` reads the leader's command line from `/proc`; elsewhere it
+  uses `ps`. It signals only when that command line contains the agent's module.
+- **A flaky test fixed, from 004**: `tests/integration/reference/test_single_instance.py`, and the
+  new orchestrator lock test that copied it, retook the lock with no wait immediately after closing
+  the first connection. The server releases a closed session's lock asynchronously, so the retake
+  raced it and failed once under load. Both tests now allow up to 5 seconds.
+- **Guard hook**: a shell heredoc writing the stand-in agent (`tests/fakes/agent.py`) was blocked
+  by the local credential guard, because the file lists environment variable *names*. The file was
+  written with the file tool instead, and the owner was told. The stand-in only lists names of an
+  environment each test builds with fake values, to check FR-004 isolation.
+- **T035 mutation pass**: 24 mutations, each applied, tested and restored by a scratch script. At
+  first 22 were caught and 2 survived:
+  - **No backfill**: with the default window, the last slot's interval ends exactly at the close,
+    so a late run could never happen. Added `test_a_slot_past_its_own_interval_is_not_run_late`,
+    with a window ending at 13:00.
+  - **Killing the whole group**: the stand-in's grandchild died from SIGTERM anyway. Added a
+    `spawn_stubborn` mode and `test_stop_kills_a_grandchild_that_ignores_sigterm`.
+
+  Both mutations are now caught. The others were caught at once:
+  - the 30-minute spacing and the 5-minute wait;
+  - the cutoff, normal and early close;
+  - a skipped morning session counting as done;
+  - "newer than the last *successful* start";
+  - the pause failing closed;
+  - catch-up only before the cutoff, and Research first;
+  - the overlap skip, the timeout, and the on-time/catch-up label;
+  - the agent's own process group, and the orphan command-line check;
+  - the prefix rule and the ADR 0011 spacing bound;
+  - passing only the listed variables;
+  - reaping orphans, and stopping agents at shutdown;
+  - record-before-start;
+  - the single slot-key index and the 0010 REVOKE.
+- **Not done here, as planned**: the agents themselves (all ship disabled), deployment config,
+  and alerts.

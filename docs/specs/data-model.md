@@ -99,6 +99,22 @@ dedicated `reference_data` role for the daily reference-data job (ADR 0010).
 The job inserts only, never updates: a day's row is never changed once written
 (`specs/004-reference-data`, migration `0009`).
 
+## `orchestrator_runs`
+
+One row per agent run or skipped slot, written only by the orchestrator: the
+agent, why it was due (scheduled, morning session, event-driven, catch-up), its
+slot, when it started and finished, its process group, and its outcome
+(succeeded, failed, timed out, interrupted, skipped). A row is written before
+the agent starts, so each slot can be claimed only once a day. Never deleted.
+Readers: the orchestrator, the Assistant and the dashboard
+(`specs/005-orchestrator`, migration `0010`).
+
+## `latest_report_time` (view)
+
+A single value: the newest report's creation time. It is the only thing the
+orchestrator may learn about reports (ADR 0011). Readers: the orchestrator, the
+Assistant and the dashboard.
+
 ## `reference_candidate_symbols` (view)
 
 The symbols the reference-data job fetches data for: every held position, and
@@ -177,7 +193,7 @@ A single control row for the one manual control and the daily-loss breaker.
 
 | Field | Type | Notes |
 |---|---|---|
-| `trading_paused` | boolean | the UI's manual pause/resume toggle; the orchestrator checks this before running the PM |
+| `trading_paused` | boolean | the UI's manual pause/resume toggle; the orchestrator checks this before running the PM, and can read this column only (`specs/005-orchestrator`) |
 | `halt_triggered_on` | date | the trading day the Risk Gate saw the 20% daily-loss line crossed |
 | `baseline_trading_day`, `daily_starting_equity` | date, numeric | the daily-loss breaker's baseline and the day it belongs to |
 

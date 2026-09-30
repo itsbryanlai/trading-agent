@@ -87,6 +87,25 @@ OBJECTS: dict[str, ObjectSpec] = {
     "execution_refusals": ObjectSpec("table", probe_column="reason"),
     # Feature 004
     "reference_candidate_symbols": ObjectSpec("view", probe_column="symbol"),
+    # Feature 005
+    "orchestrator_runs": ObjectSpec(
+        "table",
+        probe_column="detail",
+        columns_for_update=(
+            "id",
+            "agent",
+            "trading_day",
+            "reason",
+            "slot_key",
+            "slot_at",
+            "started_at",
+            "finished_at",
+            "pgid",
+            "outcome",
+            "detail",
+        ),
+    ),
+    "latest_report_time": ObjectSpec("view", probe_column="generated_at"),
 }
 
 

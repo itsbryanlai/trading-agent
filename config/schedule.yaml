@@ -1,0 +1,41 @@
+# When the orchestrator starts each LLM agent (python -m trading_agent.orchestrator).
+#
+# Schema: specs/005-orchestrator/contracts/orchestrator-interface.md
+# ("Configuration"). Every key is required and unknown keys are rejected; a bad
+# file means the orchestrator refuses to start. Times are ET wall-clock.
+#
+# Changed only through code review (spec FR-015). No agent writes this file.
+# The loader enforces ADR 0011's bounds: PM runs at least 30 minutes apart, no PM
+# start after 15:30 ET or within 30 minutes of the close, and a report wait of at
+# least 5 minutes.
+#
+# Every agent ships disabled: none exists yet. Each agent's feature enables its
+# own entry and lists its variables, which must start with its prefix (ADR 0015).
+
+research:
+  enabled: false
+  module: trading_agent.research
+  env: []                      # RESEARCH_* names only
+  timeout_minutes: 15
+  daily_at: "08:30"            # before the 09:30 open
+  interval_minutes: null       # optional intraday runs; null = off
+
+opportunistic_identifier:
+  enabled: false
+  module: trading_agent.opportunistic_identifier
+  env: []                      # OPPORTUNISTIC_IDENTIFIER_* names only
+  timeout_minutes: 10
+  window_start: "10:00"
+  window_end: "15:00"
+  interval_minutes: 60
+
+portfolio_manager:
+  enabled: false
+  module: trading_agent.portfolio_manager
+  env: []                      # PORTFOLIO_MANAGER_* names only
+  timeout_minutes: 10
+  morning_session: "10:00"     # at or after the open, before the cutoff
+  min_spacing_minutes: 30      # >= 30 (ADR 0011)
+  report_wait_minutes: 5       # 5-60
+  last_start: "15:30"          # <= 15:30 (ADR 0011)
+  before_close_minutes: 30     # >= 30; the cutoff is the earlier of this and last_start

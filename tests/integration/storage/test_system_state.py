@@ -35,7 +35,11 @@ def test_second_row_impossible(conn):
 def test_pause_toggle_readable_until_toggled_back(conn):
     with as_role(conn, "ta_dashboard_control"):
         conn.execute("UPDATE system_state SET trading_paused = true, updated_at = now()")
+    # 005 narrowed the orchestrator to the flag itself (research O7).
     with as_role(conn, "ta_orchestrator"):
+        row = conn.execute("SELECT trading_paused FROM system_state").fetchone()
+        assert row["trading_paused"] is True
+    with as_role(conn, "ta_dashboard"):
         assert _effective(conn)["trading_paused"] is True
 
 

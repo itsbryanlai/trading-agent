@@ -115,13 +115,13 @@ GRANTS: dict[str, dict[str, set[str]]] = {
         "ta_dashboard_control": {"S", "U:trading_paused", "U:updated_at"},
         # 003: the manual pause flag only (FR-018); never the halt or baseline.
         "ta_execution": {"S:trading_paused"},
-        "ta_orchestrator": {"S"},
+        # 005: the pause flag only; never the equity or the halt (research O7).
+        "ta_orchestrator": {"S:trading_paused"},
         "ta_assistant": {"S"},
         "ta_dashboard": {"S"},
     },
     "system_state_effective": {
         "ta_risk_gate": {"S"},
-        "ta_orchestrator": {"S"},
         "ta_assistant": {"S"},
         "ta_dashboard": {"S"},
         "ta_dashboard_control": {"S"},
@@ -153,6 +153,18 @@ GRANTS: dict[str, dict[str, set[str]]] = {
     # own table: symbols and times, never the base tables.
     "reference_candidate_symbols": {
         "ta_reference_data": {"S"},
+        "ta_assistant": {"S"},
+        "ta_dashboard": {"S"},
+    },
+    # Feature 005 (migration 0010). The orchestrator's own run records, and the only
+    # thing it may learn about reports: the latest creation time.
+    "orchestrator_runs": {
+        "ta_orchestrator": {"S", "I", "U:pgid", "U:finished_at", "U:outcome", "U:detail"},
+        "ta_assistant": {"S"},
+        "ta_dashboard": {"S"},
+    },
+    "latest_report_time": {
+        "ta_orchestrator": {"S"},
         "ta_assistant": {"S"},
         "ta_dashboard": {"S"},
     },

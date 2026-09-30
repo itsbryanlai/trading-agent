@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import time
 from datetime import timedelta
 
 import psycopg
@@ -22,7 +23,9 @@ def test_second_job_is_refused_until_the_first_goes_away(database_url):
         with pytest.raises(runner.AnotherJobRunning):
             runner._take_lock(second, timedelta(seconds=2), timedelta(seconds=1), lambda s: None)
         first.close()
-        runner._take_lock(second, timedelta(0), timedelta(seconds=1), lambda s: None)
+        # The server releases a closed session's lock asynchronously: allow it a
+        # moment rather than racing it (the test flaked under load).
+        runner._take_lock(second, timedelta(seconds=5), timedelta(milliseconds=100), time.sleep)
     finally:
         first.close()
         second.close()
