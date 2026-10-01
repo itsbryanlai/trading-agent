@@ -10,13 +10,9 @@ import pytest
 
 from tests.fakes.model import FakeModel
 from tests.fakes.news import FakeNews
+from tests.unit.research.conftest import FAKE_DASHSCOPE, FAKE_FINNHUB, SECRETS
 from tests.unit.research.support import Clock, article, proposal
 from trading_agent.research import __main__ as runner
-
-FAKE_URL = "postgresql://research:fake-not-real@localhost/none"
-FAKE_FINNHUB = "fake-finnhub-not-real"
-FAKE_DASHSCOPE = "fake-dashscope-not-real"
-SECRETS = (FAKE_URL, FAKE_FINNHUB, FAKE_DASHSCOPE, "fake-not-real")
 
 
 class FakeCursor:
@@ -74,15 +70,6 @@ class FakeConn:
 
     def close(self):
         self.closed = True
-
-
-@pytest.fixture
-def env(monkeypatch):
-    monkeypatch.setenv("RESEARCH_DATABASE_URL", FAKE_URL)
-    monkeypatch.setenv("RESEARCH_FINNHUB_API_KEY", FAKE_FINNHUB)
-    monkeypatch.setenv("RESEARCH_DASHSCOPE_API_KEY", FAKE_DASHSCOPE)
-    monkeypatch.delenv("RESEARCH_ANTHROPIC_API_KEY", raising=False)
-    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
 
 
 def run(args=(), *, conn=None, connect_error=None, news=None, model=None, seen=None, **kw):

@@ -5,7 +5,8 @@ from __future__ import annotations
 import logging
 
 from tests.fakes.model import FakeModel
-from tests.unit.research.test_main import SECRETS, FakeConn, env, run  # noqa: F401 (fixture)
+from tests.unit.research.conftest import SECRETS
+from tests.unit.research.test_main import FakeConn, run
 from trading_agent.research import __main__ as runner
 from trading_agent.research import service
 from trading_agent.research.ports import ModelUnavailable
