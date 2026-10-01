@@ -68,17 +68,17 @@ It makes three calls:
 **Qwen** (`research/qwen.py`): a standard-library `urllib` POST to `{base_url}/chat/completions` ([ADR 0018](../../docs/adr/0018-qwen-as-a-model-provider.md), base `https://maas.qwencloudapi.com/compatible-mode/v1`), with:
 - `Authorization: Bearer <key>`;
 - `model`, `messages` (system, then user), `max_tokens`;
-- `response_format: {"type": "json_object"}`;
-- `enable_thinking` from config, `false` by default.
+- `response_format: {"type": "json_schema", "json_schema": {"name": "research_answer", "strict": true, "schema": ANSWER_SCHEMA}}`;
+- `enable_thinking: false`.
 
-The answer schema goes in the system prompt.
-- **Usage**: tokens come from `usage.prompt_tokens` and `usage.completion_tokens`.
-- **Truncation**: `finish_reason == "length"` raises `ModelTruncated`.
-- **Not confirmed**:
-  - whether this endpoint enforces `json_schema` (QwenCloud's model page lists "Structured Outputs" but doesn't say which form);
-  - whether thinking and JSON mode can be combined. Thinking is off by default for that reason.
-  
-  `json_object` plus our own checking (R6) is safe either way.
+What QwenCloud's [structured-output guide](https://docs.qwencloud.com/developer-guides/text-generation/structured-output) (read 2026-10-01) says:
+- **Strict schema mode** is supported for the Qwen3.7-Plus series. The weaker JSON-object mode guarantees only valid JSON, and requires the word "JSON" in the prompt; R7's prompt includes it anyway.
+- **Thinking mode needs streaming**, and for some models structured output "may not take effect" with thinking on. So thinking stays off and the call doesn't stream. The config has no thinking switch.
+- **`max_tokens` can truncate JSON**, and the guide advises leaving it unset. We keep it as the per-run cost cap (FR-005). A truncated answer comes back as `finish_reason == "length"`, raises `ModelTruncated`, and is written as a failure `no_action`, so a truncated answer is never parsed.
+- **Our checks still apply**, as the guide itself recommends validating before use.
+- **Changing models**: `model.name` changes only through review. Strict schema mode is documented only for the Qwen3.7 and Qwen3.8 series, so switching to another Qwen model means checking its support first.
+
+**Usage**: tokens come from `usage.prompt_tokens` and `usage.completion_tokens`.
 
 **Anthropic** (`research/anthropic_client.py`): the official `anthropic` SDK, as the constitution requires. It calls `client.messages.create(model=..., max_tokens=..., system=..., messages=[...], output_config={"format": {"type": "json_schema", "schema": ...}, "effort": ...})`.
 - **Retries and timeout**: the client is built with `timeout=model.timeout_seconds` and `max_retries=1`, so the worst case, two attempts, stays inside the orchestrator's 15-minute timeout (R11).
@@ -198,7 +198,6 @@ These match the reference job's 2 and 3. The orchestrator records any non-zero c
 | `model.name` | `qwen3.7-plus` | non-empty; for `anthropic`, must start with `claude-` |
 | `model.max_output_tokens` | 8000 | 1000–64000 |
 | `model.timeout_seconds` | 300 | 30–360 |
-| `model.qwen_enable_thinking` | `false` | boolean |
 | `model.anthropic_effort` | `medium` | `low`, `medium` or `high` |
 
 **The provider key's name follows from the provider**: `RESEARCH_DASHSCOPE_API_KEY` or `RESEARCH_ANTHROPIC_API_KEY`. Only that one is required (FR-018).

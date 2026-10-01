@@ -46,7 +46,6 @@ model:
   name: qwen3.7-plus             # e.g. claude-sonnet-5-5 with provider: anthropic
   max_output_tokens: 8000
   timeout_seconds: 300
-  qwen_enable_thinking: false
   anthropic_effort: medium       # low | medium | high
 ```
 

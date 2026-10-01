@@ -43,7 +43,7 @@ Set `RESEARCH_FINNHUB_API_KEY` and `RESEARCH_DASHSCOPE_API_KEY` in your own shel
 - The would-be reports print as JSON lines. Each one has citations whose URLs are real Finnhub articles.
 - The token use and input size print. Compare them with research R12's estimate.
 - Company news for each watchlist symbol arrived, or is listed as missing. A `403` on a symbol answers research R3's open question about the free tier.
-- If the provider rejects `response_format: json_object`, or returns non-JSON, the run reports `unusable_answer`. That would mean revisiting research R5.
+- The model answers in strict schema mode. If the provider rejects the `json_schema` response format, the run reports `model_unavailable`; if its answer is still unusable, `unusable_answer`. Either means revisiting research R5.
 
 ## 5. Owner: the Sonnet switch (optional)
 

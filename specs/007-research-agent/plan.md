@@ -127,11 +127,11 @@ pyproject.toml                                           # anthropic dependency
 
 1. **The `reports` constraint (migration 0011)**: one loosening and one tightening, both on analyst reports. No risk limit, sizing rule or order logic changes. The PM and the gate are unaffected.
    - **Loosened:** a sell may suggest 0 (your clarification).
-   - **Tightened:** found while planning. Today an actionable report may have a **null** suggested size, because `NULL > 0` passes a CHECK. 0011 closes it, as `reports_conviction_range` already does for conviction.
-2. **The Anthropic refusal fallback is off.** The Claude API reference recommends enabling server-side `fallbacks` by default on Sonnet 5.5. With it on, a refused request is re-run on another Claude model. I've left it off to match ADR 0018's "no automatic failover": a refusal becomes a `no_action` report saying `model_refused`. Say if you want it on. It only applies when Research runs on Sonnet.
+   - **Tightened:** found while planning. Today an actionable report may have a **null** suggested size, because `NULL > 0` passes a CHECK. 0011 closes it, as `reports_conviction_range` already does for conviction. **Owner, 2026-10-01: include the tightening.**
+2. **The Anthropic refusal fallback is off.** The Claude API reference recommends enabling server-side `fallbacks` by default on Sonnet 5.5. With it on, a refused request is re-run on another Claude model. I've left it off to match ADR 0018's "no automatic failover": a refusal becomes a `no_action` report saying `model_refused`. It only applies when Research runs on Sonnet. **Owner, 2026-10-01: keep it off.**
 3. **A new dependency**: `anthropic` 1.x, the official SDK, which the constitution names for Anthropic. Qwen and Finnhub use the standard library, so no `openai` package is needed.
 4. **Not yet confirmed; your try-out run settles all three** (quickstart step 4):
-   - whether Qwen's endpoint enforces a JSON schema, and whether thinking combines with JSON mode. The plan uses JSON mode with thinking off, plus our own checks, so it's safe either way;
+   - ~~whether Qwen enforces a JSON schema~~: settled from QwenCloud's structured-output guide. Qwen3.7-Plus supports strict schema mode, and thinking needs streaming, so the plan uses strict schema mode with thinking off (research R5);
    - whether Finnhub's `/company-news` is free for every symbol. A 403 per symbol is handled as missing news;
    - the token and cost estimates (R12).
 5. **Prompt injection reaching the PM**: Research's rationale is model-written text that the PM's model will read. That's recorded in the spec's assumptions for the PM feature.
