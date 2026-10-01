@@ -14,6 +14,20 @@ from trading_agent.research.service import PgResearchStore, ReportRow
 
 NOW = datetime.now(UTC)
 LATER = NOW + timedelta(hours=6)
+
+
+def _next_session_morning() -> datetime:
+    """09:00 ET-ish (14:00 UTC) on the next session after today, so its reports'
+    expiry is always after the database's now(): a fixed date would expire."""
+    from trading_agent.risk import calendar
+
+    day = calendar.trading_day(NOW) + timedelta(days=1)
+    while not calendar.is_session(day):
+        day += timedelta(days=1)
+    return datetime(day.year, day.month, day.day, 14, 0, tzinfo=UTC)
+
+
+NOW_SESSION = _next_session_morning()
 SOURCE = {
     "title": "Apple beats",
     "url": "https://news.example.com/apple",
@@ -138,3 +152,27 @@ def test_on_an_autocommit_connection_a_failed_run_leaves_no_rows(database_url):
         conn.execute("RESET ROLE")
         conn.execute("DELETE FROM reports WHERE rationale_md = %s", (marker,))
         conn.close()
+
+
+def test_a_run_whose_model_fails_writes_one_failure_row(conn):
+    from tests.fakes.model import FakeModel
+    from tests.fakes.news import FakeNews
+    from tests.unit.research.support import Clock, article, config
+    from trading_agent.research.ports import ModelUnavailable
+    from trading_agent.research.service import ResearchRun
+
+    clock = Clock(NOW_SESSION)
+    with as_role(conn, "ta_research"):
+        ResearchRun(
+            FakeNews(general=[article("apple", related=("AAPL",), at=NOW_SESSION)]),
+            FakeModel(error=ModelUnavailable()),
+            PgResearchStore(conn, _allow_savepoints=True),
+            config(),
+            clock=clock,
+            sleep=clock.sleep,
+            monotonic=clock.monotonic,
+        ).run()
+    (only,) = _rows(conn)
+    assert only["direction"] == "no_action" and only["symbol"] is None
+    assert (only["conviction"], only["suggested_size_pct"], only["sources"]) == (None, None, [])
+    assert only["rationale_md"].startswith("Research run failed: model_unavailable.")

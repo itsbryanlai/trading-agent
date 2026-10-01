@@ -311,7 +311,7 @@ description: "Task list for the Research agent (feature 007)"
 
 ### Tests for User Story 3
 
-- [ ] T030 [P] [US3] Write the failing test `tests/unit/research/test_service_failures.py`, one case per row:
+- [X] T030 [P] [US3] Write the failing test `tests/unit/research/test_service_failures.py`, one case per row:
 
   | Case | Expected |
   |---|---|
@@ -332,7 +332,7 @@ description: "Task list for the Research agent (feature 007)"
   | partial news **and** a model failure | the failure row also carries the Missing line (research R8) |
 
   Every model failure is exit 1 with no other provider called. For every failure row, the rationale contains no exception message text: assert that a unique marker placed in the fake exception's message never appears in any row or log line.
-- [ ] T031 [P] [US3] Write the failing test `tests/unit/research/test_main_exit.py`:
+- [X] T031 [P] [US3] Write the failing test `tests/unit/research/test_main_exit.py`:
   - a `RunOutcome` with a failure category is exit 1;
   - `store.write` raising `psycopg.OperationalError` is exit 3, logged by error type only;
   - an error while reading open reports is exit 3;
@@ -341,7 +341,7 @@ description: "Task list for the Research agent (feature 007)"
 
 ### Implementation for User Story 3
 
-- [ ] T032 [US3] In `service.py`, implement the failure handling in research R8:
+- [X] T032 [US3] In `service.py`, implement the failure handling in research R8:
   - **Partial news:** track which feeds failed and append the `Missing news:` line to every row.
   - **Failure rows:** map each error class to its category and write the fixed sentence, never the exception text.
   - **Logs:** log `research: <category>: <exception type>` at ERROR.
@@ -350,8 +350,8 @@ description: "Task list for the Research agent (feature 007)"
   - **A catch-all** around everything after the open-reports read writes an `internal_error` failure row.
   
   Make T030 pass.
-- [ ] T033 [US3] In `__main__.py`, map failure outcomes to exit 1 and database errors during read or write to exit 3. Catch any other exception escaping the run, log its type only, and exit 4 (research R9). Make T031 pass.
-- [ ] T034 [US3] Add to `tests/integration/research/test_write.py`: a run whose model fails writes exactly one `no_action` row as `ta_research`, with `conviction`, `suggested_size_pct` and `symbol` null, and `sources = []`.
+- [X] T033 [US3] In `__main__.py`, map failure outcomes to exit 1 and database errors during read or write to exit 3. Catch any other exception escaping the run, log its type only, and exit 4 (research R9). Make T031 pass.
+- [X] T034 [US3] Add to `tests/integration/research/test_write.py`: a run whose model fails writes exactly one `no_action` row as `ta_research`, with `conviction`, `suggested_size_pct` and `symbol` null, and `sources = []`.
 
 **Checkpoint**: US1–US3 pass. Every failure is visible as a row and an exit code.
 
