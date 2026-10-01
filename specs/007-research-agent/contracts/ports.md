@@ -11,7 +11,7 @@ class NewsSource(Protocol):
     def us_symbols(self) -> frozenset[str]: ...
 ```
 
-**`RawArticle`**: `url`, `headline`, `summary`, `source`, `published_at` (aware datetime or None), `related` (tuple). An item with no URL, no headline or no time is skipped at this boundary, because it can't be cited.
+**`RawArticle`**: `url`, `headline`, `summary`, `source`, `published_at` (aware datetime or None), `related` (tuple). An item with no URL, a URL that isn't `http://` or `https://`, no headline or no time is skipped at this boundary, because it can't be cited safely.
 
 **Errors**:
 - `KeyRejected`: 401, or a 403 on a call that isn't per symbol.
@@ -30,7 +30,7 @@ class ModelClient(Protocol):
 
 **`ModelReply`**: `text` (the answer as returned), `input_tokens`, `output_tokens` (each an int or None when not reported), `finish` (the provider's stop or finish reason).
 
-**Errors**: `ModelKeyRejected`, `ModelUnavailable`, `ModelRefused`, `ModelTruncated`.
+**Errors**: `ModelKeyRejected`, `ModelRejected` (any other 4xx), `ModelUnavailable`, `ModelRefused`, `ModelTruncated`.
 
 **Neither adapter**:
 - retries beyond what research R5 states;

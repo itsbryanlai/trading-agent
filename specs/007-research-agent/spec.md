@@ -17,6 +17,12 @@
 - Q: May Research write "hold" reports? → A: No. Research writes buy or sell only: it can't see holdings, so "hold" would carry a meaningless target. A "hold" proposal is dropped and logged, and neutral or mixed news on a name produces no report.
 - Q: If some of the news can't be fetched, does Research carry on or fail the run? → A: It carries on with what it has. The run fails only if every news fetch fails, or the US symbol list can't be fetched. Otherwise every report it writes names the missing sources in its rationale, and the run exits with success.
 
+### Session 2026-10-01 (after `/speckit-analyze`)
+
+- Q: How is a proposed symbol tied to the news it cites, so an injected article can't push an unrelated listed ticker? → A: At least one cited article must be tagged with that symbol by the news provider, or come from that symbol's own company-news feed. Otherwise the proposal is dropped (`uncited_symbol`). This narrows Research to watchlist names and tagged articles; an injected article can only push the ticker it is filed under.
+- Q: What does a failure the run didn't anticipate leave behind? → A: A `no_action` report naming an internal error (exit 1). If even that can't be written, the run exits with its own code (4), so a crash is never mistaken for a recorded failure.
+- Q: What if fetching news runs long? → A: Research stops fetching at an overall deadline and continues with what it has, naming the rest as missing, so the run always finishes inside the orchestrator's timeout and leaves a report.
+
 ## User Scenarios & Testing *(mandatory)*
 
 The users of Research are:
@@ -66,13 +72,16 @@ The model reads text anyone can publish, so its answer is never trusted as is. B
 - **Shape:** the answer must match a fixed shape.
 - **Citations:** every citation must point to an article fetched in this run. The recorded title, link, publisher and time are copied from that article, never from the model's words.
 - **Symbols:** every symbol must be well-formed and appear in the day's list of US-listed symbols.
+- **Relevance:** at least one cited article must be tagged with the symbol, or come from that symbol's own company-news feed (Clarifications).
 - **Values:** direction, conviction and suggested size must be within the allowed values.
 
 A proposal that fails any check is dropped and the reason logged. If nothing valid is left, Research writes a single `no_action` report saying how many proposals were dropped and why.
 
+These checks cover the structured fields: symbol, direction, conviction, size and citations. The rationale is checked only for length. It remains model-written text that may quote the news, so it is never evidence on its own, and the PM and the dashboard treat it as untrusted data (see Assumptions).
+
 **Why this priority**: news is reachable by attackers, and the PM acts on these reports with no human in between ([ADR 0006](../../docs/adr/0006-autonomous-operation-with-daily-loss-breaker.md)). An invented citation or symbol would look like evidence to the PM.
 
-**Independent Test**: Feed a stand-in model each kind of bad answer, and check that no proposal with any invalid part is ever written. The bad answers are: a citation to an unfetched article, a made-up ticker, a malformed ticker, an out-of-range conviction, a size of 0 or over 100, an unknown direction, malformed output, and a mix of valid and invalid proposals.
+**Independent Test**: Feed a stand-in model each kind of bad answer, and check that no proposal with any invalid part is ever written. The bad answers are: a citation to an unfetched article, a made-up ticker, a malformed ticker, an out-of-range conviction, a size of 0 or over 100, an unknown direction, malformed output, and a mix of valid and invalid proposals, and a listed ticker that none of its cited articles is tagged with.
 
 **Acceptance Scenarios**:
 
@@ -181,6 +190,7 @@ Before enabling Research, or after changing its model or watchlist, the owner ca
   - **Conviction:** it is not a whole number from 1 to 5.
   - **Size:** it is not at most 100, or it is not greater than 0 (for a buy) or at least 0 (for a sell, where 0 means a full exit).
   - **Citations:** it cites no article, or any article not fetched in this run.
+  - **Relevance:** none of its cited articles is tagged with the symbol or comes from that symbol's company-news feed.
 - **FR-008**: A written report's citations MUST be built from the fetched articles' own title, link, publisher and publication time, never from the model's text.
 - **FR-009**: Research MUST write at most one report per symbol per run. It MUST NOT write a report with the same symbol and direction as one of its own still-open reports.
 - **FR-010**: The rationale MUST be capped at a configured length.
@@ -190,9 +200,9 @@ Before enabling Research, or after changing its model or watchlist, the owner ca
 - **FR-011**: Every run that reaches the database MUST write at least one report:
   - **Valid proposals:** one report per valid proposal.
   - **Nothing to argue, or everything dropped:** exactly one `no_action` report saying which.
-  - **A failure:** exactly one `no_action` report naming the failure (every news fetch failed, the symbol list failed, the model call failed, or the answer was unusable). Missing only some news is not a failure: the run continues and its reports name what was missing.
+  - **A failure:** exactly one `no_action` report naming the failure (every news fetch failed or the news key was rejected, the symbol list failed, the model call failed or was rejected, the answer was unusable, or an internal error). Missing only some news is not a failure: the run continues and its reports name what was missing.
 - **FR-012**: A run's reports MUST be written all together or not at all.
-- **FR-013**: Every report MUST expire at the close of the trading day it was generated on, using the exchange calendar's early closes. Research MUST NOT write when it runs after that day's close or on a non-trading day.
+- **FR-013**: Every report MUST expire at the close of the trading day it was generated on, using the exchange calendar's early closes. Research MUST NOT write when it runs within one minute of that day's close, after it, or on a non-trading day.
 - **FR-014**: Research MUST write only `reports` rows attributed to itself, through its own database role, with no new permission. A migration MUST relax `reports`' suggested-size check so a sell may suggest 0 (a full exit), while a buy or hold must still be above 0 (the OI may still write "hold") (Clarifications). It applies to both analysts' rows.
 
 **Running**
@@ -205,7 +215,8 @@ Before enabling Research, or after changing its model or watchlist, the owner ca
   - its database is unreachable;
   - it wrote a failure `no_action` report.
   
-  Otherwise it MUST exit with success.
+  Otherwise it MUST exit with success. An unexpected crash MUST exit with a code distinct from all of these.
+- **FR-017a**: Research MUST stop fetching news at an overall deadline that leaves time for the model call and the write within the orchestrator's timeout. News not fetched by then counts as missing (Clarifications).
 
 **Configuration and credentials**
 
@@ -221,7 +232,7 @@ Before enabling Research, or after changing its model or watchlist, the owner ca
 **Logging and documentation**
 
 - **FR-021**: Each run MUST log the number of articles read, proposals received, reports written and proposals dropped, with each dropped proposal's reason. It MUST also log the model's reported token use. No log line may contain a credential.
-- **FR-022**: `docs/specs/research-agent.md` MUST be updated to say "one report per symbol argued, or one `no_action` report per run", replacing "one row per run". It MUST also record the daily-only cadence, and the checks in FR-007 to FR-010. `docs/specs/data-model.md` MUST say that a report's suggested size is a target weight, and that a sell may suggest 0.
+- **FR-022**: `docs/specs/portfolio-manager-agent.md` and `docs/specs/ui-dashboard.md` MUST record that report rationales are untrusted model-written text, to be treated as data and never as instructions or markup. `docs/specs/research-agent.md` MUST be updated to say "one report per symbol argued, or one `no_action` report per run", replacing "one row per run". It MUST also record the daily-only cadence, and the checks in FR-007 to FR-010. `docs/specs/data-model.md` MUST say that a report's suggested size is a target weight, and that a sell may suggest 0.
 
 ### Key Entities
 

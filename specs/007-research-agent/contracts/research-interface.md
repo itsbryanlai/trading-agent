@@ -16,7 +16,8 @@ Any other argument means exit 2.
 | 0 | Wrote reports, or a "nothing to argue" or "all dropped" `no_action`; or outside the trading window, so nothing was done |
 | 1 | Wrote a failure `no_action` |
 | 2 | Refused to start: config, a missing variable, or an unknown argument |
-| 3 | The database was unreachable, or the write failed |
+| 3 | The database was unreachable, or the read or write failed |
+| 4 | Crashed: an unexpected exception escaped, so no report could be written |
 
 ## Environment
 
@@ -27,7 +28,7 @@ Any other argument means exit 2.
 | `RESEARCH_DASHSCOPE_API_KEY` | When `model.provider: qwen` |
 | `RESEARCH_ANTHROPIC_API_KEY` | When `model.provider: anthropic` |
 
-A missing required variable is reported by name and never by value, then exit 2. Research reads no other variable. In particular, it never reads `ANTHROPIC_API_KEY`: the Anthropic client gets its key passed in explicitly, so the SDK's own environment lookup is never used.
+A missing required variable is reported by name and never by value, then exit 2. Research reads no other variable. In particular, it never reads `ANTHROPIC_API_KEY`: the Anthropic client gets its key and `base_url` passed in explicitly, so the SDK's own environment lookup isn't used for either. The HTTP library may still honour standard proxy variables, which the orchestrator doesn't pass (ADR 0015's fixed base set).
 
 ## Configuration: `config/research.yaml`
 
@@ -51,7 +52,7 @@ model:
 
 ## The model's answer
 
-One JSON object, `{"proposals": [...]}`. Each item has exactly these fields, and nothing else:
+One JSON object with exactly one key, `{"proposals": [...]}`; anything else is `unusable_answer`. Each item has exactly these fields, and nothing else:
 
 | Field | Type | Rule |
 |---|---|---|
@@ -60,17 +61,17 @@ One JSON object, `{"proposals": [...]}`. Each item has exactly these fields, and
 | `conviction` | integer | 1–5 |
 | `suggested_size_pct` | number | buy: above 0, at most 100; sell: 0–100 |
 | `rationale` | string | cut to `rationale_max_chars` |
-| `article_ids` | array of strings | non-empty; each one given in this run |
+| `article_ids` | array of strings | non-empty; each one given in this run; at least one tagged with the symbol, or from its company-news feed |
 
 The JSON Schema sent to the provider is generated from this table in code (`answer.ANSWER_SCHEMA`), so the prompt and the checker can't drift apart.
 
 ## Drop reasons (closed set, logged per proposal)
 
-`malformed_answer`, `invalid_symbol`, `unlisted_symbol`, `invalid_direction`, `invalid_conviction`, `invalid_size`, `no_citation`, `unknown_citation`, `duplicate_symbol`, `already_open`.
+`malformed_answer`, `invalid_symbol`, `unlisted_symbol`, `invalid_direction`, `invalid_conviction`, `invalid_size`, `no_citation`, `unknown_citation`, `uncited_symbol`, `duplicate_symbol`, `already_open`.
 
 ## Failure categories (written in the failure `no_action` row, exit 1)
 
-`news_unavailable` (every news fetch failed), `symbol_list_unavailable`, `model_key_rejected`, `model_unavailable`, `model_refused`, `model_truncated`, `unusable_answer`.
+`news_unavailable` (every news fetch failed, or the news key was rejected), `symbol_list_unavailable`, `model_key_rejected`, `model_rejected_request`, `model_unavailable`, `model_refused`, `model_truncated`, `unusable_answer`, `internal_error`.
 
 ## Logs (stdout or stderr; never a variable's value, an article's text or the model's answer)
 

@@ -42,9 +42,12 @@ It makes three calls:
 **Pacing**: calls are spaced at `60 / finnhub_calls_per_minute` seconds, with a default of 30 a minute, as in feature 004. A watchlist of N symbols costs N + 2 calls. At 30 a minute, 20 symbols take about 45 seconds.
 
 **Failures**:
-- **401:** the key was refused, and every fetch is treated as failed.
+- **A rejected key** (401, or a 403 on a call that isn't per symbol, wherever it happens, including the symbol list): the run stops fetching and fails as `news_unavailable` (spec US3-1, analyze I1).
 - **403 on one symbol:** that symbol's company news is missing (FR-011 and Clarifications, partial news).
 - **429:** that fetch is missing. No retry: the run is once a day, and retrying inside a 15-minute timeout risks the whole run.
+- **The symbol list unavailable for any other reason** (timeout, 5xx, 429): `symbol_list_unavailable`.
+- **Unsafe URLs**: an article whose URL isn't `http://` or `https://` is skipped at the adapter, as if it had no URL, so a `javascript:` or `data:` link can't reach a report (analyze S3).
+- **The news deadline**: the service gives the fetch phase a deadline, `(len(watchlist) + 2) × (60 / finnhub_calls_per_minute + 10)` seconds from the start. Once past it, it fetches nothing more, and the unfetched feeds count as missing (FR-017a). Socket timeouts bound each call, and the deadline bounds the whole phase.
 
 **Why not reuse `reference/finnhub.py`**: that adapter's port is the reference job's (profiles, quotes, metrics). Widening it would change a merged component for another's needs. The HTTP mapping is about 30 lines, so it's duplicated on purpose, and a test pins that both adapters map status codes the same way. `reference.symbols.is_plausible_ticker` is reused, since it is a pure function.
 
@@ -63,7 +66,7 @@ It makes three calls:
 
 ## R5. The model port and its two adapters
 
-**Decision**: `ModelClient.complete(system, user, schema) -> ModelReply(text, input_tokens, output_tokens, finish)`. Errors are a closed set: `ModelKeyRejected`, `ModelUnavailable` (network, 5xx, 429, timeout), `ModelRefused` and `ModelTruncated`. Each becomes a failure `no_action` report.
+**Decision**: `ModelClient.complete(system, user, schema) -> ModelReply(text, input_tokens, output_tokens, finish)`. Errors are a closed set: `ModelKeyRejected` (401, 403), `ModelRejected` (any other 4xx: a schema the endpoint refuses, a prompt too long, a content filter, an unknown model name), `ModelUnavailable` (network, 5xx, 429, timeout), `ModelRefused` and `ModelTruncated`. Each becomes a failure `no_action` report (analyze G1).
 
 **Qwen** (`research/qwen.py`): a standard-library `urllib` POST to `{base_url}/chat/completions` ([ADR 0018](../../docs/adr/0018-qwen-as-a-model-provider.md), base `https://maas.qwencloudapi.com/compatible-mode/v1`), with:
 - `Authorization: Bearer <key>`;
@@ -85,7 +88,12 @@ What QwenCloud's [structured-output guide](https://docs.qwencloud.com/developer-
 - **Stop reasons**: `stop_reason == "refusal"` raises `ModelRefused`, and `"max_tokens"` raises `ModelTruncated`.
 - **Usage**: `usage.input_tokens` and `usage.output_tokens`.
 - **Model**: `claude-sonnet-5-5`, at $2 / $10 per million tokens per the Claude API reference cached on 2026-09-25. Thinking is adaptive by default on Sonnet 5.5. `effort` comes from config, default `medium`.
-- **Typed errors**: `AuthenticationError` and `PermissionDeniedError` become `ModelKeyRejected`. `RateLimitError`, `APIStatusError` 5xx, `APIConnectionError` and `APITimeoutError` become `ModelUnavailable`.
+- **Typed errors**, most specific first:
+  - `AuthenticationError` and `PermissionDeniedError` become `ModelKeyRejected`;
+  - `RateLimitError` becomes `ModelUnavailable`;
+  - any other `APIStatusError` with a 4xx status (`BadRequestError`, `NotFoundError`, `UnprocessableEntityError`, …) becomes `ModelRejected`;
+  - a 5xx `APIStatusError`, `APIConnectionError` and `APITimeoutError` become `ModelUnavailable`.
+- **Endpoint**: `base_url` is passed explicitly (`https://api.anthropic.com`), so the SDK never takes it from `ANTHROPIC_BASE_URL` (analyze A4).
 - **The server-side refusal fallback is not enabled** (flagged in plan.md). It would re-run a refused request on a different Claude model, which changes the model and the cost without anyone choosing it. That's the reason [ADR 0018](../../docs/adr/0018-qwen-as-a-model-provider.md) rules out automatic failover.
 
 **Why plain HTTP for Qwen, but the SDK for Anthropic**: the constitution names the `anthropic` SDK for Anthropic. Qwen is one endpoint and one call, and the Finnhub adapter already sets the `urllib` pattern, so no `openai` dependency is needed.
@@ -107,11 +115,13 @@ Neither was chosen.
                 "suggested_size_pct": 4, "rationale": "...", "article_ids": ["A3", "A7"]}]}
 ```
 
+An answer that isn't a JSON object with exactly one key, `proposals`, holding a list, is **unusable** as a whole: nothing from it is written, and the run fails as `unusable_answer` (analyze A5).
+
 `answer.check()` is pure. It returns the valid proposals and a list of `(index, symbol or None, reason)` drops. The reasons form a closed set, applied in this order:
 
 | Reason | When |
 |---|---|
-| `malformed_answer` | not JSON, no `proposals` list, or an item that isn't an object (that item only), or a missing or extra field |
+| `malformed_answer` | an item that isn't an object, or has a missing or extra field (that item only) |
 | `invalid_symbol` | not a string matching the ticker check (`is_plausible_ticker`) |
 | `unlisted_symbol` | not in the day's US symbol list |
 | `invalid_direction` | not `buy` or `sell`; `hold` lands here (Clarifications) |
@@ -119,12 +129,13 @@ Neither was chosen.
 | `invalid_size` | not a number, not finite, above 100, or below the floor: above 0 for a buy, at least 0 for a sell |
 | `no_citation` | `article_ids` empty or not a list of strings |
 | `unknown_citation` | any identifier not given to the model in this run |
+| `uncited_symbol` | none of the cited articles has the symbol in its `related` tags or came from that symbol's company-news feed (spec Clarifications, analyze S1) |
 | `duplicate_symbol` | a later proposal for a symbol already accepted in this answer |
 | `already_open` | a still-open Research report has the same symbol and direction (FR-009) |
 
 **Other rules**:
 - **Size**: becomes a `Decimal` rounded down to 3 places, to fit `numeric(6,3)`.
-- **Rationale**: whitespace is trimmed, then it's cut to `rationale_max_chars` with a trailing "…" (FR-010).
+- **Rationale**: whitespace is trimmed. If it's longer than `rationale_max_chars`, it's cut so that the text plus a trailing "…" is exactly `rationale_max_chars`. The "Missing news" line (R8) is added after the cap and isn't counted in it (analyze A1).
 - **Citations**: built from the cited articles (FR-008) as `{title, url, publisher, published_at}`, in the order the model cited them, with duplicates removed.
 
 **"Still open"** here means a Research report whose `expires_at` is after now. `ta_research` can't read `decision_reports`, so whether a report was consumed isn't known. Treating consumed reports as open errs towards writing less. That only matters on a second run on the same day, which is only possible by hand.
@@ -153,11 +164,12 @@ JSON encoding means no article text can break out of its field.
 ## R8. Writing: one transaction, expiry from the calendar
 
 **Decision**:
-- **Window**: before anything else, the run checks `calendar.is_session(today)` and `now < calendar.close_time(today)`. Outside that window it logs and exits 0 without fetching (FR-013).
+- **Window**: before anything else, the run checks `calendar.is_session(today)` and `now < calendar.close_time(today) - 1 minute`. The minute keeps `expires_at > generated_at` true even if the run starts just before the close (analyze E1). Outside that window it logs and exits 0 without fetching (FR-013).
 - **Expiry**: `expires_at = calendar.close_time(today)`, which includes early closes. `generated_at` takes the database default `now()`.
 - **Transaction**: all of the run's rows go into `reports` in one transaction, with `agent = 'research'` (FR-012). Killed mid-run, the run leaves nothing.
-- **Failure rows**: `rationale_md` reads `Research run failed: <category>.` followed by a short fixed sentence. The categories are `news_unavailable`, `symbol_list_unavailable`, `model_unavailable`, `model_key_rejected`, `model_refused`, `model_truncated` and `unusable_answer`. No exception text goes in, so nothing from a provider's error body, which could hold anything, reaches a row the PM reads.
-- **Missing sources**: when some news fetches failed, every row's rationale gets a final line: `Missing news: general; MSFT, NVDA.` (Clarifications).
+- **Failure rows**: `rationale_md` reads `Research run failed: <category>.` followed by a short fixed sentence. The categories are `news_unavailable`, `symbol_list_unavailable`, `model_key_rejected`, `model_rejected_request`, `model_unavailable`, `model_refused`, `model_truncated`, `unusable_answer` and `internal_error`. No exception text goes in, so nothing from a provider's error body, which could hold anything, reaches a row the PM reads.
+- **Internal errors**: any exception the run didn't anticipate, after the window check and the read of open reports, is caught. It's logged by type, and written as an `internal_error` failure row (analyze G2).
+- **Missing sources**: when some news fetches failed, every row's rationale, failure rows included, gets a final line (analyze A2): `Missing news: general; MSFT, NVDA.` (Clarifications).
 - **All dropped**: when every proposal was dropped, one `no_action` row says `Nothing written: N proposals dropped (reason: count, …).`
 
 ## R9. Exit codes
@@ -167,16 +179,17 @@ JSON encoding means no article text can break out of its field.
 | 0 | Ran and wrote reports, including the "nothing to argue" `no_action`; or outside the trading window, so nothing was done |
 | 1 | Wrote a failure `no_action` report (FR-017) |
 | 2 | Refused to start: bad config, a missing variable, or an unknown argument |
-| 3 | The database was unreachable, or the write failed |
+| 3 | The database was unreachable, or the read or write failed |
+| 4 | Crashed: an exception escaped everything else, so no report could be written. `__main__` catches it, logs its type and exits 4, never Python's default 1, so a crash is never mistaken for a recorded failure (analyze G2) |
 
 These match the reference job's 2 and 3. The orchestrator records any non-zero code as `failed`, with the code.
 
 ## R10. The try-out mode
 
 **Decision**: `python -m trading_agent.research --dry-run` does everything except write.
-- **Database**: optional. With `RESEARCH_DATABASE_URL` set, it reads the still-open reports read-only. Without it, it skips them.
+- **Database**: optional. With `RESEARCH_DATABASE_URL` set, it reads the still-open reports read-only, and an unreachable database is exit 3. Without it, it skips them.
 - **Output**: it prints the would-be rows as JSON lines, plus every dropped proposal with its reason, token use and the input size.
-- **Trading window**: the check is skipped, so the owner can try it in the evening. The expiry printed is that of the next session's close.
+- **Trading window**: the check is skipped, so the owner can try it in the evening. The expiry printed is today's close if today is a session and the window is still open, otherwise the next session's close (analyze A3).
 - **Cost**: it makes one real model call, so it costs about one run's worth (R12).
 
 **Why**: US5. The owner confirms the keys and the model's behaviour without leaving reports the PM would act on.
@@ -205,10 +218,10 @@ These match the reference job's 2 and 3. The orchestrator records any non-zero c
 **The timeout bound ties to the orchestrator.** Individual bounds can't guarantee the fit: 360 s × 2, 50 symbols and 1 call a minute would take almost an hour. So the loader also checks the combination:
 
 ```text
-2 × timeout_seconds + (len(watchlist) + 2) × 60 / finnhub_calls_per_minute + 60 ≤ RUN_BUDGET_SECONDS (900)
+2 × timeout_seconds + (len(watchlist) + 2) × (60 / finnhub_calls_per_minute + 10) + 60 ≤ RUN_BUDGET_SECONDS (900)
 ```
 
-The 60 s is slack for selection, the write and start-up. A config failing this is refused (exit 2). A test asserts that `RUN_BUDGET_SECONDS` equals `config/schedule.yaml`'s `research.timeout_minutes × 60`, so neither file can drift past the other. The shipped defaults (300 s, an empty watchlist, 30 a minute) take 664 s.
+The `+ 10` is Finnhub's per-call timeout (analyze T1), and the 60 s is slack for selection, the write and start-up. A config failing this is refused (exit 2). A test asserts that `RUN_BUDGET_SECONDS` equals `config/schedule.yaml`'s `research.timeout_minutes × 60`, so neither file can drift past the other. The shipped defaults (300 s, an empty watchlist, 30 a minute) take 684 s. The same term is the news deadline in R3.
 
 **Switching to Sonnet** means setting `provider: anthropic` and `name: claude-sonnet-5-5`, plus setting `RESEARCH_ANTHROPIC_API_KEY`.
 
