@@ -116,7 +116,7 @@ default, write access is scoped to the table(s) that component owns
   a read-only DB role like the Assistant's, plus write access to the single
   `trading_paused` toggle
 - Alpaca paper endpoint for order execution and Execution's own market data; no agent holds an Alpaca credential, and the agents' quotes come from read-only Finnhub keys ([ADR 0016](../adr/0016-market-data-for-the-llm-agents.md))
-- Credentials never committed: Alpaca keys, Anthropic key, Finnhub keys, Telegram bot
+- Credentials never committed: Alpaca keys, model-provider keys (Anthropic or Qwen, per agent — [ADR 0018](../adr/0018-qwen-as-a-model-provider.md)), Finnhub keys, Telegram bot
   token/chat ID, each scoped to the one component that needs them
 
 ## Open items

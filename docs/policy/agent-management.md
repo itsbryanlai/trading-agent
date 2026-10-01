@@ -72,6 +72,11 @@ a spec justifies it, not before.
 
 ## Incubation before an agent can influence real decisions
 
+Research and the Opportunistic Identifier, the original roster, are exempt:
+the PM reads their reports from the start
+([ADR 0017](../adr/0017-original-analysts-skip-incubation.md)). This section
+applies to every analyst added after them.
+
 A new analyst agent (anything feeding the PM the way Research and the
 Opportunistic Identifier do) does not start influencing PM decisions on day
 one. It runs for a minimum incubation period — recommended six months,
