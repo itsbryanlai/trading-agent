@@ -25,6 +25,15 @@
 - Q: When is a run a catch-up rather than an on-time run? → A: A daily slot (Research's pre-market run, the morning session) started more than one tick (about 30 seconds) after its time, because the orchestrator wasn't running then, is recorded as a catch-up. Every slot has one key, so it can be claimed once whatever the reason recorded. A morning session held back while Research is still running is still the morning session, not a catch-up.
 - Q: Where do the agents' credentials live? (recorded as an ADR) → A: See [ADR 0015](../../docs/adr/0015-orchestrator-starts-agents-with-their-own-credentials.md), which records the first clarification above as a decision about the system's shape.
 
+### Session 2026-10-01 (after the adversarial review)
+
+- Q: What if a report is dated in the future? → A: It doesn't count until its date. Only reports dated up to now count as "the newest report", so one wrongly dated report can't hide the real ones after it.
+- Q: What happens to processes an agent started when the agent itself exits? → A: They are stopped too. When an agent's main process exits, anything left in its process group is killed, so nothing of a run outlives it or overlaps the next run.
+- Q: How long may a PM run last? → A: No longer than the time between the cutoff and the close (30 minutes by default), so a PM run started just before the cutoff is over before the market closes (ADR 0011). The configuration refuses a longer PM timeout.
+- Q: What does a stop signal do to an agent that is just starting? → A: Nothing harmful. The signal is only recorded and acted on between ticks, so every agent the orchestrator starts is tracked and stopped at shutdown. A second signal can't cut the shutdown short.
+- Q: What if the pause flag's row is missing altogether? → A: The flag counts as unknown, so the PM doesn't run (fail closed).
+- Q: Can a finished run's record be changed? → A: No. Only a run still in progress can be updated, enforced by the database.
+
 ## User Scenarios & Testing *(mandatory)*
 
 The "users" of the orchestrator are the system's owner, who wants the analysts and the Portfolio Manager to run on a predictable cadence without supervising them, and the three LLM agents it starts: Research, the Opportunistic Identifier and the Portfolio Manager (PM).
@@ -159,6 +168,7 @@ Every start, finish, skip and failure is recorded with the agent, the reason and
 
 - **FR-004**: Each agent MUST be started as its own separate process with a configured command, given only the environment variables configured for that agent. It MUST NOT receive the orchestrator's own database login.
 - **FR-005**: Each agent MUST have a configured timeout. A run still going at its timeout MUST be stopped (its whole process group) and recorded as timed out.
+- **FR-005b**: When an agent's main process exits, the orchestrator MUST stop anything left in its process group (2026-10-01).
 - **FR-005a**: When the orchestrator stops normally, including on the platform's SIGTERM, it MUST stop every running agent's process group and record those runs as interrupted before exiting. Each run MUST record its process-group id, so that a later startup can stop an agent left running by a crash (FR-023).
 - **FR-006**: At most one run of the same agent MUST be in progress at a time. A slot that arrives while the previous run is still going MUST be skipped and logged. Different agents MAY run at the same time.
 - **FR-007**: An agent can be enabled or disabled in configuration. A disabled agent MUST never be started. This feature ships with all three disabled, because none exists yet.
@@ -178,11 +188,11 @@ Every start, finish, skip and failure is recorded with the agent, the reason and
   - (d) the time is before the PM cutoff: 15:30 ET, or 30 minutes before the close on early-close days;
   - (e) trading is not paused.
 - **FR-014**: A report written before that day's morning session MUST NOT trigger a separate event-driven run; the morning session covers it.
-- **FR-015**: The schedule values (times, intervals, window, timeouts, the 5-minute wait, the 30-minute spacing, the cutoff) MUST come from version-controlled configuration, changed only through code review. They MUST NOT be configurable to values looser than [ADR 0011](../../docs/adr/0011-event-driven-portfolio-manager-runs.md) or this spec: spacing at least 30 minutes, cutoff no later than 15:30 ET and at least 30 minutes before the close, and the report wait at least 5 minutes. The morning session must be at or after the open and before the cutoff, and Research's daily time before the open.
+- **FR-015**: The schedule values (times, intervals, window, timeouts, the 5-minute wait, the 30-minute spacing, the cutoff) MUST come from version-controlled configuration, changed only through code review. They MUST NOT be configurable to values looser than [ADR 0011](../../docs/adr/0011-event-driven-portfolio-manager-runs.md) or this spec: spacing at least 30 minutes, cutoff no later than 15:30 ET and at least 30 minutes before the close, and the report wait at least 5 minutes. The morning session must be at or after the open and before the early-close cutoff (12:30 ET by default). Research's daily time must be before the open. The PM's timeout must be no longer than the time between the cutoff and the close, and each interval must be longer than that agent's timeout.
 
 **Pause**
 
-- **FR-016**: Before starting any PM run, the orchestrator MUST read the pause flag. If it is set, or can't be read, the PM MUST NOT be started, and the skip MUST be recorded with its reason.
+- **FR-016**: Before starting any PM run, the orchestrator MUST read the pause flag. If it is set, can't be read, or its row is missing, the PM MUST NOT be started, and the skip MUST be recorded with its reason.
 - **FR-017**: The pause MUST NOT affect Research or the Opportunistic Identifier.
 - **FR-018**: A morning session skipped because of the pause MUST be recorded as skipped, and MUST NOT be run later as a "morning session". Its slot counts as done, so the event-driven rule (FR-013) covers the reports it would have considered once the pause is lifted.
 
@@ -201,8 +211,8 @@ Every start, finish, skip and failure is recorded with the agent, the reason and
 
 **Records and access**
 
-- **FR-024**: The orchestrator MUST record every run and every skipped slot: the agent, the reason it was due (scheduled, morning session, event-driven, catch-up), the start and end times, and the outcome (succeeded, failed, timed out, interrupted, or skipped with a reason). Records are kept, not deleted.
-- **FR-025**: The orchestrator's database role MUST be able to read the latest report's creation time through a single-value view that exposes nothing else about reports. It MUST be able to read the pause flag, and to write only its own run records. It MUST have no other access. This amends `specs/001-data-model/contracts/role-grants.md`, and the grants-matrix test MUST match the database both ways.
+- **FR-024**: The orchestrator MUST record every run and every skipped slot, and a record MUST NOT change once its run has finished: the agent, the reason it was due (scheduled, morning session, event-driven, catch-up), the start and end times, and the outcome (succeeded, failed, timed out, interrupted, or skipped with a reason). Records are kept, not deleted.
+- **FR-025**: The orchestrator's database role MUST be able to read the latest report's creation time, counting only reports dated up to now, through a single-value view that exposes nothing else about reports. It MUST be able to read the pause flag, and to write only its own run records. It MUST have no other access. This amends `specs/001-data-model/contracts/role-grants.md`, and the grants-matrix test MUST match the database both ways.
 - **FR-026**: The Assistant and the dashboard MUST be able to read the run records and the report-time view (Constitution VII).
 - **FR-027**: The orchestrator MUST log each start, finish, skip and failure. It MUST NOT log any environment variable value.
 

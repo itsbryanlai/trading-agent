@@ -55,7 +55,7 @@ class RunStore(Protocol):
 
     def latest_report_time(self) -> datetime | None: ...
 
-    def trading_paused(self) -> bool: ...
+    def trading_paused(self) -> bool | None: ...
 
 
 _COLUMNS = (
@@ -142,8 +142,10 @@ class PgRunStore:
     def latest_report_time(self) -> datetime | None:
         return self._one("SELECT generated_at FROM latest_report_time")
 
-    def trading_paused(self) -> bool:
-        return bool(self._one("SELECT trading_paused FROM system_state"))
+    def trading_paused(self) -> bool | None:
+        # No row means unknown, never "not paused": fail closed (review L2).
+        value = self._one("SELECT trading_paused FROM system_state")
+        return None if value is None else bool(value)
 
 
 class Orchestrator:
@@ -291,8 +293,11 @@ class Orchestrator:
         log.warning("orchestrator: %s %s skipped: %s", action.agent, action.reason, action.why)
 
     def _stop(self, action: p.Stop, now: datetime) -> None:
-        entry = self._handles.pop(action.run_id, None)
+        entry = self._handles.get(action.run_id)
         status = self.launcher.stop(entry[1]) if entry else None
+        # Dropped only once it has really stopped, so an interrupted stop is
+        # retried at shutdown rather than forgotten (review M3).
+        self._handles.pop(action.run_id, None)
         detail = f"exit {status}" if status is not None else "no process to stop"
         self.store.finish(action.run_id, p.TIMED_OUT, detail, now)
         log.warning("orchestrator: %s timed_out: %s", action.agent, detail)

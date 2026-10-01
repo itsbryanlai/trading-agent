@@ -62,7 +62,12 @@ class SubprocessLauncher:
         return Handle(pgid=process.pid, process=process)
 
     def poll(self, handle: Handle) -> int | None:
-        return handle.process.poll()
+        status = handle.process.poll()
+        if status is not None:
+            # The agent has exited; anything it started and left behind must not
+            # run on past it, or into its next run (adversarial review M1).
+            _signal_group(handle.pgid, signal.SIGKILL)
+        return status
 
     def stop(self, handle: Handle) -> int | None:
         """SIGTERM the whole group, SIGKILL whatever is left after the grace period."""

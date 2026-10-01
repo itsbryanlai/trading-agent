@@ -43,6 +43,9 @@ MIN_REPORT_WAIT_MINUTES = 5
 MAX_REPORT_WAIT_MINUTES = 60
 MIN_TIMEOUT_MINUTES = 1
 MAX_TIMEOUT_MINUTES = 120
+# The earliest close XNYS has (half days): the morning session must still fit
+# before that day's cutoff, or the PM wouldn't run at all (review L4).
+EARLY_CLOSE = time(13, 0)
 
 _COMMON = {"enabled", "module", "env", "timeout_minutes"}
 _KEYS = {
@@ -187,7 +190,15 @@ def _research(data) -> ResearchConfig:
     interval = data["interval_minutes"]
     if interval is not None:
         interval = timedelta(minutes=_int(data, "interval_minutes", RESEARCH, 1, None))
+        _interval_outlasts_timeout(RESEARCH, interval, common["timeout"])
     return ResearchConfig(**common, daily_at=daily_at, interval=interval)
+
+
+def _interval_outlasts_timeout(name: str, interval: timedelta, timeout: timedelta) -> None:
+    # Otherwise a run stopped at its timeout would already have cost its next
+    # slot, or kept the agent busy back to back (review L1, L4).
+    if interval <= timeout:
+        raise ScheduleConfigError(f"{name}.interval_minutes: must be longer than timeout_minutes")
 
 
 def _identifier(data) -> IdentifierConfig:
@@ -197,6 +208,7 @@ def _identifier(data) -> IdentifierConfig:
     if end <= start:
         raise ScheduleConfigError("opportunistic_identifier.window_end: must be after window_start")
     interval = timedelta(minutes=_int(data, "interval_minutes", IDENTIFIER, 1, None))
+    _interval_outlasts_timeout(IDENTIFIER, interval, common["timeout"])
     return IdentifierConfig(**common, window_start=start, window_end=end, interval=interval)
 
 
@@ -214,6 +226,16 @@ def _portfolio_manager(data) -> PortfolioManagerConfig:
     spacing = _int(data, "min_spacing_minutes", name, MIN_SPACING_MINUTES, None)
     wait = _int(data, "report_wait_minutes", name, MIN_REPORT_WAIT_MINUTES, MAX_REPORT_WAIT_MINUTES)
     before_close = _int(data, "before_close_minutes", name, MIN_BEFORE_CLOSE_MINUTES, None)
+    # A PM run must be over by the close: started just before the cutoff, it has
+    # at most `before_close` left (ADR 0011: never buying into the close; M2).
+    if common["timeout"] > timedelta(minutes=before_close):
+        raise ScheduleConfigError(f"{name}.timeout_minutes: no longer than before_close_minutes")
+    early_cutoff = _minus(EARLY_CLOSE, before_close)
+    if morning >= early_cutoff:
+        raise ScheduleConfigError(
+            f"{name}.morning_session: must be before {early_cutoff:%H:%M}, "
+            "the cutoff on an early-close day"
+        )
     return PortfolioManagerConfig(
         **common,
         morning_session=morning,
@@ -222,3 +244,8 @@ def _portfolio_manager(data) -> PortfolioManagerConfig:
         last_start=last_start,
         before_close=timedelta(minutes=before_close),
     )
+
+
+def _minus(wall: time, minutes: int) -> time:
+    total = wall.hour * 60 + wall.minute - minutes
+    return time(total // 60, total % 60)

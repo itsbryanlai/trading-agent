@@ -184,7 +184,11 @@ def plan(now: datetime, cfg: ScheduleConfig, state: State) -> list:
     end = cutoff(day, cfg)
     close = calendar.close_time(day)
     claimed = {(r.agent, r.slot_key) for r in state.today if r.slot_key is not None}
-    running = {r.agent for r in state.running}
+    # A run being stopped this tick no longer counts as running: the service stops
+    # it before applying anything else, so its next slot isn't skipped for a run
+    # that is already over (adversarial review L1).
+    stopping = {a.run_id for a in actions}
+    running = {r.agent for r in state.running if r.id not in stopping}
     starting: set[str] = set()
 
     # --- Research -------------------------------------------------------------------

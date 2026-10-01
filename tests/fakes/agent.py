@@ -9,6 +9,7 @@ from FAKE_AGENT_MODE:
 - hang: write its pid to FAKE_AGENT_OUT, then sleep for ten minutes
 - spawn: start a child that sleeps, write the child's pid to FAKE_AGENT_OUT, then hang
 - spawn_stubborn: the same, but the child ignores SIGTERM
+- spawn_exit: start a child that sleeps, write its pid, then exit 0 leaving it behind
 - ignore: ignore SIGTERM, write its pid, then hang (to exercise SIGKILL)
 - names: write the sorted *names* (never values) it was given to FAKE_AGENT_OUT
 """
@@ -37,6 +38,11 @@ def main() -> int:
         return 1
     if mode == "names":
         _write(out, "\n".join(sorted(os.environ)))
+        return 0
+    if mode == "spawn_exit":
+        # Leave a child behind and exit successfully: the launcher must clean it up.
+        child = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(600)"])
+        _write(out, str(child.pid))
         return 0
     if mode in ("spawn", "spawn_stubborn"):
         # spawn_stubborn: the child ignores SIGTERM, so only the group SIGKILL ends it.

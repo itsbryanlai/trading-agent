@@ -145,3 +145,34 @@ def test_assistant_and_dashboard_can_read_the_records(conn):
     for role in ("ta_assistant", "ta_dashboard"):
         assert attempt(conn, role, "SELECT * FROM orchestrator_runs WHERE false") == "allowed"
         assert attempt(conn, role, "SELECT * FROM latest_report_time") == "allowed"
+
+
+def test_a_future_dated_report_is_ignored(conn):
+    # One report dated ahead must not hide the real ones after it (review H1).
+    real = datetime(2026, 9, 28, 13, tzinfo=UTC)
+    _report(conn, real)
+    conn.execute(
+        "INSERT INTO reports (agent, symbol, direction, conviction, suggested_size_pct, sources, "
+        "rationale_md, generated_at, expires_at) VALUES ('research', 'AAPL', 'buy', 3, 5, "
+        "%s::jsonb, 't', now() + interval '3 days', now() + interval '4 days')",
+        (SOURCES,),
+    )
+    with as_role(conn, "ta_orchestrator"):
+        row = conn.execute("SELECT generated_at FROM latest_report_time").fetchone()
+    assert row["generated_at"] == real
+
+
+def test_a_finished_run_cannot_be_changed(conn):
+    statement, params = _run(conn)
+    with as_role(conn, "ta_orchestrator"):
+        run_id = conn.execute(statement + " RETURNING id", params).fetchone()["id"]
+        conn.execute("UPDATE orchestrator_runs SET pgid = 7 WHERE id = %s", (run_id,))
+        conn.execute(
+            "UPDATE orchestrator_runs SET outcome = 'failed', finished_at = %s WHERE id = %s",
+            (T, run_id),
+        )
+    for change in ("outcome = 'succeeded'", "detail = 'rewritten'", "pgid = 9"):
+        assert (
+            sqlstate_of(conn, f"UPDATE orchestrator_runs SET {change} WHERE id = %s", (run_id,))
+            == CHECK_VIOLATION
+        ), change

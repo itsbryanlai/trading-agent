@@ -38,15 +38,15 @@ portfolio_manager:
   enabled: false
   module: trading_agent.portfolio_manager
   env: []                      # PORTFOLIO_MANAGER_*
-  timeout_minutes: 10
-  morning_session: "10:00"     # at/after 09:30, before the cutoff
+  timeout_minutes: 10          # <= before_close_minutes
+  morning_session: "10:00"     # at/after 09:30, before 12:30 (an early close's cutoff)
   min_spacing_minutes: 30      # >= 30 (ADR 0011)
   report_wait_minutes: 5       # 5–60
   last_start: "15:30"          # <= 15:30 (ADR 0011)
   before_close_minutes: 30     # >= 30; the cutoff is the earlier of this and last_start
 ```
 
-Every key is required and unknown keys are rejected. The bounds are in research O13. The file is changed only through code review (FR-015).
+Every key is required and unknown keys are rejected. The bounds are in research O13. Each agent's `interval_minutes`, where it has one, must be longer than its `timeout_minutes`. The file is changed only through code review (FR-015).
 
 ## Agent contract (for the agent features)
 
@@ -75,4 +75,5 @@ Every key is required and unknown keys are rejected. The bounds are in research 
 | ERROR | The report-time view or the pause flag is unreadable | `orchestrator: cannot read <what>: <error type>` |
 | WARNING | Startup found a `running` row | `orchestrator: <agent> run from <started_at> interrupted (process group <stopped \| already gone>)` |
 | INFO | Shutdown | `orchestrator: stopping <n> running agent(s)` |
+| CRITICAL | Database error other than a lost connection | `orchestrator: database error, exiting for a restart: <error type>` (exit 3) |
 | CRITICAL | Refused to start, or lost the database | The reason. Never a variable's value or the connection string |

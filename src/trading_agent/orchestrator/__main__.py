@@ -4,7 +4,7 @@ Its only credential is ORCHESTRATOR_DATABASE_URL (a ta_orchestrator login). The
 agents' variables are set on the same service; the orchestrator passes each agent
 only its listed ones and never reads them otherwise (FR-008a). Startup (research
 O12): environment and config, database, single-instance lock, reap orphans, then
-a tick every 30 seconds. On SIGTERM, SIGINT, the loop ending or a lost database,
+a tick every 30 seconds. On SIGTERM, SIGINT, the loop ending or a database error,
 every running agent is stopped before exiting (FR-005a). Exits 2 on a refusal to
 start and 3 on a lost database; an agent failing never ends the orchestrator.
 """
@@ -49,12 +49,21 @@ class AnotherOrchestratorRunning(Exception):
     """Only one orchestrator may run at a time (FR-021)."""
 
 
-class Stopping(Exception):
-    """Raised from the SIGTERM/SIGINT handler to end the loop cleanly."""
+class StopFlag:
+    """Set by SIGTERM or SIGINT and checked between ticks.
 
+    The handler only records the request. Raising from a handler could interrupt
+    the code anywhere, including between starting an agent's process and tracking
+    it, which would leave that agent running with no record of its process group
+    (adversarial review M3). A second signal just sets the flag again, so it can't
+    cut the shutdown short.
+    """
 
-def _raise_stopping(signum, frame):
-    raise Stopping(signal.Signals(signum).name)
+    def __init__(self) -> None:
+        self.requested: str | None = None
+
+    def handler(self, signum, frame) -> None:
+        self.requested = signal.Signals(signum).name
 
 
 def main(
@@ -69,8 +78,10 @@ def main(
     max_ticks: int | None = None,
     lock_wait: timedelta = timedelta(minutes=5),
     lock_retry: timedelta = timedelta(seconds=15),
+    stop: StopFlag | None = None,
     install_signal_handlers: bool = True,
 ) -> int:
+    stop = stop or StopFlag()
     try:
         database_url = require_env(DATABASE_VARIABLE)
         config = load_config(config_path)
@@ -109,10 +120,10 @@ def main(
         )
         orchestrator.startup(clock())
         if install_signal_handlers:
-            signal.signal(signal.SIGTERM, _raise_stopping)
-            signal.signal(signal.SIGINT, _raise_stopping)
+            signal.signal(signal.SIGTERM, stop.handler)
+            signal.signal(signal.SIGINT, stop.handler)
         ticks = 0
-        while max_ticks is None or ticks < max_ticks:
+        while stop.requested is None and (max_ticks is None or ticks < max_ticks):
             if conn.closed:
                 raise psycopg.OperationalError("connection closed")
             began = monotonic()
@@ -120,9 +131,15 @@ def main(
             ticks += 1
             if max_ticks is None or ticks < max_ticks:
                 # Ticks start every 30 s; a long tick is followed at once by the next.
-                sleep(max(0.0, TICK_SECONDS - (monotonic() - began)))
-    except Stopping as exc:
-        log.info("orchestrator: %s received, stopping", exc)
+                # Slept a second at a time, so a stop request is noticed promptly.
+                remaining = max(0.0, TICK_SECONDS - (monotonic() - began))
+                slept = 0.0
+                while slept < remaining and stop.requested is None:
+                    step = min(1.0, remaining - slept)
+                    sleep(step)
+                    slept += step
+        if stop.requested is not None:
+            log.info("orchestrator: %s received, stopping", stop.requested)
     except (NotAutocommit, AnotherOrchestratorRunning) as exc:
         log.critical("orchestrator: refusing to start: %s", exc)
         code = EXIT_REFUSED
@@ -131,6 +148,11 @@ def main(
             "orchestrator: database connection lost, exiting for a restart: %s",
             type(exc).__name__,
         )
+        code = EXIT_DATABASE_LOST
+    except psycopg.Error as exc:
+        # Not a lost connection, but nothing can be scheduled safely either: say
+        # so plainly and let the platform restart us (adversarial review L5).
+        log.critical("orchestrator: database error, exiting for a restart: %s", type(exc).__name__)
         code = EXIT_DATABASE_LOST
     finally:
         if orchestrator is not None:

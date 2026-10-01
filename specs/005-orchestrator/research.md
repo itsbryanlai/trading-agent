@@ -1,6 +1,6 @@
 # Research: Orchestrator
 
-Decisions behind [plan.md](plan.md), numbered O1–O16 so tasks, code comments and reviews can cite them.
+Decisions behind [plan.md](plan.md), numbered O1–O17 so tasks, code comments and reviews can cite them.
 
 ## O1. A pure planner, a launcher port, and a thin service
 
@@ -136,6 +136,19 @@ It ships with all three agents `enabled: false` (FR-007).
 ## O16. Where timestamps come from
 
 **Decision** (fixed after U1): every time the orchestrator stores (`started_at`, `finished_at`, `slot_at`) comes from its injected clock, like every decision it makes. `reports.generated_at` comes from the database's `now()`. Rules (a) and (b) of FR-013 compare the two, so a clock difference between the orchestrator's host and the database shifts the 5-minute wait by that amount. Railway hosts are NTP-synced, so the difference is well under a second, and it is tolerated. The integration tests use explicit report times, never `now()`, because `now()` is frozen inside a test transaction.
+
+## O17. Fixes from the adversarial review (2026-10-01)
+
+- **H1, future-dated reports**: `latest_report_time` counts only `generated_at <= now()`. Analysts can set `generated_at`, so one report dated ahead would otherwise stay "the newest" and block every event-driven run until its date. Only the future is excluded, so fixed past dates in tests can't expire.
+- **M1, leftover children**: `SubprocessLauncher.poll` kills the process group once the leader has exited.
+- **M2, PM timeout**: the loader requires the PM's `timeout_minutes` to be at most `before_close_minutes`. A run started just before the cutoff is then over by the close (ADR 0011).
+- **M3, signals**: the SIGTERM and SIGINT handler only sets a `StopFlag`. The loop checks it between ticks and during the sleep, which is taken a second at a time. A tick in progress always finishes tracking what it started. `_stop` drops a handle only after `stop` returns. A second signal just sets the flag again.
+- **L1**: a run being stopped this tick no longer counts as running, so its next slot starts instead of being skipped. The loader requires each interval to be longer than the agent's timeout.
+- **L2**: a missing `system_state` row reads as unknown (`None`), which fails closed.
+- **L4**: the morning session must be before the early-close cutoff (`13:00 − before_close`).
+- **L5**: any other database error is logged as such, the agents are stopped, and the process exits with code 3.
+- **L6**: a trigger rejects updates to finished rows.
+- **L3, not changed**: run times use the orchestrator's clock and report times the database's. The difference is tolerated as before (O16).
 
 ## O14. Tests
 

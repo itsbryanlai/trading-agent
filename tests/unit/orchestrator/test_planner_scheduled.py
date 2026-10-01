@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from datetime import timedelta
+
 from tests.unit.orchestrator.support import SATURDAY, Simulator, config, et, record, state
 from trading_agent.orchestrator import planner as p
 
@@ -43,7 +45,9 @@ def test_weekend_starts_nothing():
 
 
 def test_overlap_skips_the_slot_once():
-    cfg = config()
+    # A slow run still within its timeout when the next slot arrives (one past its
+    # timeout is stopped instead; see test_a_run_being_stopped_does_not_cost_its_next_slot).
+    cfg = config(opportunistic_identifier={"timeout": timedelta(minutes=90)})
     hung = record(
         "opportunistic_identifier", slot_key="oi@10:00", slot_at=et("10:00"), started=et("10:00")
     )

@@ -42,11 +42,35 @@ CREATE UNIQUE INDEX orchestrator_runs_one_per_slot
     ON orchestrator_runs (agent, trading_day, slot_key);
 CREATE INDEX orchestrator_runs_agent_started ON orchestrator_runs (agent, started_at DESC);
 
+-- A finished run is history: only a row that is still 'running' may be changed
+-- (its process group recorded, then its one outcome). The column grant alone
+-- would let the orchestrator's role rewrite an outcome later (adversarial
+-- review L6).
+CREATE FUNCTION orchestrator_runs_only_running_changes() RETURNS trigger
+LANGUAGE plpgsql AS $$
+BEGIN
+    IF OLD.outcome <> 'running' THEN
+        RAISE EXCEPTION 'orchestrator_runs: a finished run cannot be changed'
+            USING ERRCODE = 'check_violation';
+    END IF;
+    RETURN NEW;
+END
+$$;
+
+CREATE TRIGGER orchestrator_runs_only_running_changes
+    BEFORE UPDATE ON orchestrator_runs
+    FOR EACH ROW EXECUTE FUNCTION orchestrator_runs_only_running_changes();
+
 -- The only thing the orchestrator may learn about reports (ADR 0011). Owner's
 -- rights, like 0009's view: reports' row-level security is enabled, not forced,
 -- so its policies stay as 0002 made them.
+--
+-- Only reports dated up to now count. Analysts can set generated_at, and one
+-- report dated in the future would otherwise stay "the newest" until that date
+-- and hide every real report after it (adversarial review H1). This only ever
+-- excludes the future, so it can't expire fixed past dates.
 CREATE VIEW latest_report_time AS
-    SELECT max(generated_at) AS generated_at FROM reports;
+    SELECT max(generated_at) AS generated_at FROM reports WHERE generated_at <= now();
 
 -- 0005 let the orchestrator read the whole system_state row, including the
 -- starting equity and the halt: account data it must never read (FR-002,

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from datetime import timedelta
+
 from tests.unit.orchestrator.support import EARLY_CLOSE, config, et, record, state
 from trading_agent.orchestrator import planner as p
 
@@ -105,9 +107,14 @@ def test_newer_than_the_last_success_not_the_last_attempt():
 
 
 def test_no_new_start_while_a_pm_run_is_in_progress():
+    # A PM run still within its timeout at 11:45, with spacing and wait satisfied:
+    # only "already running" stands between it and a second, overlapping run.
+    cfg = config(
+        enabled=("portfolio_manager",), portfolio_manager={"timeout": timedelta(minutes=60)}
+    )
     records = [_morning(), _event("11:00", outcome="running")]
-    actions = _plan(et("11:45"), records, et("11:20"))
-    assert not any(isinstance(a, p.Start) for a in actions)
+    actions = p.plan(et("11:45"), cfg, state(records, latest_report=et("11:20")))
+    assert actions == []
 
 
 def test_a_failed_morning_session_is_retried_through_the_event_rule():

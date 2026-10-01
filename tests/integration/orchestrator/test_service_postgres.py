@@ -107,3 +107,34 @@ def test_a_day_with_a_failure_a_timeout_and_a_paused_morning_accounts_for_every_
     assert ("research", "research_daily", "failed", "exit 2") in summary
     assert ("portfolio_manager", "morning_session", "skipped", "trading paused") in summary
     assert ("opportunistic_identifier", "oi@10:00", "timed_out", "exit -15") in summary
+
+
+def test_a_future_dated_report_does_not_block_the_pm(conn, orch):
+    # Review H1: one report dated ahead must not hide the real one after it.
+    _tick(conn, orch, et("08:30"))
+    orch.launcher.finish_all(0)
+    _tick(conn, orch, et("10:00"))
+    orch.launcher.finish_all(0)
+    _tick(conn, orch, et("10:05"))
+    conn.execute(
+        "INSERT INTO reports (agent, symbol, direction, conviction, suggested_size_pct, sources, "
+        "rationale_md, generated_at, expires_at) VALUES ('research', 'AAPL', 'buy', 3, 5, "
+        "%s::jsonb, 't', now() + interval '3 days', now() + interval '4 days')",
+        (SOURCES,),
+    )
+    _report(conn, datetime(2026, 9, 28, 15, 2, tzinfo=UTC))  # 11:02 ET, a real one
+    _tick(conn, orch, et("11:07"))
+    assert [r["outcome"] for r in _rows(conn) if r["reason"] == "event_driven"] == ["running"]
+
+
+def test_a_missing_pause_row_means_unknown_so_the_pm_does_not_run(conn, orch):
+    # Review L2: no row must never read as "not paused".
+    _tick(conn, orch, et("08:30"))
+    orch.launcher.finish_all(0)
+    _tick(conn, orch, et("08:35"))
+    conn.execute("DELETE FROM system_state")
+    with as_role(conn, "ta_orchestrator"):
+        assert orch.store.trading_paused() is None
+    _tick(conn, orch, et("10:00"))
+    morning = [r for r in _rows(conn) if r["slot_key"] == "morning_session"]
+    assert [(r["outcome"], r["detail"]) for r in morning] == [("skipped", "pause flag unreadable")]

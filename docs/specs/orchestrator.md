@@ -57,6 +57,10 @@ is claimed only once a day. These are the orchestrator's only database writes.
 - **The orchestrator stops or is redeployed**: it stops every running agent
   first. After a crash, its next start stops any agent still left running before
   marking that run interrupted.
+- **An agent exits but leaves processes behind**: they are stopped, so nothing
+  of a run outlives it.
+- **A report is dated in the future**: it doesn't count until its date, so it
+  can't hide the real reports written after it.
 - **Process restart mid-day**: re-derive today's schedule from the exchange
   calendar and current time rather than trusting any in-memory state from
   before the restart, same as `trading-bot`'s scheduler. The time of the PM's

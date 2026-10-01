@@ -109,6 +109,10 @@ def test_another_agents_prefix_is_rejected(tmp_path):
         ("portfolio_manager", "report_wait_minutes", 61),
         ("portfolio_manager", "morning_session", "09:29"),
         ("portfolio_manager", "morning_session", "15:30"),  # not before last_start
+        ("portfolio_manager", "timeout_minutes", 31),  # longer than before_close (M2)
+        ("portfolio_manager", "morning_session", "12:30"),  # at the early-close cutoff (L4)
+        ("opportunistic_identifier", "interval_minutes", 10),  # not longer than its timeout
+        ("research", "interval_minutes", 15),  # not longer than its timeout
         ("portfolio_manager", "enabled", _DELETE),
         ("portfolio_manager", "surprise", 1),
     ],
@@ -127,6 +131,10 @@ def test_bad_values_are_rejected(tmp_path, agent, key, value):
         ("portfolio_manager", "report_wait_minutes", 5),
         ("portfolio_manager", "report_wait_minutes", 60),
         ("portfolio_manager", "morning_session", "09:30"),
+        ("portfolio_manager", "timeout_minutes", 30),
+        ("portfolio_manager", "morning_session", "12:29"),
+        ("opportunistic_identifier", "interval_minutes", 11),
+        ("research", "interval_minutes", 16),
         ("research", "daily_at", "09:29"),
         ("research", "interval_minutes", 120),
         ("research", "timeout_minutes", 1),

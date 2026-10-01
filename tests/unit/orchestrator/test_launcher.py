@@ -182,3 +182,16 @@ def test_stop_kills_a_grandchild_that_ignores_sigterm(launcher, tmp_path):
     while time.monotonic() < deadline and _not_zombie(grandchild):
         time.sleep(0.05)
     assert not _not_zombie(grandchild)
+
+
+def test_a_child_left_behind_by_a_finished_agent_is_cleaned_up(launcher, tmp_path):
+    # The agent exits 0 but leaves a child running. Once the launcher sees the exit,
+    # nothing of that run may carry on (adversarial review M1).
+    out = tmp_path / "leftover"
+    handle = launcher.start(AGENT, _env("spawn_exit", out))
+    leftover = int(_wait_for(out))
+    assert _wait_exit(launcher, handle) == 0
+    deadline = time.monotonic() + 5
+    while time.monotonic() < deadline and _not_zombie(leftover):
+        time.sleep(0.05)
+    assert not _not_zombie(leftover)

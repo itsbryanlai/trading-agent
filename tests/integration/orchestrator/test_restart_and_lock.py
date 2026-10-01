@@ -82,7 +82,8 @@ def test_a_failed_insert_does_not_poison_the_connection(database_url, cleanup):
 
 
 def test_second_orchestrator_is_refused_until_the_first_goes_away(database_url):
-    first, second = _connect(database_url, role=False), _connect(database_url, role=False)
+    # As ta_orchestrator, the role the real process uses: the lock needs no grant.
+    first, second = _connect(database_url), _connect(database_url)
     try:
         runner._take_lock(first, timedelta(0), timedelta(seconds=1), lambda s: None)
         with pytest.raises(runner.AnotherOrchestratorRunning):

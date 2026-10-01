@@ -332,6 +332,18 @@ The shared grants contract is `specs/001-data-model/contracts/role-grants.md`, a
 
 ---
 
+## Phase 11: Fixes from the adversarial review (spec Clarifications 2026-10-01)
+
+- [X] T040 H1: `latest_report_time` counts only `generated_at <= now()` (migration 0010); tests `test_a_future_dated_report_is_ignored` and `test_a_future_dated_report_does_not_block_the_pm`
+- [X] T041 M1: `SubprocessLauncher.poll` kills the process group once the leader exits (`launcher.py`); stand-in mode `spawn_exit`; test `test_a_child_left_behind_by_a_finished_agent_is_cleaned_up`
+- [X] T042 M2, L1, L4: config bounds (PM timeout at most `before_close`; interval longer than timeout; morning session before the early-close cutoff) in `config.py`, with tests in `test_config.py`
+- [X] T043 M3 (with T038): `StopFlag` in `__main__.py`, a sleep taken a second at a time, and `_stop` dropping the handle only after `stop` returns; tests in `test_main.py`
+- [X] T044 L1: runs being stopped don't count as running (`planner.py`); test `test_a_run_being_stopped_does_not_cost_its_next_slot`
+- [X] T045 L2 (with T039): `PgRunStore.trading_paused` returns `None` for a missing row; test `test_a_missing_pause_row_means_unknown_so_the_pm_does_not_run`
+- [X] T046 L5: other database errors exit 3 after stopping agents; test `test_an_unexpected_database_error_exits_3_after_stopping_agents`
+- [X] T047 L6: trigger `orchestrator_runs_only_running_changes` in migration 0010 (owner-approved: 0010 has not been merged or applied anywhere); test `test_a_finished_run_cannot_be_changed`
+- [X] T048 Tests: the lock test runs as `ta_orchestrator`; mutation pass over the fixes (see notes)
+
 ## Dependencies & execution order
 
 - **Setup (T001–T003)**: no dependencies.
@@ -408,3 +420,26 @@ The shared grants contract is `specs/001-data-model/contracts/role-grants.md`, a
   - the single slot-key index and the 0010 REVOKE.
 - **Not done here, as planned**: the agents themselves (all ship disabled), deployment config,
   and alerts.
+
+## Phase 10: Convergence
+
+- [X] T038 Close the window in which a SIGTERM/SIGINT can orphan an agent: `_raise_stopping` in `src/trading_agent/orchestrator/__main__.py` raises `Stopping` at any bytecode, so a signal between `Popen` returning in `SubprocessLauncher.start` and `Orchestrator._start` storing the handle and calling `set_pgid` (`src/trading_agent/orchestrator/service.py` `_start`) leaves a live process group that `shutdown` doesn't know about and whose row has no `pgid`, so the next startup can't reap it; a second signal during `shutdown` likewise abandons the remaining groups. Defer the stop (a flag checked between ticks with an interruptible sleep, or mask the signals around start-and-register and around `shutdown`), and add a `tests/unit/orchestrator/test_main.py` case per FR-005a / FR-023 (partial)
+- [X] T039 Make `PgRunStore.trading_paused` in `src/trading_agent/orchestrator/service.py` fail closed when `system_state` returns no row: today `bool(None)` reads as "not paused". Return `None` (unknown) or raise so the planner skips the PM, and add a test per FR-016 / US3/AC3 (partial)
+- **Converge and adversarial review (T038–T048)**: converge found T038 (the signal window) and
+  T039 (a missing pause row reading as not paused). The adversarial review found:
+  - H1: a future-dated report blocked event-driven runs;
+  - M1: an agent's children outlived it;
+  - M2: a long PM timeout could run past the close;
+  - M3: signal windows, the same as T038;
+  - L1, L2 (= T039), L4, L5 and L6.
+
+  All were applied with the owner's approval. The L6 trigger went into migration 0010 itself,
+  which the owner approved because 0010 hasn't been merged or applied anywhere. L3 (two clocks)
+  was left as documented in O16, by recommendation.
+
+  Two existing planner tests used a run already past its timeout to stand for "still running".
+  Under the L1 rule that run is now stopped in the same tick, so the tests now use a run still
+  within its timeout. They test the same thing as before.
+
+  A second mutation pass covered 10 mutations for the fixes, and all were caught. Test counts:
+  665 offline and 1264 integration.

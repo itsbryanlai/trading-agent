@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import os
+import signal
 from datetime import timedelta
 
 import psycopg
@@ -159,13 +160,76 @@ def test_shutdown_stops_running_agents_when_the_loop_ends(env, tmp_path):
 
 
 def test_a_signal_mid_loop_stops_agents_and_exits_cleanly(env, tmp_path):
+    stop = runner.StopFlag()
+    sleeps = []
+
     def sleep(seconds):
-        raise runner.Stopping("SIGTERM")
+        sleeps.append(seconds)
+        stop.handler(signal.SIGTERM, None)  # the signal arrives during the sleep
 
     code, _, _, store, launcher = run(
-        sleep=sleep, max_ticks=5, clock=lambda: et("10:00"), config_path=_enabled_config(tmp_path)
+        sleep=sleep,
+        stop=stop,
+        max_ticks=5,
+        clock=lambda: et("10:00"),
+        config_path=_enabled_config(tmp_path),
     )
     assert code == runner.EXIT_OK
+    assert sleeps == [1.0]  # noticed after one one-second slice, not a whole tick
+    assert launcher.starts and len(launcher.stops) == len(launcher.starts)
+    assert all(r.outcome == "interrupted" for r in store.records.values())
+
+
+def test_the_handler_only_sets_a_flag_and_a_second_signal_is_harmless():
+    stop = runner.StopFlag()
+    assert stop.requested is None
+    stop.handler(signal.SIGTERM, None)  # must not raise: it can arrive anywhere
+    stop.handler(signal.SIGINT, None)
+    assert stop.requested == "SIGINT"
+
+
+def test_a_signal_during_a_tick_lets_the_tick_finish_tracking_its_agents(env, tmp_path):
+    # The signal lands while an agent is being started. The start completes and is
+    # tracked, so shutdown stops it: no agent is left running untracked (review M3).
+    stop = runner.StopFlag()
+    launcher = FakeLauncher()
+    original = launcher.start
+
+    def start(module, agent_env):
+        handle = original(module, agent_env)
+        stop.handler(signal.SIGTERM, None)
+        return handle
+
+    launcher.start = start
+    code, _, _, store, launcher = run(
+        launcher=launcher,
+        stop=stop,
+        max_ticks=5,
+        clock=lambda: et("10:00"),
+        config_path=_enabled_config(tmp_path),
+    )
+    assert code == runner.EXIT_OK
+    assert launcher.starts and len(launcher.stops) == len(launcher.starts)
+    assert all(r.pgid is not None for r in store.records.values() if r.started_at)
+
+
+def test_an_unexpected_database_error_exits_3_after_stopping_agents(env, tmp_path, caplog):
+    store = MemoryStore()
+    calls = {"n": 0}
+    original = store.today_runs
+
+    def today_runs(day):
+        calls["n"] += 1
+        if calls["n"] > 1:
+            raise psycopg.errors.InsufficientPrivilege("denied")
+        return original(day)
+
+    store.today_runs = today_runs
+    code, _, conn, store, launcher = run(
+        store=store, max_ticks=3, clock=lambda: et("10:00"), config_path=_enabled_config(tmp_path)
+    )
+    assert code == runner.EXIT_DATABASE_LOST and conn.closed
+    assert "database error, exiting for a restart: InsufficientPrivilege" in caplog.text
     assert launcher.starts and len(launcher.stops) == len(launcher.starts)
 
 

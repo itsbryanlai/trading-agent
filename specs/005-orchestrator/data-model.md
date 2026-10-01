@@ -27,11 +27,13 @@ Constraints:
 - **No duplicate slot** (research O5): one unique index on `(agent, trading_day, slot_key)`. Postgres treats nulls as distinct, so event-driven rows aren't constrained by it.
 - An index on `(agent, started_at DESC)`, for the last-run lookups.
 
+A trigger, `orchestrator_runs_only_running_changes`, rejects any update to a row whose outcome is no longer `running` (adversarial review L6).
+
 Lifecycle: a row is inserted as `running` **before** its process starts (or directly as `skipped`). `pgid` is set once the process starts. The row is then updated once, to `succeeded`, `failed`, `timed_out` or `interrupted`. It is never deleted.
 
 ## `latest_report_time` (new view)
 
-`SELECT max(generated_at) AS generated_at FROM reports`: one row, one column, null when there are no reports. It is owned by the migration admin and not `security_invoker`, so the `reports` row-level security policies stay unchanged.
+`SELECT max(generated_at) AS generated_at FROM reports WHERE generated_at <= now()`: one row, one column, null when there are no reports. Reports dated in the future don't count until their date (adversarial review H1). It is owned by the migration admin and not `security_invoker`, so the `reports` row-level security policies stay unchanged.
 
 ## `system_state` (existing, read narrowed)
 

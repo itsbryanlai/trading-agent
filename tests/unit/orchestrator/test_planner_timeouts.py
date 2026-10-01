@@ -48,3 +48,15 @@ def test_a_failed_identifier_run_waits_for_its_next_slot():
     assert p.plan(et("12:00"), cfg, state([failed])) == [
         p.Start(OI, "scheduled", "oi@12:00", et("12:00"))
     ]
+
+
+def test_a_run_being_stopped_does_not_cost_its_next_slot():
+    # Timeout equal to the hour: the 10:00 run is stopped at 11:00, and the 11:00
+    # slot starts in the same tick rather than being skipped for a run that is over.
+    cfg = config(enabled=(OI,), opportunistic_identifier={"timeout": timedelta(minutes=60)})
+    hung = record(OI, slot_key="oi@10:00", slot_at=et("10:00"), started=et("10:00"))
+    actions = p.plan(et("11:00"), cfg, state([hung]))
+    assert actions == [
+        p.Stop(hung.id, OI),
+        p.Start(OI, "scheduled", "oi@11:00", et("11:00")),
+    ]
