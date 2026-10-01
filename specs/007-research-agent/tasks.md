@@ -403,13 +403,13 @@ description: "Task list for the Research agent (feature 007)"
 
 **Independent test**: with fakes, `--dry-run` prints the would-be rows and drops, writes nothing, and works without `RESEARCH_DATABASE_URL`.
 
-- [ ] T042 [P] [US5] Write the failing test `tests/unit/research/test_main_dry_run.py`:
+- [X] T042 [P] [US5] Write the failing test `tests/unit/research/test_main_dry_run.py`:
   - **No writes:** `--dry-run` with every variable set prints one JSON line per would-be row and one per drop, and makes no `write()` call.
   - **No database:** with `RESEARCH_DATABASE_URL` unset it still runs, skipping open reports, and prints a line saying so.
   - **Outside the window:** on Sat 2026-10-03 it still fetches and calls the model. The expiry printed is Mon 2026-10-05's close, 20:00 UTC.
   - **Output:** the token use and input size are printed. A model failure prints its category and is exit 1.
   - **No secrets:** no output line contains a variable's value.
-- [ ] T043 [US5] Implement `--dry-run` in `__main__.py` and `service.py`. Use a `DryRunStore` whose `write` prints instead of inserting, an optional read-only connection, and the window check bypassed. The expiry is today's close while the window is open, otherwise the next session's close (research R10). An unreachable database is exit 3. Make T042 pass.
+- [X] T043 [US5] Implement `--dry-run` in `__main__.py` and `service.py`. Use a `DryRunStore` whose `write` prints instead of inserting, an optional read-only connection, and the window check bypassed. The expiry is today's close while the window is open, otherwise the next session's close (research R10). An unreachable database is exit 3. Make T042 pass.
 
 **Checkpoint**: every story passes independently.
 
