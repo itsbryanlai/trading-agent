@@ -61,7 +61,7 @@ and the pause flag, and writes only its own run records
 
 | Agent | Reads | Writes | Cadence |
 |---|---|---|---|
-| Research | news/data sources, own credential | `reports` (own rows) | ~daily + news-triggered |
+| Research | Finnhub news (general + an owner watchlist), own credential; model per [ADR 0018](../adr/0018-qwen-as-a-model-provider.md) | `reports` (own rows) | daily at 08:30 ET ([`specs/007-research-agent`](../../specs/007-research-agent/spec.md)) |
 | Opportunistic Identifier | market data and fundamentals (read-only Finnhub key, [ADR 0016](../adr/0016-market-data-for-the-llm-agents.md)) | `reports` (own rows) | intraday polling |
 | Portfolio Manager | both agents' open reports, portfolio state, live quote (read-only Finnhub key, [ADR 0016](../adr/0016-market-data-for-the-llm-agents.md)), journal | `decisions` | morning session + event-driven on new reports, ≥30 min apart, none after 15:30 ET ([ADR 0011](../adr/0011-event-driven-portfolio-manager-runs.md)) |
 | Assistant | everything | nothing | on-demand (Telegram) |

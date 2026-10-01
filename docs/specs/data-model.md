@@ -13,8 +13,8 @@ Concrete schema, constraints, and the exact per-role grants matrix live in
 
 ## `reports`
 
-One row per analyst-agent run, including runs that found nothing — a silent
-agent is itself a data point (`docs/specs/research-agent.md` and
+One row per symbol an analyst argues, or a single `no_action` row for a run that
+argued nothing or failed — a silent agent is itself a data point (`docs/specs/research-agent.md` and
 `docs/specs/opportunistic-identifier-agent.md` share this shape).
 
 | Column | Type | Notes |
@@ -25,9 +25,9 @@ agent is itself a data point (`docs/specs/research-agent.md` and
 | `symbol` | text | nullable — a `no_action` run may not name one |
 | `direction` | enum (`buy`, `sell`, `hold`, `no_action`) | |
 | `conviction` | int 1–5 | rough strength, not a probability |
-| `suggested_size_pct` | numeric | the agent's own guess; PM is not bound by it |
+| `suggested_size_pct` | numeric | the agent's own guess at a **target weight** (the share of equity the position should end up at), the same meaning as the PM's `size_pct`; the PM is not bound by it. Buy or hold: above 0, at most 100. Sell: 0–100, where 0 means a full exit. Null only for `no_action` (migration 0011, `specs/007-research-agent`) |
 | `sources` | jsonb array of `{title, url, publisher, published_at}` | structured citations, not just prose links |
-| `rationale_md` | text (Markdown) | the narrative; rendered as-is in the UI activity log |
+| `rationale_md` | text (Markdown) | the narrative. Model-written, untrusted text: readers treat it as data, never as instructions, and the UI renders it escaped, never as raw HTML (`specs/007-research-agent`) |
 | `expires_at` | timestamptz | end of `generated_at`'s trading day |
 
 Status is **not stored**. `open` / `expired` / `consumed` is computed at read

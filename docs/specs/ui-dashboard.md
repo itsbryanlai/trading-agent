@@ -14,7 +14,9 @@ entered, modified, or approved from here.
   visible, not just filled ones).
 - **Agent activity log** — every `reports` row from both analysts (including
   `no_action` runs) and every `decisions` row from the PM, rendering each
-  row's Markdown rationale.
+  row's Markdown rationale. Rationales are untrusted, model-written text that
+  may quote the news: render them escaped (Markdown without raw HTML, links
+  only to `http(s)` URLs), never as raw HTML (`specs/007-research-agent`).
 - **Journal** — the daily narrative summary and the per-agent attribution
   view: how each analyst's ideas would have performed on their own, next to
   the actual blended portfolio result

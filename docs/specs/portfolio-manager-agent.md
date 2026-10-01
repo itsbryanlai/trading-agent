@@ -17,7 +17,11 @@ does that, deliberately outside the PM's own judgment), or placing orders
 
 - Every open report (`reports_with_status` where `status = 'open'`) from both
   Research and the Opportunistic Identifier, regardless of which agent
-  produced it.
+  produced it. A report's `rationale_md` is untrusted, model-written text that
+  may quote the news: the PM treats it as data to weigh, never as
+  instructions, and its prompt must keep it clearly separated from its own
+  instructions (`specs/007-research-agent`, second-order prompt injection).
+  Its `suggested_size_pct` is a target weight, like the PM's own `size_pct`.
 - Its own fresh reads, fetched itself rather than trusted from a report:
   current portfolio state (`positions`, cash from the latest
   `account_snapshots` row), a live quote for each symbol
