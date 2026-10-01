@@ -121,7 +121,7 @@ description: "Task list for the Research agent (feature 007)"
 
 ### Tests for User Story 1
 
-- [ ] T011 [P] [US1] Write the failing test `tests/unit/research/test_selection.py` (research R4):
+- [X] T011 [P] [US1] Write the failing test `tests/unit/research/test_selection.py` (research R4):
   - **Window**: an article at 19:59 UTC on Wed 2026-09-30 (before the previous close) is excluded, and one at 20:01 UTC is included. On Monday 2026-10-05, a Saturday article is included.
   - **Duplicates**: the same URL in general and company news is kept once, as the general copy, with the related symbols merged.
   - **Caps**: at most 20 general articles and 5 per symbol, both newest first, with ties broken by URL.
@@ -129,7 +129,7 @@ description: "Task list for the Research agent (feature 007)"
   - **Size**: summaries are cut to `article_summary_max_chars`. With `max_input_chars` small, whole articles are dropped from the end until the serialized input fits, and the drop count is reported.
   - **Determinism**: the same input in a shuffled order gives an identical result.
   - **Incomplete articles**: an article with no URL, headline or time is skipped.
-- [ ] T012 [P] [US1] Write the failing test `tests/unit/research/test_prompt.py` (research R7):
+- [X] T012 [P] [US1] Write the failing test `tests/unit/research/test_prompt.py` (research R7):
   - `PROMPT_VERSION` is a positive int.
   - The system prompt mentions, by phrase:
     - target weight;
@@ -141,14 +141,14 @@ description: "Task list for the Research agent (feature 007)"
     - the word "JSON".
   - The user document is valid JSON, with `today`, `articles` (`id`, `title`, `publisher`, `published_at` as ISO, `related` and `summary`) and `open_reports` (`symbol`, `direction`).
   - An article summary containing `"}]` plus an instruction to the model round-trips through `json.loads` intact, and can't escape its field.
-- [ ] T013 [P] [US1] Write the failing test `tests/unit/research/test_answer_rows.py` (the valid path of research R6, FR-008, FR-010). A valid two-proposal answer gives two `CheckedReport`s with:
+- [X] T013 [P] [US1] Write the failing test `tests/unit/research/test_answer_rows.py` (the valid path of research R6, FR-008, FR-010). A valid two-proposal answer gives two `CheckedReport`s with:
   - `sources` built from the cited articles' own `title`, `url`, `publisher` and `published_at`. The model's text is never used, even when a proposal's rationale contains a different URL. Sources follow the order cited, with duplicates removed.
   - `size` as a `Decimal` rounded down to 3 places (4.56789 becomes 4.567).
   - the rationale trimmed; when longer than `rationale_max_chars`, cut so that the text plus a trailing "…" is exactly `rationale_max_chars` long (research R6).
   - a sell at 0 accepted.
   
   `ANSWER_SCHEMA` is a JSON Schema with `additionalProperties: false` and every field required at both levels. It is suitable for Qwen's strict mode (research R5).
-- [ ] T014 [P] [US1] Write the failing test `tests/unit/research/test_finnhub.py` (research R3), with a fake opener:
+- [X] T014 [P] [US1] Write the failing test `tests/unit/research/test_finnhub.py` (research R3), with a fake opener:
   - the three paths and query strings, with `from` and `to` as ET dates;
   - the `X-Finnhub-Token` header, and the key never in the URL;
   - field mapping to `RawArticle`, with `datetime` in Unix seconds becoming an aware UTC datetime;
@@ -157,7 +157,7 @@ description: "Task list for the Research agent (feature 007)"
   - errors: 401 → `KeyRejected`; 403 on `/news` or `/stock/symbol` → `KeyRejected`; 403 on `/company-news` → `NotPermitted`; 429 → `RateLimited`; 500, a timeout or non-JSON → `ProviderUnavailable`;
   - `repr()` hiding the key;
   - a parametrized test pinning that this mapping equals `reference/finnhub.py`'s for 401, 403, 429 and 500.
-- [ ] T015 [P] [US1] Write the failing test `tests/unit/research/test_qwen.py` (research R5), with a fake opener capturing the request:
+- [X] T015 [P] [US1] Write the failing test `tests/unit/research/test_qwen.py` (research R5), with a fake opener capturing the request:
   - a POST to `{base}/chat/completions` with `Authorization: Bearer <key>`;
   - the body has `model`, `messages` (system then user), `max_tokens`, `enable_thinking: false` and `response_format: {"type": "json_schema", "json_schema": {"name": "research_answer", "strict": true, "schema": <schema>}}`;
   - the reply maps `choices[0].message.content`, `usage.prompt_tokens` and `usage.completion_tokens`;
@@ -165,7 +165,7 @@ description: "Task list for the Research agent (feature 007)"
   - 401 and 403 → `ModelKeyRejected`; 400, 404 and 422 → `ModelRejected`; 429, 5xx, a timeout and a non-JSON body → `ModelUnavailable`;
   - the timeout argument equals `timeout_seconds`;
   - no key in `repr()` or any exception message.
-- [ ] T016 [P] [US1] Write the failing test `tests/unit/research/test_service_happy.py` with `FakeNews`, `FakeModel` and a `MemoryStore`:
+- [X] T016 [P] [US1] Write the failing test `tests/unit/research/test_service_happy.py` with `FakeNews`, `FakeModel` and a `MemoryStore`:
   - a valid answer writes exactly the checked rows in one `write()` call;
   - `expires_at` is `close_time(today)`: 20:00 UTC on 2026-10-01, and 18:00 UTC on 2026-11-27;
   - an empty `proposals` list writes one `no_action` row saying nothing was worth arguing, and the outcome is exit 0;
@@ -174,7 +174,7 @@ description: "Task list for the Research agent (feature 007)"
   - calls are paced at `60 / finnhub_calls_per_minute` seconds through an injected `sleep`;
   - the FR-021 log lines are emitted with the right counts (`caplog`): articles in window and sent, characters, missing feeds, input and output tokens, and reports written;
   - **outside the window** (Sat 2026-10-03; Thu 2026-11-26; 2026-10-01 at 19:59 UTC or later, one minute before the close, research R8) nothing is fetched or written, and the outcome is exit 0.
-- [ ] T017 [P] [US1] Write the failing integration test `tests/integration/research/test_write.py`. Running as `ta_research` through `as_role`, `PgResearchStore.write(rows)`:
+- [X] T017 [P] [US1] Write the failing integration test `tests/integration/research/test_write.py`. Running as `ta_research` through `as_role`, `PgResearchStore.write(rows)`:
   - inserts rows with `agent = 'research'`, the given `expires_at`, `sources` as JSON and conviction and size as given;
   - inserts a `no_action` row with nulls;
   - fails as a whole, with zero rows, when the third of three rows violates a constraint;
@@ -184,17 +184,17 @@ description: "Task list for the Research agent (feature 007)"
 
 ### Implementation for User Story 1
 
-- [ ] T018 [US1] Create `src/trading_agent/research/selection.py` (pure): `Article`, `select(general, by_symbol, watchlist, now, cfg) -> Selection`, where `Selection` holds `articles`, `dropped_for_size` and `window_start`. Make T011 pass.
-- [ ] T019 [US1] Create `src/trading_agent/research/prompt.py` (pure): `PROMPT_VERSION = 1`, `SYSTEM_PROMPT`, and `build(selection, open_reports, today) -> (system, user)`, with the user document `json.dumps(..., sort_keys=True, ensure_ascii=False)`. Make T012 pass.
-- [ ] T020 [US1] Create `src/trading_agent/research/answer.py` (pure):
+- [X] T018 [US1] Create `src/trading_agent/research/selection.py` (pure): `Article`, `select(general, by_symbol, watchlist, now, cfg) -> Selection`, where `Selection` holds `articles`, `dropped_for_size` and `window_start`. Make T011 pass.
+- [X] T019 [US1] Create `src/trading_agent/research/prompt.py` (pure): `PROMPT_VERSION = 1`, `SYSTEM_PROMPT`, and `build(selection, open_reports, today) -> (system, user)`, with the user document `json.dumps(..., sort_keys=True, ensure_ascii=False)`. Make T012 pass.
+- [X] T020 [US1] Create `src/trading_agent/research/answer.py` (pure):
   - `ANSWER_SCHEMA`, generated from one field table, as contracts/research-interface.md requires;
   - `CheckedReport`;
   - `check(text, articles_by_id, us_symbols, open_reports, cfg) -> Checked(reports, drops, unusable: bool)`, implementing the valid path and the row building only (citation rebuild, size rounding, rationale cut).
   
   Leave TODO markers for the drop rules, which US2 adds. Make T013 pass.
-- [ ] T021 [P] [US1] Create `src/trading_agent/research/finnhub.py`, `FinnhubNews(NewsSource)`. It uses standard-library `urllib` and an injectable `opener`, timeout 10 s, has no retries, and maps errors per research R3. Make T014 pass.
-- [ ] T022 [P] [US1] Create `src/trading_agent/research/qwen.py`, `QwenClient(ModelClient)`, with `BASE_URL = "https://maas.qwencloudapi.com/compatible-mode/v1"`, an injectable `opener`, and the request and response mapping in research R5. It never logs the prompt or the answer. Make T015 pass.
-- [ ] T023 [US1] Create `src/trading_agent/research/service.py`:
+- [X] T021 [P] [US1] Create `src/trading_agent/research/finnhub.py`, `FinnhubNews(NewsSource)`. It uses standard-library `urllib` and an injectable `opener`, timeout 10 s, has no retries, and maps errors per research R3. Make T014 pass.
+- [X] T022 [P] [US1] Create `src/trading_agent/research/qwen.py`, `QwenClient(ModelClient)`, with `BASE_URL = "https://maas.qwencloudapi.com/compatible-mode/v1"`, an injectable `opener`, and the request and response mapping in research R5. It never logs the prompt or the answer. Make T015 pass.
+- [X] T023 [US1] Create `src/trading_agent/research/service.py`:
   - **`ResearchStore` protocol:** `open_reports(now) -> list[tuple[str, str]]`, `write(rows)`.
   - **`PgResearchStore`:**
     - It takes a psycopg connection.
@@ -210,7 +210,7 @@ description: "Task list for the Research agent (feature 007)"
     7. Log per contracts/research-interface.md "Logs".
   
   Make T016 and T017 pass.
-- [ ] T024 [US1] Create `src/trading_agent/research/__main__.py`:
+- [X] T024 [US1] Create `src/trading_agent/research/__main__.py`:
   - `main(argv=None, *, news_factory, model_factory, connect, config_path, sleep, clock, out) -> int`;
   - require `RESEARCH_DATABASE_URL`, `RESEARCH_FINNHUB_API_KEY` and the provider key, through `storage.db.require_env`. A missing one is exit 2, logged by name only;
   - load the config: an error is exit 2;
