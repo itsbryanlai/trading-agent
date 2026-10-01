@@ -1,10 +1,11 @@
 # 0016. Market data for the LLM agents comes from read-only Finnhub keys
 
-Status: proposed
+Status: accepted
 
-Accept once the owner has run `python -m trading_agent.reference --check AAPL`
-during market hours and confirmed that Finnhub's free `/quote` is live, not
-delayed (see Consequences). Until then, this records the intended decision.
+Accepted 2026-10-01 after the owner ran `python -m trading_agent.reference --check AAPL`
+during the session (about 10:03 ET). Finnhub's free `/quote` returned
+`t=2026-10-01T14:03:17+00:00`, seconds before the run, with `c` (329.05) moved off
+`pc` (333.02). So the quote is live, not delayed, at least for AAPL.
 
 ## Context
 
@@ -83,13 +84,11 @@ Research needs no prices: its input is news, already from Finnhub
   skipped because of this. That is the safe direction. If it happens often, it
   is a reason to revisit this ADR, not to widen the tolerance quietly. Changing
   the tolerance is a change to `config/risk.yaml` and is reviewed as one.
-- **Unverified assumptions.** Neither assumption below has been checked against
-  Finnhub's own documentation:
-  - that the free `/quote` is live during the session;
-  - that the free tier allows 60 calls a minute.
-  
-  The owner's market-hours `--check` settles the first. The second is why call
-  pacing is configurable.
+- **Assumptions about Finnhub's free tier.**
+  - **The quote is live during the session:** observed for AAPL on 2026-10-01
+    (see Status), but not stated in Finnhub's own documentation.
+  - **60 calls a minute:** unconfirmed, which is why call pacing is
+    configurable.
 - **The orchestrator's service holds two more agent keys**, which is the shared
   environment 0015 already accepts. Neither key can trade.
 - **The PM feature inherits work:**

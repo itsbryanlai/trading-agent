@@ -43,4 +43,4 @@ What this makes easier, harder, or locks in going forward.
 | [0013](0013-deterministic-services-run-their-own-loops.md) | Execution and the Risk Gate's trigger evaluation run their own loops, in separate processes |
 | [0014](0014-fresh-confirmed-stop-loss-triggers-and-intraday-equity.md) | Stop-loss triggers must be fresh and confirmed; equity is recorded every stop-loss window |
 | [0015](0015-orchestrator-starts-agents-with-their-own-credentials.md) | The orchestrator starts each agent as a process, passing it only its own credentials |
-| [0016](0016-market-data-for-the-llm-agents.md) | Market data for the LLM agents comes from read-only Finnhub keys (proposed) |
+| [0016](0016-market-data-for-the-llm-agents.md) | Market data for the LLM agents comes from read-only Finnhub keys |
