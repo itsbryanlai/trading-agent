@@ -210,7 +210,7 @@ These match the reference job's 2 and 3. The orchestrator records any non-zero c
 | `model.provider` | `qwen` | `qwen` or `anthropic` |
 | `model.name` | `qwen3.7-plus` | non-empty; for `anthropic`, must start with `claude-` |
 | `model.max_output_tokens` | 8000 | 1000–64000 |
-| `model.timeout_seconds` | 300 | 30–360 |
+| `model.timeout_seconds` | 180 | 30–360 |
 | `model.anthropic_effort` | `medium` | `low`, `medium` or `high` |
 
 **The provider key's name follows from the provider**: `RESEARCH_DASHSCOPE_API_KEY` or `RESEARCH_ANTHROPIC_API_KEY`. Only that one is required (FR-018).
@@ -221,7 +221,7 @@ These match the reference job's 2 and 3. The orchestrator records any non-zero c
 2 × timeout_seconds + (len(watchlist) + 2) × (60 / finnhub_calls_per_minute + 10) + 60 ≤ RUN_BUDGET_SECONDS (900)
 ```
 
-The `+ 10` is Finnhub's per-call timeout (analyze T1), and the 60 s is slack for selection, the write and start-up. A config failing this is refused (exit 2). A test asserts that `RUN_BUDGET_SECONDS` equals `config/schedule.yaml`'s `research.timeout_minutes × 60`, so neither file can drift past the other. The shipped defaults (300 s, an empty watchlist, 30 a minute) take 684 s. The same term is the news deadline in R3.
+The `+ 10` is Finnhub's per-call timeout (analyze T1), and the 60 s is slack for selection, the write and start-up. A config failing this is refused (exit 2). A test asserts that `RUN_BUDGET_SECONDS` equals `config/schedule.yaml`'s `research.timeout_minutes × 60`, so neither file can drift past the other. The shipped defaults (180 s, an empty watchlist, 30 a minute) take 444 s. At 180 s and 30 a minute, the watchlist can hold up to 38 symbols; at 300 s, only 18 (that's why the default is 180). The same term is the news deadline in R3.
 
 **Switching to Sonnet** means setting `provider: anthropic` and `name: claude-sonnet-5-5`, plus setting `RESEARCH_ANTHROPIC_API_KEY`.
 

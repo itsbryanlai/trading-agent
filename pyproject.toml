@@ -12,6 +12,8 @@ dependencies = [
     "PyYAML>=6.0,<7",
     "exchange-calendars>=4.13,<5",
     "alpaca-py>=0.44,<0.45",
+    # Research on Claude (ADR 0018); imported only by research/anthropic_client.py.
+    "anthropic>=1.11,<2",
 ]
 
 [project.optional-dependencies]

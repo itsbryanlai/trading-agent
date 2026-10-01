@@ -1,0 +1,32 @@
+# Settings for the Research agent (python -m trading_agent.research).
+#
+# Schema: specs/007-research-agent/contracts/research-interface.md
+# ("Configuration"). Every key is required and unknown keys are rejected; a bad
+# file means Research refuses to start. The loader also refuses any combination
+# whose worst-case run time exceeds the orchestrator's 15-minute timeout
+# (research R11).
+#
+# Changed only through code review. No agent writes this file.
+#
+# To run Research on Claude instead of Qwen: set model.provider: anthropic and
+# model.name: claude-sonnet-5-5, and set RESEARCH_ANTHROPIC_API_KEY.
+
+# Symbols whose company news is read every run. The owner fills this in.
+watchlist: []
+
+general_news_max_articles: 20
+articles_per_symbol: 5
+article_summary_max_chars: 1000
+max_input_chars: 300000
+rationale_max_chars: 2000
+
+# Provider pacing. 30 is half the commonly quoted Finnhub free-tier limit of
+# 60 calls a minute, which is not confirmed.
+finnhub_calls_per_minute: 30
+
+model:
+  provider: qwen                 # qwen | anthropic
+  name: qwen3.7-plus             # e.g. claude-sonnet-5-5 with provider: anthropic
+  max_output_tokens: 8000
+  timeout_seconds: 180            # with the run budget, allows a watchlist of up to 38 (research R11)
+  anthropic_effort: medium       # low | medium | high (Anthropic only)

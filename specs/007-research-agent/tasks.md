@@ -54,33 +54,33 @@ description: "Task list for the Research agent (feature 007)"
 
 ## Phase 1: Setup
 
-- [ ] T001 [P] Create the packages:
+- [X] T001 [P] Create the packages:
   - `src/trading_agent/research/__init__.py`, with a docstring naming ADR 0002, 0008, 0016, 0017 and 0018, and saying "writes only its own reports; no prices, portfolio or broker";
   - `tests/unit/research/__init__.py`;
   - `tests/integration/research/__init__.py`.
-- [ ] T002 [P] Add `anthropic>=1,<2` to `pyproject.toml` `[project] dependencies` (research R5). Install it with `uv pip install --python .venv/bin/python -e ".[dev]"`, then narrow the pin to the installed minor version, for example `>=1.N,<2`. Confirm the full offline suite still passes.
-- [ ] T003 [P] Add a `--- Research (specs/007-research-agent, ADR 0015/0018) ---` section to `.env.example`, with names and comments only, no values:
+- [X] T002 [P] Add `anthropic>=1,<2` to `pyproject.toml` `[project] dependencies` (research R5). Install it with `uv pip install --python .venv/bin/python -e ".[dev]"`, then narrow the pin to the installed minor version, for example `>=1.N,<2`. Confirm the full offline suite still passes.
+- [X] T003 [P] Add a `--- Research (specs/007-research-agent, ADR 0015/0018) ---` section to `.env.example`, with names and comments only, no values:
   - `RESEARCH_DATABASE_URL`: a login in `ta_research`.
   - `RESEARCH_FINNHUB_API_KEY`: read-only. If it shares a Finnhub account with `REFERENCE_DATA_FINNHUB_API_KEY`, the two share a rate limit (research R3).
   - `RESEARCH_DASHSCOPE_API_KEY`: needed when `model.provider: qwen`. The owner puts the same DashScope key value in each agent's own prefixed variable.
   - `RESEARCH_ANTHROPIC_API_KEY`: needed only when `model.provider: anthropic`.
   
   All four are set on the orchestrator's service.
-- [ ] T004 [P] Create `config/research.yaml` exactly as in contracts/research-interface.md "Configuration", with `watchlist: []`. Add a header comment: the schema contract; changed only through code review; no agent writes it; to switch to Sonnet, set `provider: anthropic` and `name: claude-sonnet-5-5` and set `RESEARCH_ANTHROPIC_API_KEY`.
+- [X] T004 [P] Create `config/research.yaml` exactly as in contracts/research-interface.md "Configuration", with `watchlist: []`. Add a header comment: the schema contract; changed only through code review; no agent writes it; to switch to Sonnet, set `provider: anthropic` and `name: claude-sonnet-5-5` and set `RESEARCH_ANTHROPIC_API_KEY`.
 
 ---
 
 ## Phase 2: Foundational (blocks every story)
 
-- [ ] T005 Write the failing test `tests/integration/storage/test_report_sell_size.py` for migration 0011 (data-model.md, research R13). Insert as the migration admin, using `factories.py`'s report helper if one exists, otherwise plain SQL. It must cover:
+- [X] T005 Write the failing test `tests/integration/storage/test_report_sell_size.py` for migration 0011 (data-model.md, research R13). Insert as the migration admin, using `factories.py`'s report helper if one exists, otherwise plain SQL. It must cover:
   - A `sell` with `suggested_size_pct = 0` is accepted. So are a `sell` at 100 and at 0.001.
   - A `buy` at 0 is rejected. So is a `hold` at 0.
   - A null `suggested_size_pct` is **rejected** for `buy`, `sell` and `hold`. This is the tightening, which the owner approved.
   - `no_action` with a null size is still accepted, and with any size still rejected.
   - Any direction above 100 is rejected, and so is a sell below 0.
   - The constraint is still named `reports_suggested_size_range`.
-- [ ] T006 Create `src/trading_agent/storage/migrations/0011_report_sell_size.sql`, headed with a comment citing the spec's Clarifications and research R13. It drops `reports_suggested_size_range` and re-adds it with exactly research R13's `CASE`, including the `IS NOT NULL` for `sell` and for buy and hold. No grant changes. Make T005 pass. Confirm `tests/integration/storage/test_reports.py` and the grants test still pass unchanged.
-- [ ] T007 [P] Create `src/trading_agent/research/ports.py` per contracts/ports.md:
+- [X] T006 Create `src/trading_agent/storage/migrations/0011_report_sell_size.sql`, headed with a comment citing the spec's Clarifications and research R13. It drops `reports_suggested_size_range` and re-adds it with exactly research R13's `CASE`, including the `IS NOT NULL` for `sell` and for buy and hold. No grant changes. Make T005 pass. Confirm `tests/integration/storage/test_reports.py` and the grants test still pass unchanged.
+- [X] T007 [P] Create `src/trading_agent/research/ports.py` per contracts/ports.md:
   - `RawArticle` (frozen: `url`, `headline`, `summary`, `source`, `published_at`, `related`);
   - the `NewsSource` protocol (`general_news`, `company_news(symbol, start, end)`, `us_symbols`);
   - `ModelReply` (frozen: `text`, `input_tokens`, `output_tokens`, `finish`);
@@ -89,10 +89,10 @@ description: "Task list for the Research agent (feature 007)"
   - model errors `ModelError` ⊃ `ModelKeyRejected`, `ModelRejected`, `ModelUnavailable`, `ModelRefused`, `ModelTruncated`.
   
   No behaviour; dataclasses and protocols only.
-- [ ] T008 [P] Create `tests/fakes/news.py`, a `FakeNews(NewsSource)`, and `tests/fakes/model.py`, a `FakeModel(ModelClient)`:
+- [X] T008 [P] Create `tests/fakes/news.py`, a `FakeNews(NewsSource)`, and `tests/fakes/model.py`, a `FakeModel(ModelClient)`:
   - **`FakeNews`** is configured with general articles, articles per symbol, the symbol set, and per-call errors. It records every call and its arguments.
   - **`FakeModel`** is configured with a reply text, or an error to raise, and token counts. It records the `system`, `user` and `schema` it received.
-- [ ] T009 [P] Write the failing test `tests/unit/research/test_config.py`, then create `src/trading_agent/research/config.py`: `load_config(path=DEFAULT_CONFIG_PATH) -> ResearchConfig` (frozen, with a nested `ModelConfig`), raising `ResearchConfigError`. Strict, like `reference/config.py`.
+- [X] T009 [P] Write the failing test `tests/unit/research/test_config.py`, then create `src/trading_agent/research/config.py`: `load_config(path=DEFAULT_CONFIG_PATH) -> ResearchConfig` (frozen, with a nested `ModelConfig`), raising `ResearchConfigError`. Strict, like `reference/config.py`.
   - **Must accept** the shipped file.
   - **Must reject:**
     - a missing or unknown key at either level;
@@ -104,7 +104,7 @@ description: "Task list for the Research agent (feature 007)"
     - `anthropic_effort` outside `low`, `medium` and `high`;
     - booleans where integers are expected.
   - **Exposes** `provider_key_variable` (`RESEARCH_DASHSCOPE_API_KEY` or `RESEARCH_ANTHROPIC_API_KEY`).
-- [ ] T010 [P] Write the failing test `tests/unit/research/test_import_guard.py`, modelled on `tests/unit/orchestrator/test_import_guard.py`. Across every module under `trading_agent.research`:
+- [X] T010 [P] Write the failing test `tests/unit/research/test_import_guard.py`, modelled on `tests/unit/orchestrator/test_import_guard.py`. Across every module under `trading_agent.research`:
   - nothing is imported from `trading_agent.execution`, `trading_agent.orchestrator`, or `trading_agent.risk` other than `trading_agent.risk.calendar`;
   - `selection`, `prompt` and `answer` import none of `psycopg`, `urllib`, `anthropic`, `os`, `time` or `trading_agent.research.service`;
   - `anthropic` is imported only by `anthropic_client.py`.
