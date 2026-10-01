@@ -49,12 +49,14 @@ that can.
 | `positions` | — | — | S | S | S, I, U, D | S | — | S | S | — | — |
 | `account_snapshots` | — | — | S | S | S, I | S | — | S | S | — | — |
 | `journal` | — | — | S | **—** | **—** | S, I, U | — | S | S | — | — |
-| `system_state` | — | — | — | S, U(halt_triggered_on, baseline_trading_day, daily_starting_equity, updated_at) | S(trading_paused) ² | — | S | S | S | S, U(trading_paused, updated_at) | — |
-| `system_state_effective` (view) | — | — | — | S | — | — | S | S | S | S | — |
+| `system_state` ⁴ | — | — | — | S, U(halt_triggered_on, baseline_trading_day, daily_starting_equity, updated_at) | S(trading_paused) ² | — | S(trading_paused) | S | S | S, U(trading_paused, updated_at) | — |
+| `system_state_effective` (view) ⁴ | — | — | — | S | — | — | — | S | S | S | — |
 | `stop_loss_triggers` ¹ | — | — | — | S | S, I | S | — | S | S | — | — |
 | `instrument_reference` ¹ ³ | — | — | — | S | — | — | — | S | S | — | S, I |
 | `execution_refusals` ² | — | — | — | — | S, I | S | — | S | S | — | — |
 | `reference_candidate_symbols` (view) ³ | — | — | — | — | — | — | — | S | S | — | S |
+| `orchestrator_runs` ⁴ | — | — | — | — | — | — | S, I, U(pgid, finished_at, outcome, detail) | S | S | — | — |
+| `latest_report_time` (view) ⁴ | — | — | — | — | — | — | S | S | S | — | — |
 | `schema_migrations` | — | — | — | — | — | — | — | — | — | — | — |
 
 ¹ Added by `specs/002-risk-gate` (migration `0006`). Execution writes stop-loss triggers and the
@@ -72,6 +74,14 @@ wherever orders are.
 of held and recently named symbols (symbols and times only). The view runs with its owner's rights,
 so the job has no access to `positions`, `reports` or `decisions`, and the `reports` row-level
 security policies are unchanged (research D10).
+
+⁴ Amended by `specs/005-orchestrator` (migration `0010`). The orchestrator's read of `system_state` is
+narrowed to the `trading_paused` column, and its read of `system_state_effective` removed: since `0005`
+it could read the starting equity and the halt, account data it must never see (ADR 0003). It writes
+only its own `orchestrator_runs` (inserting a row before each agent starts, then updating its process
+group and outcome), and learns about reports only through `latest_report_time`, a single value,
+through a view with owner rights, so the `reports` row-level security policies are unchanged
+(research O5-O7, ADR 0015).
 
 Bold `—` marks the two denials the spec calls out by name: the Risk Gate and Execution can never
 read the journal (FR-012), so attribution cannot become a trading input.

@@ -47,9 +47,15 @@ document is the map, not the rationale.
 ```
 
 An **orchestrator** (not pictured above — it has no place in the data flow)
-sequences when Research, the Opportunistic Identifier, and the PM run. It
-holds no database credentials and makes no model call — see
-[ADR 0003](../adr/0003-orchestrator-is-a-scheduler-not-an-authority.md).
+sequences when Research, the Opportunistic Identifier, and the PM run, and has no
+authority over what they conclude
+([ADR 0003](../adr/0003-orchestrator-is-a-scheduler-not-an-authority.md)). It is its
+own process that starts each agent as a child process, passing it only that agent's
+own variables ([ADR 0015](../adr/0015-orchestrator-starts-agents-with-their-own-credentials.md)),
+and it makes no model call. Its database role reads only the latest report's time
+and the pause flag, and writes only its own run records
+([ADR 0011](../adr/0011-event-driven-portfolio-manager-runs.md),
+[`specs/005-orchestrator`](../../specs/005-orchestrator/spec.md)).
 
 ## Agents (LLM, judgment)
 
