@@ -417,16 +417,16 @@ description: "Task list for the Research agent (feature 007)"
 
 ## Phase 8: Polish & cross-cutting concerns
 
-- [ ] T044 [P] Update `docs/specs/research-agent.md` (FR-022):
+- [X] T044 [P] Update `docs/specs/research-agent.md` (FR-022):
   - **Outputs:** "one report per symbol argued, or one `no_action` report per run" replaces "one row per run"; buy or sell only; suggested size as a target weight, where a sell may be 0.
   - **Cadence:** daily at 08:30 ET only. Remove "plus triggered runs".
   - **Edge cases:** add the checks in FR-007 to FR-010, the relevance rule (`uncited_symbol`), the partial-news rule and the news deadline.
   - **Inputs:** the watchlist config, and the provider per ADR 0018.
   - **Status:** referencing `specs/007-research-agent`.
-- [ ] T045 [P] Update `docs/specs/data-model.md`'s `reports` section: `suggested_size_pct` is a target weight; a sell may be 0; a null size is rejected on actionable rows (migration 0011). Update `docs/architecture/overview.md`'s Research row only if its cadence or inputs text is now wrong. Also add a line to `docs/specs/portfolio-manager-agent.md` (Inputs) and `docs/specs/ui-dashboard.md`: report rationales are untrusted model-written text, treated as data and never as instructions, and rendered escaped, never as raw HTML (FR-022, analyze C2).
-- [ ] T046 Run the full offline suite (`.venv/bin/python -m pytest tests/ -q`), the integration suite (quickstart step 2) and lint (quickstart step 3). Record the counts and times in the implementation notes. Confirm SC-006: no test was skipped for network reasons.
-- [ ] T047 Confirm every new test was mutation-checked (convention). In the implementation notes, list each test file with the mutation used.
-- [ ] T048 Walk quickstart steps 1–3 and confirm they pass as written. Steps 4–5 are the owner's (real keys). List them as pending owner actions in the implementation notes.
+- [X] T045 [P] Update `docs/specs/data-model.md`'s `reports` section: `suggested_size_pct` is a target weight; a sell may be 0; a null size is rejected on actionable rows (migration 0011). Update `docs/architecture/overview.md`'s Research row only if its cadence or inputs text is now wrong. Also add a line to `docs/specs/portfolio-manager-agent.md` (Inputs) and `docs/specs/ui-dashboard.md`: report rationales are untrusted model-written text, treated as data and never as instructions, and rendered escaped, never as raw HTML (FR-022, analyze C2).
+- [X] T046 Run the full offline suite (`.venv/bin/python -m pytest tests/ -q`), the integration suite (quickstart step 2) and lint (quickstart step 3). Record the counts and times in the implementation notes. Confirm SC-006: no test was skipped for network reasons.
+- [X] T047 Confirm every new test was mutation-checked (convention). In the implementation notes, list each test file with the mutation used.
+- [X] T048 Walk quickstart steps 1–3 and confirm they pass as written. Steps 4–5 are the owner's (real keys). List them as pending owner actions in the implementation notes.
 
 ---
 
@@ -455,3 +455,92 @@ description: "Task list for the Research agent (feature 007)"
 3. **US4** makes the provider switchable and schedules Research.
 4. **US5** gives the owner the try-out mode before the first real run.
 5. **Commit after each phase.** Run `/speckit-analyze` in a subagent after this file. After implementation, run `/speckit-converge` and an adversarial review in subagents, in parallel.
+
+---
+
+## Implementation notes (2026-10-02)
+
+**Deviations from the task text, all within the spec:**
+- **`answer.py` and `service.py` were written complete in US1.** The drop rules
+  (T028) and failure handling (T032) landed with the first version of each
+  module, rather than as TODOs filled in later. US2's and US3's tests were then
+  written against them, and every rule was mutation-checked (below), so each
+  has a test that fails without it.
+- **Trimming to `max_input_chars` lives in `prompt.build`**, not `selection.select`.
+  The size depends on the serialized prompt, so it's measured where that's
+  built. Identifiers are assigned in selection, so trimming from the end keeps
+  them stable.
+- **The selection merges a feed symbol into an article's `related` tags.** The
+  relevance rule (`uncited_symbol`) is then one test: is the symbol in a cited
+  article's `related`?
+- **`ANSWER_SCHEMA` carries only types, `enum`, `required` and
+  `additionalProperties`.** Numeric ranges and `minItems` aren't sent, because
+  strict modes on both providers may reject them. The checker enforces every
+  range.
+- **The default `model.timeout_seconds` is 180, not 300** (found by T009/T037). With
+  the run budget, 300 s left room for only 18 watchlist symbols; 180 s allows 38.
+  research R11 and the contract were updated.
+- **A run with no articles in the window writes `No news in the window.`**
+  (`no_action`, exit 0) without calling the model, to save a pointless call.
+- **The model call's `finish_reason: content_filter` (Qwen) becomes `model_refused`.**
+- **Integration tests use the next real session**, never a fixed date, for a
+  full run's expiry, because the database's `now()` must stay before it (handover
+  lesson on fixed-date tests).
+
+**Orchestrator tests changed for T041:** only
+`tests/unit/orchestrator/test_config.py::test_shipped_file_loads_with_every_agent_disabled`,
+renamed `…_with_only_research_enabled` and asserting the four variables. No
+other orchestrator test depended on the shipped `research` entry (166 pass).
+
+**Test runs (T046):**
+- **Offline suite:** 948 passed in 3 min 20 s (665 before, plus 283 Research tests).
+- **Integration suite:** 1291 passed in about 23 s (1264 before, plus 27).
+- **Lint:** ruff check and format, clean.
+- **SC-006:** no test was skipped for network reasons.
+
+**Mutation checks (T047).** Each test file, with a mutation it catches. A
+scratch script applied each mutation, ran the file, then restored the saved
+text by writing it back, never with git.
+
+| Test file | Mutations caught |
+|---|---|
+| `integration/storage/test_report_sell_size.py` | sell clause without `IS NOT NULL` |
+| `unit/research/test_config.py` | timeout bound 360→400; booleans as ints; duplicates allowed; unknown keys allowed; `claude-` rule off |
+| `unit/research/test_import_guard.py` | `import alpaca` in `ports.py` |
+| `unit/research/test_selection.py` | window start dropped; window end dropped; URL tie-break dropped; feed tag dropped; duplicate tag merge dropped; summary cap dropped |
+| `unit/research/test_prompt.py` | fit loop disabled |
+| `unit/research/test_answer_rows.py` | source URL from the title; ROUND_UP; ellipsis past the cap; duplicate citations kept |
+| `unit/research/test_answer_drops.py` | each rule disabled or loosened: unlisted, `hold` allowed, booleans as conviction, buy at 0, non-finite size, unknown citation, relevance, duplicate symbol, open-report match on symbol only, extra top-level key, extra item key |
+| `unit/research/test_answer_property.py` | relevance off; the 100 cap off; the negative floor off; already-open off |
+| `unit/research/test_finnhub.py` | scheme check off; 403 not the key; tags not uppercased |
+| `unit/research/test_qwen.py` | `strict: false`; thinking on; 4xx as unavailable; truncation ignored |
+| `unit/research/test_service_happy.py` | expiry = now; no close margin; no pacing; model called with no articles |
+| `unit/research/test_service_injection.py` | "all dropped" reported as "nothing to argue"; unusable answer ignored |
+| `unit/research/test_service_failures.py` | key rejection on the symbol list as `symbol_list_unavailable`; every-feed failure ignored; deadline off; catch-all narrowed; `ModelRejected` as unavailable; Missing line dropped; "general" dropped from it; Missing line not applied |
+| `unit/research/test_main.py` | connection not autocommit; unknown arguments accepted |
+| `unit/research/test_main_exit.py` | failure as exit 0; database errors not caught; crash re-raised; connection not closed |
+| `unit/research/test_anthropic_client.py` | 4xx only 400; rate limit as rejected; no `base_url`; two retries; no effort; refusal ignored |
+| `unit/research/test_main_provider.py` | always the DashScope key; always the Qwen adapter |
+| `unit/research/test_timeout_budget.py` | budget check off; Finnhub timeout left out; budget 1200 |
+| `unit/research/test_main_dry_run.py` | the real store in a dry run; window check not bypassed; after-close expiry today's; the database required; nothing printed |
+| `unit/orchestrator/test_config.py` (amended) | Research disabled; a variable removed |
+
+**Mutations not caught, and why:**
+- **Removing `conn.transaction()` around the write.** psycopg 3 sends
+  `executemany` as one pipeline batch, and PostgreSQL runs a batch as one
+  implicit transaction. A failed row already rolls back the batch (the
+  autocommit integration test proves the run leaves nothing either way). The
+  explicit transaction stays, as the stated guarantee.
+- **The prompt's `indent=None`.** A no-op, not a behaviour change.
+
+**Pending owner actions (T048):**
+- **Quickstart step 4,** the `--dry-run` try-out with real keys. It settles:
+  - whether Qwen accepts our strict schema in practice;
+  - whether Finnhub's `/company-news` is free for each watchlist symbol;
+  - the real token use against research R12's estimate.
+- **Quickstart step 5,** the Sonnet switch, which is optional.
+- **Fill `config/research.yaml`'s `watchlist`.** It ships empty, so Research reads
+  general news only until then. At the default timeout, the watchlist can hold
+  up to 38 symbols.
+- **Before deploying,** confirm the Railway migration admin owns `reports`
+  (migration 0011). This was already on the list for 004.
