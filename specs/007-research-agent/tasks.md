@@ -365,19 +365,19 @@ description: "Task list for the Research agent (feature 007)"
 
 ### Tests for User Story 4
 
-- [ ] T035 [P] [US4] Write the failing test `tests/unit/research/test_anthropic_client.py` (research R5). Inject a fake client object exposing `messages.create(**kwargs)` that records its arguments:
+- [X] T035 [P] [US4] Write the failing test `tests/unit/research/test_anthropic_client.py` (research R5). Inject a fake client object exposing `messages.create(**kwargs)` that records its arguments:
   - **The request:** `model`, `max_tokens = max_output_tokens`, `system`, `messages=[{"role": "user", "content": user}]` and `output_config={"format": {"type": "json_schema", "schema": schema}, "effort": cfg.anthropic_effort}`.
   - **No fallbacks:** no `fallbacks` and no `betas` are sent; the owner keeps the fallback off.
   - **The reply:** text from the first `text` block, `usage.input_tokens` and `usage.output_tokens`.
   - **Stop reasons:** `stop_reason == "refusal"` → `ModelRefused`; `"max_tokens"` → `ModelTruncated`.
   - **Errors:** the SDK's `AuthenticationError` and `PermissionDeniedError` → `ModelKeyRejected`; `BadRequestError`, `NotFoundError`, `UnprocessableEntityError` and any other 4xx `APIStatusError` → `ModelRejected`; `RateLimitError`, `APIStatusError` 5xx, `APIConnectionError` and `APITimeoutError` → `ModelUnavailable`. Construct these with the SDK's own classes and a fake `httpx2` response if needed. Don't open a socket.
   - **Construction:** `AnthropicClient.from_key(key, cfg)` builds `anthropic.Anthropic(api_key=key, base_url="https://api.anthropic.com", timeout=cfg.timeout_seconds, max_retries=1)`. Assert it by monkeypatching `anthropic.Anthropic` with a recorder.
-- [ ] T036 [P] [US4] Write the failing test `tests/unit/research/test_main_provider.py`:
+- [X] T036 [P] [US4] Write the failing test `tests/unit/research/test_main_provider.py`:
   - **Qwen configured:** only `RESEARCH_DASHSCOPE_API_KEY` is required, and the Anthropic key's absence is fine.
   - **Anthropic configured:** only `RESEARCH_ANTHROPIC_API_KEY` is required; a missing one is exit 2, naming it.
   - **Unprefixed `ANTHROPIC_API_KEY` is never used.** Set it with a fake value while `RESEARCH_ANTHROPIC_API_KEY` is unset: exit 2, and the fake value never reaches the client factory.
   - **Factory choice:** `model_factory` receives `(provider, key, cfg)`, and the right adapter class is chosen.
-- [ ] T037 [P] [US4] Write the failing test `tests/unit/research/test_timeout_budget.py` (research R11):
+- [X] T037 [P] [US4] Write the failing test `tests/unit/research/test_timeout_budget.py` (research R11):
   - **The budget matches the orchestrator:** `config.RUN_BUDGET_SECONDS == 900` equals the shipped `config/schedule.yaml` `research.timeout_minutes × 60`.
   - **Over budget is refused:** `load_config` rejects a config where `2 × timeout_seconds + (len(watchlist) + 2) × (60 / finnhub_calls_per_minute + 10) + 60 > RUN_BUDGET_SECONDS`, for example 360 s, 50 symbols and 30 a minute. The error names the budget.
   - **At the budget is accepted:** a config exactly at the budget loads.
@@ -385,10 +385,10 @@ description: "Task list for the Research agent (feature 007)"
 
 ### Implementation for User Story 4
 
-- [ ] T038 [US4] Create `src/trading_agent/research/anthropic_client.py`, `AnthropicClient(ModelClient)`, per research R5 and T035. It is the only module that imports `anthropic`. It uses typed exception classes, not string matching, and never logs the prompt or the answer. Make T035 pass.
-- [ ] T039 [US4] In `__main__.py`, wire provider selection: require `cfg.provider_key_variable`, and build `QwenClient` or `AnthropicClient` through `model_factory`. Make T036 pass.
-- [ ] T040 [US4] Add `RUN_BUDGET_SECONDS = 900` and the combined check to `research/config.py` (research R11). Make T037 pass.
-- [ ] T041 [US4] Enable Research in the orchestrator (research R15). In `config/schedule.yaml`, set `research.enabled: true` and `research.env: [RESEARCH_DATABASE_URL, RESEARCH_FINNHUB_API_KEY, RESEARCH_DASHSCOPE_API_KEY, RESEARCH_ANTHROPIC_API_KEY]`. `daily_at`, `interval_minutes` and `timeout_minutes` stay unchanged. Then:
+- [X] T038 [US4] Create `src/trading_agent/research/anthropic_client.py`, `AnthropicClient(ModelClient)`, per research R5 and T035. It is the only module that imports `anthropic`. It uses typed exception classes, not string matching, and never logs the prompt or the answer. Make T035 pass.
+- [X] T039 [US4] In `__main__.py`, wire provider selection: require `cfg.provider_key_variable`, and build `QwenClient` or `AnthropicClient` through `model_factory`. Make T036 pass.
+- [X] T040 [US4] Add `RUN_BUDGET_SECONDS = 900` and the combined check to `research/config.py` (research R11). Make T037 pass.
+- [X] T041 [US4] Enable Research in the orchestrator (research R15). In `config/schedule.yaml`, set `research.enabled: true` and `research.env: [RESEARCH_DATABASE_URL, RESEARCH_FINNHUB_API_KEY, RESEARCH_DASHSCOPE_API_KEY, RESEARCH_ANTHROPIC_API_KEY]`. `daily_at`, `interval_minutes` and `timeout_minutes` stay unchanged. Then:
   - **Update the shipped-file test:** `tests/unit/orchestrator/test_config.py::test_shipped_file_loads_with_every_agent_disabled` becomes `…_with_only_research_enabled`, asserting exactly that list. The OI and PM stay disabled.
   - **Run** `tests/unit/orchestrator` in full. Fix only tests that assumed the shipped `research.env == []` or `enabled: false`, and list each one fixed in the implementation notes.
   - **Confirm** the orchestrator's prefix rule accepts the four names (an existing test path).

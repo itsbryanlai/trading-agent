@@ -9,13 +9,18 @@
 # start after 15:30 ET or within 30 minutes of the close, and a report wait of at
 # least 5 minutes.
 #
-# Every agent ships disabled: none exists yet. Each agent's feature enables its
-# own entry and lists its variables, which must start with its prefix (ADR 0015).
+# Each agent's feature enables its own entry and lists its variables, which must
+# start with its prefix (ADR 0015). Research is enabled (feature 007); the
+# Opportunistic Identifier and the PM don't exist yet and stay disabled.
 
 research:
-  enabled: false
+  enabled: true                # specs/007-research-agent
   module: trading_agent.research
-  env: []                      # RESEARCH_* names only
+  env:                         # RESEARCH_* names only; unset ones aren't passed
+    - RESEARCH_DATABASE_URL
+    - RESEARCH_FINNHUB_API_KEY
+    - RESEARCH_DASHSCOPE_API_KEY     # model.provider: qwen (config/research.yaml)
+    - RESEARCH_ANTHROPIC_API_KEY     # model.provider: anthropic
   timeout_minutes: 15
   daily_at: "08:30"            # before the 09:30 open
   interval_minutes: null       # optional intraday runs; null = off

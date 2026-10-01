@@ -37,9 +37,15 @@ def _with(tmp_path, agent, key, value):
 _DELETE = object()
 
 
-def test_shipped_file_loads_with_every_agent_disabled():
+def test_shipped_file_loads_with_only_research_enabled():
     config = load_config(DEFAULT_CONFIG_PATH)
-    assert all(not agent.enabled for agent in config.agents())
+    assert [agent.name for agent in config.agents() if agent.enabled] == ["research"]
+    assert config.research.env == (
+        "RESEARCH_DATABASE_URL",
+        "RESEARCH_FINNHUB_API_KEY",
+        "RESEARCH_DASHSCOPE_API_KEY",
+        "RESEARCH_ANTHROPIC_API_KEY",
+    )
     assert config.research.daily_at == time(8, 30) and config.research.interval is None
     assert config.identifier.interval == timedelta(minutes=60)
     assert config.identifier.window_start == time(10, 0)
