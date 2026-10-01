@@ -62,8 +62,8 @@ and the pause flag, and writes only its own run records
 | Agent | Reads | Writes | Cadence |
 |---|---|---|---|
 | Research | news/data sources, own credential | `reports` (own rows) | ~daily + news-triggered |
-| Opportunistic Identifier | market data | `reports` (own rows) | intraday polling |
-| Portfolio Manager | both agents' open reports, portfolio state, live quote, journal | `decisions` | morning session + event-driven on new reports, ≥30 min apart, none after 15:30 ET ([ADR 0011](../adr/0011-event-driven-portfolio-manager-runs.md)) |
+| Opportunistic Identifier | market data and fundamentals (read-only Finnhub key, [ADR 0016](../adr/0016-market-data-for-the-llm-agents.md)) | `reports` (own rows) | intraday polling |
+| Portfolio Manager | both agents' open reports, portfolio state, live quote (read-only Finnhub key, [ADR 0016](../adr/0016-market-data-for-the-llm-agents.md)), journal | `decisions` | morning session + event-driven on new reports, ≥30 min apart, none after 15:30 ET ([ADR 0011](../adr/0011-event-driven-portfolio-manager-runs.md)) |
 | Assistant | everything | nothing | on-demand (Telegram) |
 
 Full behavior, inputs/outputs, and edge cases for each are in
@@ -115,7 +115,7 @@ default, write access is scoped to the table(s) that component owns
   [ADR 0008](../adr/0008-dashboard-stack-and-research-provider.md)), granted
   a read-only DB role like the Assistant's, plus write access to the single
   `trading_paused` toggle
-- Alpaca paper endpoint for market data and order execution
+- Alpaca paper endpoint for order execution and Execution's own market data; no agent holds an Alpaca credential, and the agents' quotes come from read-only Finnhub keys ([ADR 0016](../adr/0016-market-data-for-the-llm-agents.md))
 - Credentials never committed: Alpaca keys, Anthropic key, Finnhub keys, Telegram bot
   token/chat ID, each scoped to the one component that needs them
 
