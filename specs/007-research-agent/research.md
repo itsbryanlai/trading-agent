@@ -202,7 +202,13 @@ These match the reference job's 2 and 3. The orchestrator records any non-zero c
 
 **The provider key's name follows from the provider**: `RESEARCH_DASHSCOPE_API_KEY` or `RESEARCH_ANTHROPIC_API_KEY`. Only that one is required (FR-018).
 
-**The timeout bound ties to the orchestrator.** Two model attempts at up to 360 s each, plus Finnhub pacing (52 calls at 30 a minute is about 104 s), must fit the orchestrator's 15-minute Research timeout. A test asserts that `config/research.yaml`'s worst case fits `config/schedule.yaml`'s `research.timeout_minutes`, so neither file can drift past the other.
+**The timeout bound ties to the orchestrator.** Individual bounds can't guarantee the fit: 360 s × 2, 50 symbols and 1 call a minute would take almost an hour. So the loader also checks the combination:
+
+```text
+2 × timeout_seconds + (len(watchlist) + 2) × 60 / finnhub_calls_per_minute + 60 ≤ RUN_BUDGET_SECONDS (900)
+```
+
+The 60 s is slack for selection, the write and start-up. A config failing this is refused (exit 2). A test asserts that `RUN_BUDGET_SECONDS` equals `config/schedule.yaml`'s `research.timeout_minutes × 60`, so neither file can drift past the other. The shipped defaults (300 s, an empty watchlist, 30 a minute) take 664 s.
 
 **Switching to Sonnet** means setting `provider: anthropic` and `name: claude-sonnet-5-5`, plus setting `RESEARCH_ANTHROPIC_API_KEY`.
 

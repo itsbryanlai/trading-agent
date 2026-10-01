@@ -39,7 +39,7 @@
 
 **Project Type**: an LLM agent in the existing `trading_agent` package; one run per process.
 
-**Performance Goals**: finishes well within the orchestrator's 15-minute timeout. The worst case at the configured bounds is about 14 minutes (R11). Reports land by 08:45 ET (SC-001).
+**Performance Goals**: fits the orchestrator's 15-minute timeout by construction: the config loader refuses any combination of model timeout, watchlist size and pacing whose worst case exceeds it (R11). The shipped defaults take about 11 minutes at worst. Reports land by 08:45 ET (SC-001).
 
 **Constraints**:
 - **No prices, positions, cash or trading data.** The only database write is its own `reports` rows.
