@@ -6,10 +6,10 @@ drop reason, so the property isn't vacuously true."""
 from __future__ import annotations
 
 import json
-from collections import Counter
 from decimal import Decimal
 
-from hypothesis import HealthCheck, given, settings
+import pytest
+from hypothesis import HealthCheck, find, given, settings
 from hypothesis import strategies as st
 
 from tests.unit.research.support import THU_0830, article, config
@@ -72,7 +72,12 @@ BAD = {
         sizes,
     ),
     "rationale": st.one_of(st.sampled_from(["", "   ", 5]), rationales),
-    "article_ids": st.one_of(st.sampled_from([[], ["A99"], ["A1", "A99"], "A1", [1]]), ids),
+    # Real articles cited for the wrong symbol (uncited_symbol), plus unknown ids and bad types.
+    "article_ids": st.one_of(
+        st.sampled_from([["A1"], ["A2"], ["A3"]]),
+        st.sampled_from([[], ["A99"], ["A1", "A99"], "A1", [1]]),
+        ids,
+    ),
 }
 FIELDS = BAD
 
@@ -144,25 +149,15 @@ def test_nothing_invalid_is_ever_accepted(items):
     assert all(d.reason in DROP_REASONS for d in checked.drops)
 
 
-def test_the_generator_reaches_acceptance_and_every_drop_reason():
-    seen: Counter = Counter()
-    accepted = 0
+@pytest.mark.parametrize("reason", [*DROP_REASONS, "accepted"])
+def test_the_generator_can_reach_every_branch(reason):
+    """Each drop reason, and acceptance, is reachable by the property's own strategy, so
+    the property above isn't vacuously true. `find` searches until it hits one."""
 
-    # Deterministic, so this check is never flaky; the property itself stays random.
-    @settings(
-        max_examples=2000,
-        derandomize=True,
-        suppress_health_check=[HealthCheck.too_slow],
-        database=None,
-    )
-    @given(answers)
-    def collect(items):
-        nonlocal accepted
+    def hits(items):
         checked = _check(items)
-        accepted += len(checked.reports)
-        seen.update(d.reason for d in checked.drops)
+        if reason == "accepted":
+            return bool(checked.reports)
+        return any(d.reason == reason for d in checked.drops)
 
-    collect()
-    assert accepted > 0
-    missing = [r for r in DROP_REASONS if not seen[r]]
-    assert not missing, f"never produced: {missing}"
+    find(answers, hits, settings=settings(max_examples=20_000, database=None))
