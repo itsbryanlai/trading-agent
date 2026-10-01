@@ -8,6 +8,15 @@
 
 **Input**: User description: "Feature 007: the Research agent (docs/specs/research-agent.md, ADR 0002, ADR 0008, ADR 0015, ADR 0016, ADR 0017, ADR 0018). An LLM analyst that turns news into structured reports for the Portfolio Manager; it never decides, never sees positions or cash, and writes only its own `reports` rows. Owner decisions: (1) Inputs: Finnhub general market news plus per-symbol company news for a watchlist in a new version-controlled config file, which ships empty (the owner fills it; no tickers invented), with caps on articles per run. No prices (ADR 0016); Alpha Vantage sentiment out of scope. (2) Output: one `reports` row per symbol it argues, or a single `no_action` row when nothing qualifies or the run fails; this clarifies docs/specs/research-agent.md's \"one row per run\". (3) Cadence: daily at 08:30 ET via the orchestrator only; no intraday or news-triggered runs (the schedule's existing interval option stays off). (4) Prompt-injection containment: news is attacker-reachable text, so code validates every model output before writing: a fixed output schema, every cited source must be an article fetched in that run (no invented citations), every symbol must pass a format check and be in Finnhub's US symbol list, direction/conviction/size within the schema's bounds; anything invalid is dropped, and a run with nothing valid writes a `no_action` row saying why. (5) Model: provider and model are configuration (ADR 0018); default Qwen `qwen3.7-plus`, with an optional switch to an Anthropic Sonnet model; no automatic failover between providers; a failed model call writes a `no_action` row saying why; a per-run token cap. (6) No incubation: the PM reads Research's reports from the start (ADR 0017). (7) Credentials (ADR 0015 prefix rule): RESEARCH_DATABASE_URL, RESEARCH_FINNHUB_API_KEY, RESEARCH_DASHSCOPE_API_KEY (when on Qwen), RESEARCH_ANTHROPIC_API_KEY (only if switched); the owner will put the same DashScope key value in each agent's prefixed variable. Reports expire at the end of the trading day they were generated on. Tests use fake news and fake model clients, never the network."
 
+## Clarifications
+
+### Session 2026-10-01
+
+- Q: What does Research's suggested size mean? → A: A target weight, the same meaning as the PM's `size_pct`: the share of equity Research thinks the position should end up at, whatever is held now. A buy names the weight it should reach. A sell names a lower weight.
+- Q: How does Research suggest selling a name completely, when `reports` only accepts a suggested size above 0? → A: A migration lets a sell report suggest 0, meaning a full exit. A buy (and a hold) must still be above 0. This matches the PM's decisions, where a full exit is a sell at 0.
+- Q: May Research write "hold" reports? → A: No. Research writes buy or sell only: it can't see holdings, so "hold" would carry a meaningless target. A "hold" proposal is dropped and logged, and neutral or mixed news on a name produces no report.
+- Q: If some of the news can't be fetched, does Research carry on or fail the run? → A: It carries on with what it has. The run fails only if every news fetch fails, or the US symbol list can't be fetched. Otherwise every report it writes names the missing sources in its rationale, and the run exits with success.
+
 ## User Scenarios & Testing *(mandatory)*
 
 The users of Research are:
@@ -32,7 +41,7 @@ On each trading day before the open, Research:
 3. writes one report per name it argues.
 
 Each report carries:
-- a direction (buy, sell or hold), a conviction from 1 to 5, and a suggested size;
+- a direction (buy or sell; never hold, see Clarifications), a conviction from 1 to 5, and a suggested size;
 - a rationale;
 - the articles it relies on, as structured citations.
 
@@ -91,8 +100,8 @@ The owner, the journal and the PM can then tell "nothing to say today" from "cou
 
 **Acceptance Scenarios**:
 
-1. **Given** the news source is unreachable or rejects the key, **When** Research runs, **Then** one `no_action` report names the news failure, no model call is made, and the run exits with a failure status.
-2. **Given** some watchlist symbols' news fails but the general news and others succeed, **When** Research runs, **Then** it continues with what it has, and the rationale of every report written in this run lists the symbols whose news was missing.
+1. **Given** every news fetch fails (the source is unreachable or rejects the key), **When** Research runs, **Then** one `no_action` report names the news failure, no model call is made, and the run exits with a failure status.
+2. **Given** some news fetches fail (the general news, or some watchlist symbols' company news) but at least one succeeds, **When** Research runs, **Then** it continues with what it has. The rationale of every report written in this run, including a `no_action` one, names the missing sources, and the run exits with success.
 3. **Given** the model provider is unavailable, rejects the key or doesn't answer in time, **When** Research runs, **Then** one `no_action` report names the model failure. No other provider is tried, and the run exits with a failure status.
 4. **Given** Research's database is unreachable, **When** it starts, **Then** it exits with a failure status, and the orchestrator's own run record shows the failure.
 
@@ -139,7 +148,7 @@ Before enabling Research, or after changing its model or watchlist, the owner ca
 
 - **Research has a still-open report on a symbol** (for example after a manual run earlier the same day): it is given its own still-open reports. A new report on the same symbol with the same direction is not written; one with a changed direction is ([`docs/specs/research-agent.md`](../../docs/specs/research-agent.md), "materially changed").
 - **The model names the same symbol twice in one answer**: only the first valid proposal for that symbol is written, and the duplicate is logged as dropped.
-- **Conflicting news on one name**: the model is asked to reflect the disagreement in the rationale and in a lower conviction. Code doesn't second-guess the direction it picks.
+- **Conflicting news on one name**: the model is asked to reflect the disagreement in the rationale and in a lower conviction, or to make no proposal on that name if the news doesn't support a direction. Code doesn't second-guess the direction it picks.
 - **A run started after the day's close, or on a non-trading day** (only possible by hand): Research writes nothing and exits. A report would expire at or before the moment it was written.
 - **A run killed by the orchestrator's timeout**: either all of the run's reports are written or none are. A partial set is never left behind.
 - **A very long rationale or article text**: the rationale is capped at a configured length. Article text is cut to fit the input limit.
@@ -161,16 +170,16 @@ Before enabling Research, or after changing its model or watchlist, the owner ca
 
 - **FR-004**: Research MUST make one model call per run, to the configured provider and model (default Qwen `qwen3.7-plus`; the alternative is an Anthropic Sonnet model) ([ADR 0018](../../docs/adr/0018-qwen-as-a-model-provider.md)). It MUST NOT call any other provider, including when the call fails.
 - **FR-005**: The model's input and output MUST be bounded by configured limits, and the call MUST be given a time limit that fits within the orchestrator's timeout for Research.
-- **FR-006**: The model MUST be asked for a fixed shape of answer: a list of proposals, each with a symbol, direction, conviction, suggested size, rationale, and the identifiers of the fetched articles it relies on. The answer may be an empty list.
+- **FR-006**: The model MUST be asked for a fixed shape of answer: a list of proposals, each with a symbol, direction, conviction, suggested size, rationale, and the identifiers of the fetched articles it relies on. The answer may be an empty list. The suggested size MUST be stated to the model, and recorded, as a target weight: the share of equity the position should end up at, the same meaning as the PM's `size_pct` (Clarifications).
 
 **Checking the answer**
 
 - **FR-007**: Before writing, Research MUST check every proposal, and MUST drop and log any proposal where:
   - **Shape:** the answer doesn't match the required shape.
   - **Symbol:** the symbol is malformed, or not in the day's US symbol list.
-  - **Direction:** it is not buy, sell or hold.
+  - **Direction:** it is not buy or sell. A "hold" is dropped too (Clarifications).
   - **Conviction:** it is not a whole number from 1 to 5.
-  - **Size:** it is not greater than 0 and at most 100.
+  - **Size:** it is not at most 100, or it is not greater than 0 (for a buy) or at least 0 (for a sell, where 0 means a full exit).
   - **Citations:** it cites no article, or any article not fetched in this run.
 - **FR-008**: A written report's citations MUST be built from the fetched articles' own title, link, publisher and publication time, never from the model's text.
 - **FR-009**: Research MUST write at most one report per symbol per run. It MUST NOT write a report with the same symbol and direction as one of its own still-open reports.
@@ -181,10 +190,10 @@ Before enabling Research, or after changing its model or watchlist, the owner ca
 - **FR-011**: Every run that reaches the database MUST write at least one report:
   - **Valid proposals:** one report per valid proposal.
   - **Nothing to argue, or everything dropped:** exactly one `no_action` report saying which.
-  - **A failure:** exactly one `no_action` report naming the failure (news source, symbol list, model call, unusable answer).
+  - **A failure:** exactly one `no_action` report naming the failure (every news fetch failed, the symbol list failed, the model call failed, or the answer was unusable). Missing only some news is not a failure: the run continues and its reports name what was missing.
 - **FR-012**: A run's reports MUST be written all together or not at all.
 - **FR-013**: Every report MUST expire at the close of the trading day it was generated on, using the exchange calendar's early closes. Research MUST NOT write when it runs after that day's close or on a non-trading day.
-- **FR-014**: Research MUST write only `reports` rows attributed to itself, through its own database role, with no new permission.
+- **FR-014**: Research MUST write only `reports` rows attributed to itself, through its own database role, with no new permission. A migration MUST relax `reports`' suggested-size check so a sell may suggest 0 (a full exit), while a buy or hold must still be above 0 (the OI may still write "hold") (Clarifications). It applies to both analysts' rows.
 
 **Running**
 
@@ -212,11 +221,11 @@ Before enabling Research, or after changing its model or watchlist, the owner ca
 **Logging and documentation**
 
 - **FR-021**: Each run MUST log the number of articles read, proposals received, reports written and proposals dropped, with each dropped proposal's reason. It MUST also log the model's reported token use. No log line may contain a credential.
-- **FR-022**: `docs/specs/research-agent.md` MUST be updated to say "one report per symbol argued, or one `no_action` report per run", replacing "one row per run". It MUST also record the daily-only cadence, and the checks in FR-007 to FR-010.
+- **FR-022**: `docs/specs/research-agent.md` MUST be updated to say "one report per symbol argued, or one `no_action` report per run", replacing "one row per run". It MUST also record the daily-only cadence, and the checks in FR-007 to FR-010. `docs/specs/data-model.md` MUST say that a report's suggested size is a target weight, and that a sell may suggest 0.
 
 ### Key Entities
 
-- **Report**: an existing table, `reports`, with `agent = 'research'`. It holds a symbol (none for `no_action`), direction, conviction, suggested size, citations, rationale and expiry. It is insert-only, and the PM reads it.
+- **Report**: an existing table, `reports`, with `agent = 'research'`. It holds a symbol (none for `no_action`), direction, conviction, suggested size (a target weight of equity), citations, rationale and expiry. It is insert-only, and the PM reads it.
 - **Article**: a news item fetched in this run: an identifier, title, link, publisher, publication time and text. It exists only in memory for the run, and is the only thing a citation can point at.
 - **Proposal**: one entry in the model's answer, before checking. It becomes a report only if every check passes.
 - **Research configuration**: the watchlist, news caps, model provider and model, input and output limits, and the rationale length cap. It is version-controlled.
