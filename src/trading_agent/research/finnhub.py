@@ -14,8 +14,9 @@ from datetime import UTC, date, datetime
 from http.client import HTTPException
 from urllib.error import HTTPError
 from urllib.parse import urlencode, urlsplit
-from urllib.request import Request, urlopen
+from urllib.request import Request
 
+from trading_agent.no_redirect import open_without_redirects
 from trading_agent.research import text
 from trading_agent.research.ports import (
     KeyRejected,
@@ -34,7 +35,7 @@ class FinnhubNews:
         self, api_key: str, *, opener: Callable | None = None, timeout: float = TIMEOUT_SECONDS
     ) -> None:
         self._key = api_key
-        self._open = opener or urlopen
+        self._open = opener or open_without_redirects()  # review L4
         self._timeout = timeout
 
     def __repr__(self) -> str:

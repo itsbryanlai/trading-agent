@@ -16,8 +16,9 @@ import json
 from collections.abc import Callable
 from http.client import HTTPException
 from urllib.error import HTTPError
-from urllib.request import Request, urlopen
+from urllib.request import Request
 
+from trading_agent.no_redirect import open_without_redirects
 from trading_agent.research.ports import (
     ModelKeyRejected,
     ModelRefused,
@@ -45,7 +46,7 @@ class QwenClient:
         self._model = model
         self._max_tokens = max_output_tokens
         self._timeout = timeout
-        self._open = opener or urlopen
+        self._open = opener or open_without_redirects()  # review L4
         self._url = f"{base_url.rstrip('/')}/chat/completions"
 
     def __repr__(self) -> str:
@@ -84,7 +85,7 @@ class QwenClient:
             code = exc.code
             if code in (401, 403):
                 raise ModelKeyRejected(f"qwen: HTTP {code}", status=code) from None
-            if code == 429 or code >= 500:
+            if code == 429 or code >= 500 or code < 400:  # a refused 3xx too (review L4)
                 raise ModelUnavailable(f"qwen: HTTP {code}", status=code) from None
             raise ModelRejected(f"qwen: HTTP {code}", status=code) from None
         except (OSError, ValueError, HTTPException) as exc:
