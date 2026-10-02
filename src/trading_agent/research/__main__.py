@@ -209,6 +209,7 @@ def _print_dry_run(outcome: RunOutcome, out) -> None:
                     "failure": outcome.failure,
                     "missing_news": outcome.missing,
                     "input_chars": outcome.input_chars,
+                    "tagged_articles": outcome.tagged_articles,
                     "input_tokens": outcome.input_tokens,
                     "output_tokens": outcome.output_tokens,
                 }

@@ -61,6 +61,7 @@ def test_prints_rows_and_drops_and_writes_nothing(env, caplog):
     assert [r["symbol"] for r in rows] == ["AAPL"] and rows[0]["expires_at"] == THU_CLOSE
     assert drops == [{"index": 1, "symbol": "ZZZZ", "reason": "unlisted_symbol"}]
     assert summary["input_tokens"] == 1200 and summary["input_chars"] > 0
+    assert summary["tagged_articles"] == 1
     assert summary["failure"] is None
     text = caplog.text + json.dumps(lines)
     for secret in SECRETS:

@@ -98,6 +98,7 @@ class RunOutcome:
     input_tokens: int | None = None
     output_tokens: int | None = None
     input_chars: int = 0
+    tagged_articles: int = 0  # sent articles carrying at least one ticker tag
     note: str = ""  # why a non-failure no_action was written
 
 
@@ -235,10 +236,15 @@ class ResearchRun:
         chosen = select(general, by_symbol, now, self.cfg)
         built = p.build(chosen.articles, open_reports, today, self.cfg.max_input_chars)
         outcome.input_chars = built.input_chars
+        # Only tagged articles can be cited for a symbol (the relevance rule), so this
+        # tells "nothing to cite" from "nothing interesting".
+        outcome.tagged_articles = sum(1 for art in built.articles if art.related)
         log.info(
-            "research: %d articles in window, %d sent (%d chars, %d dropped for size); missing: %s",
+            "research: %d articles in window, %d sent (%d tagged with a ticker; %d chars, "
+            "%d dropped for size); missing: %s",
             chosen.in_window,
             len(built.articles),
+            outcome.tagged_articles,
             built.input_chars,
             built.dropped_for_size,
             _missing_text(outcome.missing) or "none",
@@ -252,7 +258,8 @@ class ResearchRun:
             reply = self.model.complete(built.system, built.user, a.ANSWER_SCHEMA)
         except ModelError as exc:
             category = next(c for cls, c in _MODEL_CATEGORIES if isinstance(exc, cls))
-            log.error("research: %s: %s", category, type(exc).__name__)
+            status = f" (HTTP {exc.status})" if exc.status is not None else ""
+            log.error("research: %s: %s%s", category, type(exc).__name__, status)
             raise _Failed(category) from None
         outcome.input_tokens, outcome.output_tokens = reply.input_tokens, reply.output_tokens
         log.info(

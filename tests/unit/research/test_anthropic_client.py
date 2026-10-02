@@ -113,8 +113,10 @@ def _status(cls, code):
     ],
 )
 def test_errors(error, expected):
-    with pytest.raises(expected):
+    with pytest.raises(expected) as info:
         client(error=error)[0].complete("s", "u", {})
+    status = getattr(error, "status_code", None)
+    assert info.value.status == status
 
 
 def test_construction_passes_the_key_base_url_timeout_and_one_retry(monkeypatch):

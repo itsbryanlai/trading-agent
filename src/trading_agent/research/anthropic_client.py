@@ -60,13 +60,18 @@ class AnthropicClient:
             )
         # Most specific first (the SDK's exception hierarchy).
         except (anthropic.AuthenticationError, anthropic.PermissionDeniedError) as exc:
-            raise ModelKeyRejected(f"anthropic: {type(exc).__name__}") from None
+            raise ModelKeyRejected(
+                f"anthropic: {type(exc).__name__}", status=exc.status_code
+            ) from None
         except anthropic.RateLimitError as exc:
-            raise ModelUnavailable(f"anthropic: {type(exc).__name__}") from None
+            raise ModelUnavailable(
+                f"anthropic: {type(exc).__name__}", status=exc.status_code
+            ) from None
         except anthropic.APIStatusError as exc:
-            if 400 <= exc.status_code < 500:
-                raise ModelRejected(f"anthropic: HTTP {exc.status_code}") from None
-            raise ModelUnavailable(f"anthropic: HTTP {exc.status_code}") from None
+            status = exc.status_code
+            if 400 <= status < 500:
+                raise ModelRejected(f"anthropic: HTTP {status}", status=status) from None
+            raise ModelUnavailable(f"anthropic: HTTP {status}", status=status) from None
         except anthropic.APIConnectionError as exc:  # includes APITimeoutError
             raise ModelUnavailable(f"anthropic: {type(exc).__name__}") from None
 

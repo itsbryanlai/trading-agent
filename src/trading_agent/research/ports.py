@@ -56,7 +56,12 @@ class NewsSource(Protocol):
 
 
 class ModelError(Exception):
-    pass
+    """`status` is the provider's HTTP status, when there was one. It's logged on its
+    own; the message never is, so nothing from a provider's response reaches a log."""
+
+    def __init__(self, message: str = "", *, status: int | None = None) -> None:
+        super().__init__(message)
+        self.status = status
 
 
 class ModelKeyRejected(ModelError):

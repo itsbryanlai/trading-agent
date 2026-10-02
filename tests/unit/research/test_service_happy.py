@@ -194,3 +194,15 @@ def test_just_inside_the_window_still_runs():
     run, _ = make(store=store, clock=Clock(THU_CLOSE - timedelta(minutes=1, seconds=1)))
     assert not run.run().skipped
     assert len(store.writes) == 1
+
+
+def test_the_log_counts_articles_tagged_with_a_ticker(caplog):
+    caplog.set_level(logging.INFO, logger="trading_agent.research")
+    news = FakeNews(
+        general=[article("tagged", related=("AAPL",)), article("untagged", related=())],
+        by_symbol={"MSFT": [article("feed")]},  # tagged by its own feed
+    )
+    run, _ = make(news, cfg=config(watchlist=("MSFT",)))
+    outcome = run.run()
+    assert outcome.tagged_articles == 2
+    assert "3 sent (2 tagged with a ticker;" in "\n".join(messages(caplog))

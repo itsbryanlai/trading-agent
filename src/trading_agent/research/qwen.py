@@ -83,10 +83,10 @@ class QwenClient:
         except HTTPError as exc:
             code = exc.code
             if code in (401, 403):
-                raise ModelKeyRejected(f"qwen: HTTP {code}") from None
+                raise ModelKeyRejected(f"qwen: HTTP {code}", status=code) from None
             if code == 429 or code >= 500:
-                raise ModelUnavailable(f"qwen: HTTP {code}") from None
-            raise ModelRejected(f"qwen: HTTP {code}") from None
+                raise ModelUnavailable(f"qwen: HTTP {code}", status=code) from None
+            raise ModelRejected(f"qwen: HTTP {code}", status=code) from None
         except (OSError, ValueError, HTTPException) as exc:
             raise ModelUnavailable(f"qwen: {type(exc).__name__}") from None
         try:

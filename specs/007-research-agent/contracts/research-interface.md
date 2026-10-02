@@ -79,10 +79,10 @@ The JSON Schema sent to the provider is generated from this table in code (`answ
 | Level | When | Message |
 |---|---|---|
 | INFO | start | `research: run started (prompt v<N>, provider <p>, model <m>)` |
-| INFO | news | `research: <k> articles in window, <n> sent (<c> chars); missing: <feeds or none>` |
+| INFO | news | `research: <k> articles in window, <n> sent (<t> tagged with a ticker; <c> chars, <d> dropped for size); missing: <feeds or none>` |
 | INFO | model | `research: model used <in> input and <out> output tokens` |
 | INFO | per drop | `research: dropped proposal <i> (<symbol or ->): <reason>` |
 | INFO | end | `research: wrote <n> report(s)` or `research: wrote no_action (<why>)` |
 | INFO | outside window | `research: not a trading session before the close; nothing to do` |
-| ERROR | failure | `research: <category>: <exception type>` |
+| ERROR | failure | `research: <category>: <exception type>`, plus ` (HTTP <status>)` for a model failure that had one; never the error's message |
 | CRITICAL | exits 2 and 3 | the reason, by variable name or error type |

@@ -131,6 +131,7 @@ def test_http_errors(code, expected):
     with pytest.raises(expected) as info:
         client(Opener(error=_http(code))).complete("s", "u", {})
     assert KEY not in str(info.value)
+    assert info.value.status == code
 
 
 @pytest.mark.parametrize("error", [URLError("down"), TimeoutError()])

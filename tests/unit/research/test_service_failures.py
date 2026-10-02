@@ -176,3 +176,18 @@ def test_a_database_error_on_write_is_not_caught_here():
     run, _ = make(store=BrokenStore())
     with pytest.raises(RuntimeError):
         run.run()
+
+
+@pytest.mark.parametrize(
+    ("error", "suffix"),
+    [
+        (ModelKeyRejected(MARKER, status=401), " (HTTP 401)"),
+        (ModelRejected(MARKER, status=400), " (HTTP 400)"),
+        (ModelUnavailable(MARKER), ""),
+    ],
+)
+def test_model_failures_log_the_http_status_but_never_the_message(error, suffix, caplog):
+    outcome_of(model=FakeModel(error=error), caplog=caplog)
+    logged = "\n".join(messages(caplog))
+    assert f": {type(error).__name__}{suffix}\n" in logged + "\n"
+    assert MARKER not in logged
