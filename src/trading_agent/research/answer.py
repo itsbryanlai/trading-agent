@@ -52,6 +52,7 @@ DIRECTIONS = ("buy", "sell")
 ELLIPSIS = "…"
 _THOUSANDTH = Decimal("0.001")
 _HUNDRED = Decimal(100)
+_ZERO = Decimal("0.000")
 
 # One table, from which the schema sent to the provider is generated, so the prompt's
 # schema and this checker can't drift apart. Only keywords both providers accept in
@@ -289,9 +290,11 @@ def _size(value, direction: str) -> Decimal | None:
     if exact > _HUNDRED or exact < 0:
         return None
     size = exact.quantize(_THOUSANDTH, rounding=ROUND_DOWN)
+    if size == 0 and exact != 0:
+        return None  # review L3: a tiny sell must not round down to a full exit
     if direction == "buy" and size <= 0:
         return None
-    return size
+    return size if size != 0 else _ZERO  # review L3: store -0 as 0
 
 
 def _cap(text: str, limit: int) -> str:

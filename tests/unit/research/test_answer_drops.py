@@ -93,6 +93,7 @@ def test_invalid_conviction(conviction):
         ("buy", 0),
         ("buy", -1),
         ("buy", 0.0004),  # rounds down to 0.000
+        ("sell", 0.0004),  # review L3: a non-zero sell that would round to a full exit
         ("sell", -0.001),
         ("buy", 100.001),
         ("sell", 100.001),
@@ -179,3 +180,9 @@ def test_a_mix_writes_the_valid_ones_and_drops_the_rest():
 def test_an_answer_not_in_the_required_shape_is_unusable(text):
     checked = run_text(text)
     assert checked.unusable and checked.reports == () and checked.drops == ()
+
+
+def test_minus_zero_is_stored_as_zero():
+    checked = run([with_field("suggested_size_pct", -0.0, proposal("AAPL", "sell", ids=["A1"]))])
+    (report,) = checked.reports
+    assert str(report.size) == "0.000"

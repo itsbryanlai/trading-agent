@@ -126,7 +126,7 @@ An answer that isn't a JSON object with exactly one key, `proposals`, holding a 
 | `unlisted_symbol` | not in the day's US symbol list |
 | `invalid_direction` | not `buy` or `sell`; `hold` lands here (Clarifications) |
 | `invalid_conviction` | not an integer 1–5; booleans are rejected |
-| `invalid_size` | not a number, not finite, above 100, or below the floor: above 0 for a buy, at least 0 for a sell |
+| `invalid_size` | not a number, not finite, above 100, or below the floor: above 0 for a buy, at least 0 for a sell; or non-zero but rounding down to 0 at 3 places, since a sell of 0 means a full exit (review L3). `-0` is stored as 0 |
 | `no_citation` | `article_ids` empty or not a list of strings |
 | `unknown_citation` | any identifier not given to the model in this run |
 | `uncited_symbol` | no cited article is about the company: none has the symbol in its `related` tags or came from its company-news feed, names the company (Finnhub's `description` from the symbol list, with trailing corporate words such as INC, CORP, GROUP, CL B, COM dropped and a leading THE, matched as whole words, ignoring case; names under 4 letters, and names that are everyday words such as TARGET, NEWS or BLOCK, are ignored — review M2), or gives the ticker as `$SYM`, `(EXCHANGE: SYM)`, `EXCHANGE: SYM`, or `(SYM)` for tickers of 3 letters or more (spec Clarifications 2026-10-02, widening analyze S1) |

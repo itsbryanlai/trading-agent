@@ -579,7 +579,7 @@ text by writing it back, never with git.
 - [X] T054 M2: in company names, drop a trailing `COM`; keep a stop-list of listing names that are common words (their name match doesn't make a source primary); a 1–2 letter ticker in parentheses doesn't make a source primary (`$X` and `EXCHANGE: X` still do).
 - [X] T055 M3: budget the worst case against 840 s (900 s less a 60 s margin); pass `connect_timeout` to the database connection; fit the prompt with a binary search instead of re-serialising after each dropped article.
 - [X] T056 L1: cap the whole `rationale_md`, the "Missing news" line included, at `rationale_max_chars`.
-- [ ] T057 L3: reject a non-zero size that rounds down to 0; store `-0` as `0`.
+- [X] T057 L3: reject a non-zero size that rounds down to 0; store `-0` as `0`.
 - [ ] T058 L4: refuse HTTP redirects in Research's Finnhub and Qwen adapters (a 3xx is "unavailable"), so a key header never follows a redirect; the same for `reference/finnhub.py` in its own commit.
 - [ ] T059 `PROMPT_VERSION = "0.2"` (docs/policy/versioning.md); logs read `prompt v0.2`; rename earlier mentions to v0.1/v0.2.
 - [ ] T060 Spec US2 "Independent Test": replace the tag-only wording with the current relevance rule (converge note).
