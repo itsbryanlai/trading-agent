@@ -99,6 +99,7 @@ class RunOutcome:
     output_tokens: int | None = None
     input_chars: int = 0
     tagged_articles: int = 0  # sent articles carrying at least one ticker tag
+    articles: tuple = ()  # the articles sent to the model (the dry run prints them)
     note: str = ""  # why a non-failure no_action was written
 
 
@@ -236,6 +237,7 @@ class ResearchRun:
         chosen = select(general, by_symbol, now, self.cfg)
         built = p.build(chosen.articles, open_reports, today, self.cfg.max_input_chars)
         outcome.input_chars = built.input_chars
+        outcome.articles = built.articles
         # Only tagged articles can be cited for a symbol (the relevance rule), so this
         # tells "nothing to cite" from "nothing interesting".
         outcome.tagged_articles = sum(1 for art in built.articles if art.related)

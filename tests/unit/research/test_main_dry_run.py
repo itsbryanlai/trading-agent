@@ -104,3 +104,16 @@ def test_after_the_close_on_a_session_day_the_expiry_is_the_next_sessions_close(
     rows = [line["would_write"] for line in lines if "would_write" in line]
     assert code == runner.EXIT_OK
     assert {r["expires_at"] for r in rows} == {"2026-10-02T20:00:00+00:00"}
+
+
+def test_prints_the_articles_sent_to_the_model(env):
+    code, conn, lines, _ = dry()
+    articles = [line["article"] for line in lines if "article" in line]
+    assert articles == [
+        {
+            "id": "A1",
+            "published_at": "2026-10-01T12:30:00+00:00",
+            "title": "Headline apple",
+            "related": ["AAPL"],
+        }
+    ]

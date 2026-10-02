@@ -5,7 +5,7 @@
 | Command | Does |
 |---|---|
 | `python -m trading_agent.research` | One run: fetch, call the model, check, write. Started by the orchestrator at 08:30 ET on trading days, or by hand. |
-| `python -m trading_agent.research --dry-run` | Everything except the write; prints the result (research R10). No trading-window check. |
+| `python -m trading_agent.research --dry-run` | Everything except the write. Prints JSON lines: each article sent (`article`: id, time, headline, tags), each would-be row (`would_write`), each drop (`dropped`) and a `summary` (research R10). No trading-window check. |
 
 Any other argument means exit 2.
 

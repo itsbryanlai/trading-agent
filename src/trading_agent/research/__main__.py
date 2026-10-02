@@ -196,6 +196,20 @@ def _row_json(row: ReportRow) -> dict:
 
 
 def _print_dry_run(outcome: RunOutcome, out) -> None:
+    for art in outcome.articles:  # public headlines, to see what the model was given
+        out(
+            json.dumps(
+                {
+                    "article": {
+                        "id": art.id,
+                        "published_at": art.published_at.isoformat(),
+                        "title": art.title,
+                        "related": list(art.related),
+                    }
+                },
+                ensure_ascii=False,
+            )
+        )
     for drop in outcome.drops:
         out(
             json.dumps(

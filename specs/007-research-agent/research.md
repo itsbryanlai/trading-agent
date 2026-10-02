@@ -188,7 +188,7 @@ These match the reference job's 2 and 3. The orchestrator records any non-zero c
 
 **Decision**: `python -m trading_agent.research --dry-run` does everything except write.
 - **Database**: optional. With `RESEARCH_DATABASE_URL` set, it reads the still-open reports read-only, and an unreachable database is exit 3. Without it, it skips them.
-- **Output**: it prints the would-be rows as JSON lines, plus every dropped proposal with its reason, token use and the input size.
+- **Output**: it prints, as JSON lines, every article sent to the model (id, time, headline, tags), the would-be rows, every dropped proposal with its reason, and a summary with token use and the input size.
 - **Trading window**: the check is skipped, so the owner can try it in the evening. The expiry printed is today's close if today is a session and the window is still open, otherwise the next session's close (analyze A3).
 - **Cost**: it makes one real model call, so it costs about one run's worth (R12).
 
