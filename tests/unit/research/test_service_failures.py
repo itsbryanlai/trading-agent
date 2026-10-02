@@ -237,3 +237,23 @@ def test_a_dry_run_is_not_cut_off_by_the_close():
     run, _ = make(model=SlowModel(clock), store=store, clock=clock, dry_run=True)
     run.run()
     assert len(store.writes) == 1  # a dry run writes nothing real, so it always shows
+
+
+def test_the_whole_rationale_stays_within_the_cap():
+    """Review L1: the Missing line is inside `rationale_max_chars`, and kept when it fits."""
+    watch = tuple(f"{a}{b}" for a in "ABCDE" for b in "KLMNO")  # 25 symbols, all failing
+    news = FakeNews(general=[APPLE], errors={s: RateLimited() for s in watch})
+    long = FakeModel({"proposals": [proposal("AAPL", ids=["A1"], rationale="x" * 900)]})
+    cfg = config(watchlist=watch, rationale_max_chars=300)
+    _, rows = outcome_of(news, long, cfg)
+    (row,) = rows
+    assert len(row.rationale_md) == 300
+    assert "Missing news:" in row.rationale_md and row.rationale_md.endswith(".")
+
+
+def test_a_missing_line_longer_than_the_cap_is_cut_with_the_body():
+    watch = tuple(f"{a}{b}{c}Z" for a in "ABCD" for b in "KLMN" for c in "XY")[:36]  # 4 letters
+    news = FakeNews(general=[APPLE], errors={s: RateLimited() for s in watch})
+    cfg = config(watchlist=watch, rationale_max_chars=200, finnhub_calls_per_minute=300)
+    _, rows = outcome_of(news, FakeModel(GOOD.text), cfg)
+    assert len(rows[0].rationale_md) == 200 and rows[0].rationale_md.endswith("…")

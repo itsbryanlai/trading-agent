@@ -221,7 +221,11 @@ class ResearchRun:
                 )
             ]
         outcome.rows = [
-            replace(row, expires_at=expires_at, rationale_md=_with_missing(row, outcome.missing))
+            replace(
+                row,
+                expires_at=expires_at,
+                rationale_md=_with_missing(row, outcome.missing, self.cfg.rationale_max_chars),
+            )
             for row in outcome.rows
         ]
         if not self.dry_run and self.clock() >= expires_at - CLOSE_MARGIN:
@@ -392,11 +396,17 @@ def _missing_text(missing: list[str]) -> str:
     return "; ".join(parts)
 
 
-def _with_missing(row: ReportRow, missing: list[str]) -> str:
-    """Every row names the missing news, failure rows included (research R8)."""
-    if not missing:
-        return row.rationale_md
-    return f"{row.rationale_md}\n\nMissing news: {_missing_text(missing)}."
+def _with_missing(row: ReportRow, missing: list[str], cap: int) -> str:
+    """Every row names the missing news, failure rows included (research R8). The whole
+    rationale, that line included, stays within `rationale_max_chars` (review L1): the
+    body is shortened first, so the Missing line survives whenever it fits."""
+    body = row.rationale_md
+    suffix = f"\n\nMissing news: {_missing_text(missing)}." if missing else ""
+    if len(body) + len(suffix) <= cap:
+        return body + suffix
+    if suffix and len(suffix) < cap - len(a.ELLIPSIS):
+        return a._cap(body, cap - len(suffix)) + suffix
+    return a._cap(body + suffix, cap)
 
 
 def _next_session(day: date) -> date:

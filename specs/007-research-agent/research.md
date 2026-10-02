@@ -135,7 +135,7 @@ An answer that isn't a JSON object with exactly one key, `proposals`, holding a 
 
 **Other rules**:
 - **Size**: becomes a `Decimal` rounded down to 3 places, to fit `numeric(6,3)`.
-- **Rationale**: whitespace is trimmed. If it's longer than `rationale_max_chars`, it's cut so that the text plus a trailing "…" is exactly `rationale_max_chars`. The "Missing news" line (R8) is added after the cap and isn't counted in it (analyze A1).
+- **Rationale**: whitespace is trimmed. If it's longer than `rationale_max_chars`, it's cut so that the text plus a trailing "…" is exactly `rationale_max_chars`. The whole stored rationale, the "Missing news" line (R8) included, stays within the cap: the body is shortened first, so the Missing line survives whenever it fits (review L1, replacing analyze A1).
 - **Citations**: built from the cited articles (FR-008) as `{title, url, publisher, published_at, relevance}`, in the order the model cited them, with duplicates removed. `relevance` is `primary` (the headline or summary names the company or gives a ticker form) or `secondary` (only tagged, or from the symbol's feed); a cited article that is neither is left out (spec Clarifications 2026-10-03).
 
 **"Still open"** here means a Research report whose `expires_at` is after now. `ta_research` can't read `decision_reports`, so whether a report was consumed isn't known. Treating consumed reports as open errs towards writing less. That only matters on a second run on the same day, which is only possible by hand.
