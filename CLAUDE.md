@@ -17,6 +17,7 @@ Design is settled — see [`docs/adr/0009-implementation-phase-started.md`](docs
 - Flag any change to risk limits, position sizing, or order logic explicitly before applying it.
 - Run relevant tests after modifying any logic file.
 - Prefer small, focused changes over large rewrites.
+- Version numbers follow [`docs/policy/versioning.md`](docs/policy/versioning.md): `v0.1`, `v0.2`, … until the first release, which is `v1`; then `v1.1` for compatible changes, `v1.1.1` for fixes, `v2` for breaking ones.
 
 ## Off-limits, always
 
