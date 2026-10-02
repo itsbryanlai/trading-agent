@@ -559,3 +559,9 @@ text by writing it back, never with git.
   `(SYM)` or `EXCHANGE: SYM`. `NewsSource.us_symbols()` returns symbol → company
   name. Prompt v2 tells the model so. New tests: `tests/unit/research/test_relevance.py`
   (all mutation-checked), and an injection case showing the accepted trade-off.
+- **Each source is marked `primary` or `secondary`** (spec Clarifications 2026-10-03,
+  after the watchlist dry run showed loosely related articles in a symbol's feed).
+  Primary: the headline or summary names the company or gives a ticker form.
+  Secondary: only tagged, or from the symbol's feed. Secondary-only proposals are
+  still written (owner's choice). Citations about neither are left out of `sources`.
+  The dry run also prints each article's summary, and lists articles before rows.

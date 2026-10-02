@@ -12,7 +12,7 @@ Research adds no table and no grant. It writes rows to the existing `reports` ta
 | `direction` | `buy` or `sell`; or `no_action` (never `hold`, see the spec's Clarifications) |
 | `conviction` | 1–5; `NULL` for `no_action` |
 | `suggested_size_pct` | target weight of equity, rounded down to 3 places. Buy: above 0, at most 100. Sell: 0 to 100, where 0 is a full exit. `NULL` for `no_action` |
-| `sources` | JSON array of `{title, url, publisher, published_at}`, copied from the fetched articles (FR-008); `[]` for `no_action` |
+| `sources` | JSON array of `{title, url, publisher, published_at, relevance}`, copied from the fetched articles (FR-008); `relevance` is `primary` (names the company) or `secondary` (only tagged or from its feed); `[]` for `no_action` |
 | `rationale_md` | the model's rationale, cut to `rationale_max_chars`, plus a "Missing news" line when some news is missing. For `no_action`, a fixed sentence (research R8) |
 | `expires_at` | `calendar.close_time(today)`: that day's close, early closes included |
 

@@ -44,7 +44,10 @@ and expire at that trading day's close.
   `size_pct`. A sell may suggest 0, meaning a full exit.
 - **Sources**: every non-`no_action` row carries at least one structured
   source, rebuilt from the article fetched in that run, never from the model's
-  text — a thesis with no citable source is not a valid report.
+  text — a thesis with no citable source is not a valid report. Each source is
+  marked `primary` (the article names the company) or `secondary` (it's only
+  tagged with the symbol, or from its company-news feed); a report resting only
+  on secondary sources is allowed, and the PM weighs it accordingly.
 - **Rationale**: model-written text, capped in length. It is untrusted: the PM
   and the dashboard treat it as data, never as instructions or markup.
 

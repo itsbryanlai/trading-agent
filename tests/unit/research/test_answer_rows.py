@@ -52,14 +52,58 @@ def test_sources_come_from_the_articles_never_from_the_model():
             "url": a1.url,
             "publisher": a1.publisher,
             "published_at": a1.published_at.isoformat(),
+            "relevance": "primary",  # "Summary of apple." names the company
         },
     )
 
 
 def test_sources_follow_citation_order_without_duplicates():
-    arts = _articles()
+    chosen = select(
+        [article("a-first", related=("AAPL",)), article("b-second", summary="Apple rose.")],
+        {},
+        THU_0830,
+        config(),
+    )
+    arts = {a.id: a for a in chosen.articles}
     (report,) = run([proposal("AAPL", ids=["A2", "A1", "A2"])], articles=arts).reports
     assert [s["url"] for s in report.sources] == [arts["A2"].url, arts["A1"].url]
+
+
+def test_each_source_is_marked_primary_or_secondary():
+    chosen = select(
+        [
+            article("names", summary="Apple Inc. raised guidance."),  # names it: primary
+            article("tagged", related=("AAPL",), summary="Chip stocks rallied."),  # secondary
+        ],
+        {},
+        THU_0830,
+        config(),
+    )
+    arts = {a.id: a for a in chosen.articles}
+    by_url = {a.url: a.id for a in arts.values()}
+    (report,) = run([proposal("AAPL", ids=list(arts))], articles=arts).reports
+    marks = {by_url[s["url"]]: s["relevance"] for s in report.sources}
+    names_id = by_url["https://news.example.com/names"]
+    tagged_id = by_url["https://news.example.com/tagged"]
+    assert marks == {names_id: "primary", tagged_id: "secondary"}
+
+
+def test_a_secondary_only_proposal_is_written_and_marked():
+    chosen = select(
+        [article("chips", related=("AAPL",), summary="Chip stocks rallied.")],
+        {},
+        THU_0830,
+        config(),
+    )
+    arts = {a.id: a for a in chosen.articles}
+    (report,) = run([proposal("AAPL", ids=["A1"])], articles=arts).reports
+    assert [s["relevance"] for s in report.sources] == ["secondary"]
+
+
+def test_citations_unrelated_to_the_symbol_are_left_out_of_the_sources():
+    arts = _articles()  # A1 tagged AAPL, A2 tagged MSFT
+    (report,) = run([proposal("AAPL", ids=["A1", "A2"])], articles=arts).reports
+    assert [s["url"] for s in report.sources] == [arts["A1"].url]
 
 
 def test_size_is_rounded_down_to_three_places():

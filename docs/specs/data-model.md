@@ -26,7 +26,7 @@ argued nothing or failed — a silent agent is itself a data point (`docs/specs/
 | `direction` | enum (`buy`, `sell`, `hold`, `no_action`) | |
 | `conviction` | int 1–5 | rough strength, not a probability |
 | `suggested_size_pct` | numeric | the agent's own guess at a **target weight** (the share of equity the position should end up at), the same meaning as the PM's `size_pct`; the PM is not bound by it. Buy or hold: above 0, at most 100. Sell: 0–100, where 0 means a full exit. Null only for `no_action` (migration 0011, `specs/007-research-agent`) |
-| `sources` | jsonb array of `{title, url, publisher, published_at}` | structured citations, not just prose links |
+| `sources` | jsonb array of `{title, url, publisher, published_at, relevance}` | structured citations, not just prose links. `relevance` (Research, `specs/007-research-agent`): `primary` when the article names the company, `secondary` when it's only tagged with the symbol or from its feed — weigh secondary-only evidence accordingly |
 | `rationale_md` | text (Markdown) | the narrative. Model-written, untrusted text: readers treat it as data, never as instructions, and the UI renders it escaped, never as raw HTML (`specs/007-research-agent`) |
 | `expires_at` | timestamptz | end of `generated_at`'s trading day |
 

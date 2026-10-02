@@ -85,3 +85,15 @@ def test_short_names_rely_on_tags_or_ticker_forms():
 def test_share_class_tickers_are_matched_literally():
     assert cites(one(headline="Buying $BRK.B"), "BRK.B", "BERKSHIRE HATHAWAY INC-CL B")
     assert not cites(one(headline="Buying $BRKXB"), "BRK.B", "")
+
+
+def test_naming_the_company_is_primary_even_when_also_tagged():
+    from trading_agent.research.answer import relevance
+
+    assert relevance(one(headline="Apple beats", related=("AAPL",)), "AAPL", "APPLE INC") == (
+        "primary"
+    )
+    assert relevance(one(headline="Chip stocks rally", related=("AAPL",)), "AAPL", "") == (
+        "secondary"
+    )
+    assert relevance(one(headline="Chip stocks rally"), "AAPL", "APPLE INC") is None

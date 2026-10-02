@@ -172,7 +172,11 @@ def _check_one(item, articles, listings, rationale_max_chars) -> CheckedReport |
     if any(i not in articles for i in ids):
         return Drop(0, symbol, UNKNOWN_CITATION)
     cited = [articles[i] for i in dict.fromkeys(ids)]
-    if not any(cites(a, symbol, listings[symbol]) for a in cited):
+    # Only citations about the company are kept as sources, each marked primary or
+    # secondary; at least one is needed (spec Clarifications 2026-10-03).
+    relevant = [(a, relevance(a, symbol, listings[symbol])) for a in cited]
+    relevant = [(a, level) for a, level in relevant if level is not None]
+    if not relevant:
         return Drop(0, symbol, UNCITED_SYMBOL)
 
     return CheckedReport(
@@ -187,8 +191,9 @@ def _check_one(item, articles, listings, rationale_max_chars) -> CheckedReport |
                 "url": a.url,
                 "publisher": a.publisher,
                 "published_at": a.published_at.isoformat(),
+                "relevance": level,
             }
-            for a in cited
+            for a, level in relevant
         ),
     )
 
@@ -216,13 +221,32 @@ def company_name(listing_name: str) -> str | None:
     return name if len(name.replace(" ", "")) >= MIN_NAME_CHARS else None
 
 
-def cites(article: Article, symbol: str, listing_name: str) -> bool:
-    """Is this article about `symbol`? Tagged with it (or from its own feed), naming the
-    company in its headline or summary, or giving the ticker as $SYM, (SYM) or
-    EXCHANGE: SYM. An injected article can only push a company it names."""
-    if symbol in article.related:
-        return True
+PRIMARY = "primary"
+SECONDARY = "secondary"
+
+
+def relevance(article: Article, symbol: str, listing_name: str) -> str | None:
+    """How this article relates to `symbol` (spec Clarifications 2026-10-03):
+    - primary: its headline or summary names the company, or gives the ticker as
+      $SYM, (SYM) or EXCHANGE: SYM;
+    - secondary: only tagged with the symbol, or from its company-news feed, which
+      also carries loosely related articles;
+    - None: neither, so it can't be cited for that symbol."""
     text = f"{article.title} {article.summary}"
+    if _names(text, symbol, listing_name):
+        return PRIMARY
+    if symbol in article.related:
+        return SECONDARY
+    return None
+
+
+def cites(article: Article, symbol: str, listing_name: str) -> bool:
+    """Can this article be cited for `symbol`? Primary or secondary both count; the
+    PM sees which on each source."""
+    return relevance(article, symbol, listing_name) is not None
+
+
+def _names(text: str, symbol: str, listing_name: str) -> bool:
     ticker = re.escape(symbol)
     forms = (
         rf"\${ticker}\b",  # $AAPL

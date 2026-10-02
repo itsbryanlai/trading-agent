@@ -17,6 +17,10 @@
 - Q: May Research write "hold" reports? → A: No. Research writes buy or sell only: it can't see holdings, so "hold" would carry a meaningless target. A "hold" proposal is dropped and logged, and neutral or mixed news on a name produces no report.
 - Q: If some of the news can't be fetched, does Research carry on or fail the run? → A: It carries on with what it has. The run fails only if every news fetch fails, or the US symbol list can't be fetched. Otherwise every report it writes names the missing sources in its rationale, and the run exits with success.
 
+### Session 2026-10-03 (after the watchlist dry run)
+
+- Q: A symbol's company-news feed carries loosely related articles ("Broadcom vs. Taiwan Semiconductor" tagged AAPL). How should a citation's strength show? → A: Each source is marked. **Primary**: its headline or summary names the company, or gives the ticker as `$SYM`, `(SYM)` or `EXCHANGE: SYM`. **Secondary**: only tagged with the symbol, or from its company-news feed. A proposal citing only secondary sources is still written, marked, for the PM to weigh. Only citations about the symbol (primary or secondary) are kept as sources.
+
 ### Session 2026-10-02 (after the first dry run)
 
 - Q: General news carries no ticker tags, so under the tag-only relevance rule it can never support a proposal. Widen the rule? → A: Yes (the owner chose this over skipping the model call when nothing is tagged). A cited article is about a symbol when it is tagged with it, comes from its company-news feed, names the company in its headline or summary (the company name from the US symbol list, corporate words like INC or CORP dropped, whole words, names under 4 characters ignored), or gives the ticker as `$SYM`, `(SYM)` or `EXCHANGE: SYM`. This replaces the tag-only rule below. Accepted trade-off: an injected article can push any listed company it names, not only one it's filed under; every other check still applies.
@@ -196,7 +200,7 @@ Before enabling Research, or after changing its model or watchlist, the owner ca
   - **Size:** it is not at most 100, or it is not greater than 0 (for a buy) or at least 0 (for a sell, where 0 means a full exit).
   - **Citations:** it cites no article, or any article not fetched in this run.
   - **Relevance:** none of its cited articles is about the company: none is tagged with the symbol or from its company-news feed, names the company, or gives the ticker as `$SYM`, `(SYM)` or `EXCHANGE: SYM` (Clarifications, 2026-10-02).
-- **FR-008**: A written report's citations MUST be built from the fetched articles' own title, link, publisher and publication time, never from the model's text.
+- **FR-008**: A written report's citations MUST be built from the fetched articles' own title, link, publisher and publication time, never from the model's text. Each MUST carry its relevance to the symbol, `primary` or `secondary` (Clarifications 2026-10-03); a cited article about neither isn't recorded as a source.
 - **FR-009**: Research MUST write at most one report per symbol per run. It MUST NOT write a report with the same symbol and direction as one of its own still-open reports.
 - **FR-010**: The rationale MUST be capped at a configured length.
 

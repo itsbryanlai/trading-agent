@@ -14,7 +14,7 @@ from hypothesis import strategies as st
 
 from tests.unit.research.support import THU_0830, article, config
 from trading_agent.reference.symbols import is_plausible_ticker
-from trading_agent.research.answer import DROP_REASONS, check, cites
+from trading_agent.research.answer import DROP_REASONS, check, cites, relevance
 from trading_agent.research.selection import select
 
 SYMBOLS = {"AAPL": "APPLE INC", "MSFT": "MICROSOFT CORP", "NVDA": "NVIDIA CORP"}
@@ -130,7 +130,9 @@ def _assert_valid(report):
             "url": a.url,
             "publisher": a.publisher,
             "published_at": a.published_at.isoformat(),
+            "relevance": relevance(a, report.symbol, SYMBOLS[report.symbol]),
         }
+        assert source["relevance"] in ("primary", "secondary")
     cited = [a for a in ARTICLES.values() if any(s["url"] == a.url for s in report.sources)]
     assert any(cites(a, report.symbol, SYMBOLS[report.symbol]) for a in cited)
     assert (report.symbol, report.direction) not in OPEN
