@@ -206,6 +206,7 @@ def _print_dry_run(outcome: RunOutcome, rows: list[ReportRow], out) -> None:
                         "id": art.id,
                         "published_at": art.published_at.isoformat(),
                         "title": art.title,
+                        "summary": art.summary,
                         "related": list(art.related),
                     }
                 },

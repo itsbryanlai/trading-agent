@@ -114,6 +114,7 @@ def test_prints_the_articles_sent_to_the_model(env):
             "id": "A1",
             "published_at": "2026-10-01T12:30:00+00:00",
             "title": "Headline apple",
+            "summary": "Summary of apple.",
             "related": ["AAPL"],
         }
     ]
