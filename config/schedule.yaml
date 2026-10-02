@@ -20,6 +20,7 @@ research:
     - RESEARCH_DATABASE_URL
     - RESEARCH_FINNHUB_API_KEY
     - RESEARCH_DASHSCOPE_API_KEY     # model.provider: qwen (config/research.yaml)
+    - RESEARCH_QWEN_BASE_URL         # model.provider: qwen
     - RESEARCH_ANTHROPIC_API_KEY     # model.provider: anthropic
   timeout_minutes: 15
   daily_at: "08:30"            # before the 09:30 open

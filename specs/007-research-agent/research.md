@@ -68,7 +68,7 @@ It makes three calls:
 
 **Decision**: `ModelClient.complete(system, user, schema) -> ModelReply(text, input_tokens, output_tokens, finish)`. Errors are a closed set: `ModelKeyRejected` (401, 403), `ModelRejected` (any other 4xx: a schema the endpoint refuses, a prompt too long, a content filter, an unknown model name), `ModelUnavailable` (network, 5xx, 429, timeout), `ModelRefused` and `ModelTruncated`. Each becomes a failure `no_action` report (analyze G1).
 
-**Qwen** (`research/qwen.py`): a standard-library `urllib` POST to `{base_url}/chat/completions` ([ADR 0018](../../docs/adr/0018-qwen-as-a-model-provider.md), base `https://maas.qwencloudapi.com/compatible-mode/v1`), with:
+**Qwen** (`research/qwen.py`): a standard-library `urllib` POST to `{base_url}/chat/completions` ([ADR 0018](../../docs/adr/0018-qwen-as-a-model-provider.md)). The base URL comes from `RESEARCH_QWEN_BASE_URL`, never the source (spec Clarifications, 2026-10-02): the owner uses a Token Plan key, whose endpoint is `https://token-plan.maas.qwencloudapi.com/compatible-mode/v1`, while a pay-as-you-go key uses `https://maas.qwencloudapi.com/compatible-mode/v1`. The two don't mix. Research refuses to start unless it's an `https://` URL, since the key is sent there. The request is the same for both:
 - `Authorization: Bearer <key>`;
 - `model`, `messages` (system, then user), `max_tokens`;
 - `response_format: {"type": "json_schema", "json_schema": {"name": "research_answer", "strict": true, "schema": ANSWER_SCHEMA}}`;
@@ -213,7 +213,7 @@ These match the reference job's 2 and 3. The orchestrator records any non-zero c
 | `model.timeout_seconds` | 180 | 30–360 |
 | `model.anthropic_effort` | `medium` | `low`, `medium` or `high` |
 
-**The provider key's name follows from the provider**: `RESEARCH_DASHSCOPE_API_KEY` or `RESEARCH_ANTHROPIC_API_KEY`. Only that one is required (FR-018).
+**The provider key's name follows from the provider**: `RESEARCH_DASHSCOPE_API_KEY` (with `RESEARCH_QWEN_BASE_URL`) or `RESEARCH_ANTHROPIC_API_KEY`. Only that one is required (FR-018).
 
 **The timeout bound ties to the orchestrator.** Individual bounds can't guarantee the fit: 360 s × 2, 50 symbols and 1 call a minute would take almost an hour. So the loader also checks the combination:
 
@@ -279,7 +279,7 @@ CHECK (CASE WHEN direction = 'no_action' THEN suggested_size_pct IS NULL
 
 **Decision**: `config/schedule.yaml`'s `research` entry gets:
 - `enabled: true`;
-- `env`: `RESEARCH_DATABASE_URL`, `RESEARCH_FINNHUB_API_KEY`, `RESEARCH_DASHSCOPE_API_KEY` and `RESEARCH_ANTHROPIC_API_KEY`.
+- `env`: `RESEARCH_DATABASE_URL`, `RESEARCH_FINNHUB_API_KEY`, `RESEARCH_DASHSCOPE_API_KEY`, `RESEARCH_QWEN_BASE_URL` and `RESEARCH_ANTHROPIC_API_KEY`.
 
 The orchestrator passes only the names that are set (`service.py`), so listing both provider keys is harmless. `daily_at` stays 08:30, `interval_minutes` stays `null`, and the timeout stays 15.
 

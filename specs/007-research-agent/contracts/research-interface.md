@@ -26,6 +26,7 @@ Any other argument means exit 2.
 | `RESEARCH_DATABASE_URL` | Always, except for `--dry-run`, where it's optional (read-only) |
 | `RESEARCH_FINNHUB_API_KEY` | Always |
 | `RESEARCH_DASHSCOPE_API_KEY` | When `model.provider: qwen` |
+| `RESEARCH_QWEN_BASE_URL` | When `model.provider: qwen`: the `https://` endpoint matching the key's type (Token Plan or pay-as-you-go). Anything else is exit 2, named but never echoed |
 | `RESEARCH_ANTHROPIC_API_KEY` | When `model.provider: anthropic` |
 
 A missing required variable is reported by name and never by value, then exit 2. Research reads no other variable. In particular, it never reads `ANTHROPIC_API_KEY`: the Anthropic client gets its key and `base_url` passed in explicitly, so the SDK's own environment lookup isn't used for either. The HTTP library may still honour standard proxy variables, which the orchestrator doesn't pass (ADR 0015's fixed base set).

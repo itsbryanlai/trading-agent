@@ -36,7 +36,7 @@ def dry(conn=None, connect_error=None, model=None, news=None, now=None):
         news_factory=lambda key: (
             news or FakeNews(general=[article("apple", related=("AAPL",), at=clock.now)])
         ),
-        model_factory=lambda provider, key, cfg: (
+        model_factory=lambda provider, key, cfg, **kw: (
             model
             or FakeModel(
                 {"proposals": [proposal("AAPL", ids=["A1"]), proposal("ZZZZ", ids=["A1"])]}

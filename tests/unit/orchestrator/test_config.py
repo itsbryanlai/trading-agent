@@ -44,6 +44,7 @@ def test_shipped_file_loads_with_only_research_enabled():
         "RESEARCH_DATABASE_URL",
         "RESEARCH_FINNHUB_API_KEY",
         "RESEARCH_DASHSCOPE_API_KEY",
+        "RESEARCH_QWEN_BASE_URL",
         "RESEARCH_ANTHROPIC_API_KEY",
     )
     assert config.research.daily_at == time(8, 30) and config.research.interval is None

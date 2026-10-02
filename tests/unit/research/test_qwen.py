@@ -17,7 +17,9 @@ from trading_agent.research.ports import (
     ModelTruncated,
     ModelUnavailable,
 )
-from trading_agent.research.qwen import BASE_URL, QwenClient
+from trading_agent.research.qwen import QwenClient
+
+BASE_URL = "https://qwen.example.test/compatible-mode/v1"
 
 KEY = "test-dashscope-key-not-real"
 
@@ -53,7 +55,13 @@ def reply(content='{"proposals": []}', finish="stop", usage=None):
 
 def client(opener, **kw):
     return QwenClient(
-        KEY, model="qwen3.7-plus", max_output_tokens=8000, timeout=180, opener=opener, **kw
+        KEY,
+        model="qwen3.7-plus",
+        max_output_tokens=8000,
+        timeout=180,
+        opener=opener,
+        base_url=kw.pop("base_url", BASE_URL),
+        **kw,
     )
 
 
@@ -143,3 +151,9 @@ def test_unreadable_replies(raw):
 def test_the_key_is_hidden():
     c = client(Opener(reply()))
     assert KEY not in repr(c) and KEY not in str(c)
+
+
+def test_a_trailing_slash_on_the_base_url_is_harmless():
+    opener = Opener(reply())
+    client(opener, base_url=BASE_URL + "/").complete("s", "u", {})
+    assert opener.requests[0][0].full_url == f"{BASE_URL}/chat/completions"

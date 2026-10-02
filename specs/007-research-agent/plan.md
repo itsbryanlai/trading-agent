@@ -135,7 +135,8 @@ pyproject.toml                                           # anthropic dependency
    - whether Finnhub's `/company-news` is free for every symbol. A 403 per symbol is handled as missing news;
    - the token and cost estimates (R12).
 5. **Prompt injection reaching the PM**: Research's rationale is model-written text that the PM's model will read. That's recorded in the spec's assumptions for the PM feature.
-6. **Before deploying**: migration 0011 needs the migration admin to own `reports`. That's the same item already on your list for 004.
+6. **Token Plan key** (owner, 2026-10-02): Research uses a QwenCloud Token Plan key; see the spec's Clarifications. The endpoint comes from `RESEARCH_QWEN_BASE_URL`, so a pay-as-you-go key is a swap of two values, not code.
+7. **Before deploying**: migration 0011 needs the migration admin to own `reports`. That's the same item already on your list for 004.
 
 ## Complexity Tracking
 

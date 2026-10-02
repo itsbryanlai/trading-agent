@@ -21,6 +21,7 @@ import time
 from collections.abc import Callable, Sequence
 from datetime import UTC, datetime
 from pathlib import Path
+from urllib.parse import urlsplit
 
 import psycopg
 from psycopg.rows import dict_row
@@ -44,6 +45,10 @@ log = logging.getLogger("trading_agent.research")
 
 DATABASE_VARIABLE = "RESEARCH_DATABASE_URL"
 NEWS_KEY_VARIABLE = "RESEARCH_FINNHUB_API_KEY"
+# Qwen's endpoint: pay-as-you-go and Token Plan keys each have their own (the owner
+# uses a Token Plan key). Kept out of the source, and https only, since the key is
+# sent to it.
+QWEN_BASE_URL_VARIABLE = "RESEARCH_QWEN_BASE_URL"
 
 EXIT_OK = 0
 EXIT_FAILURE_RECORDED = 1
@@ -52,7 +57,7 @@ EXIT_DATABASE = 3
 EXIT_CRASHED = 4
 
 
-def build_model(provider: str, key: str, model: ModelConfig):
+def build_model(provider: str, key: str, model: ModelConfig, *, base_url: str | None = None):
     if provider == "anthropic":
         from trading_agent.research.anthropic_client import AnthropicClient
 
@@ -64,6 +69,7 @@ def build_model(provider: str, key: str, model: ModelConfig):
         model=model.name,
         max_output_tokens=model.max_output_tokens,
         timeout=model.timeout_seconds,
+        base_url=base_url,
     )
 
 
@@ -100,6 +106,7 @@ def _main(argv, news_factory, model_factory, connect, config_path, clock, sleep,
         news_key = require_env(NEWS_KEY_VARIABLE)
         model_key = require_env(cfg.provider_key_variable)
         database_url = _optional(DATABASE_VARIABLE) if dry_run else require_env(DATABASE_VARIABLE)
+        base_url = _qwen_base_url() if cfg.model.provider == "qwen" else None
     except (ConfigError, ResearchConfigError) as exc:
         log.critical("research: refusing to start: %s", exc)
         return EXIT_REFUSED
@@ -119,7 +126,7 @@ def _main(argv, news_factory, model_factory, connect, config_path, clock, sleep,
             store = PgResearchStore(conn)
         run = ResearchRun(
             news_factory(news_key),
-            model_factory(cfg.model.provider, model_key, cfg.model),
+            model_factory(cfg.model.provider, model_key, cfg.model, base_url=base_url),
             store,
             cfg,
             clock=clock,
@@ -139,6 +146,15 @@ def _main(argv, news_factory, model_factory, connect, config_path, clock, sleep,
     if dry_run:
         _print_dry_run(outcome, out)
     return EXIT_FAILURE_RECORDED if outcome.failure is not None else EXIT_OK
+
+
+def _qwen_base_url() -> str:
+    value = require_env(QWEN_BASE_URL_VARIABLE)
+    parts = urlsplit(value)
+    if parts.scheme != "https" or not parts.netloc or value != value.strip():
+        # Named, never echoed: the value is configuration, but stays out of logs.
+        raise ConfigError(f"{QWEN_BASE_URL_VARIABLE} must be an https:// URL")
+    return value
 
 
 def _optional(name: str) -> str | None:

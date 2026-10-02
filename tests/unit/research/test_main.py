@@ -88,8 +88,9 @@ def run(args=(), *, conn=None, connect_error=None, news=None, model=None, seen=N
         seen["news_key"] = key
         return news or FakeNews(general=[article("apple", related=("AAPL",))])
 
-    def model_factory(provider, key, model_cfg):
+    def model_factory(provider, key, model_cfg, *, base_url=None):
         seen["model"] = (provider, key, model_cfg.name)
+        seen["base_url"] = base_url
         return model or FakeModel({"proposals": [proposal("AAPL", ids=["A1"])]})
 
     code = runner.main(

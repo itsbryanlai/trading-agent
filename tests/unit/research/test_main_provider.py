@@ -3,9 +3,10 @@ read (specs/007-research-agent FR-018; ADR 0015, 0018)."""
 
 from __future__ import annotations
 
+import pytest
 import yaml
 
-from tests.unit.research.conftest import FAKE_ANTHROPIC, FAKE_DASHSCOPE
+from tests.unit.research.conftest import FAKE_ANTHROPIC, FAKE_DASHSCOPE, FAKE_QWEN_URL
 from tests.unit.research.test_main import run
 from trading_agent.research import __main__ as runner
 from trading_agent.research.anthropic_client import AnthropicClient
@@ -53,8 +54,9 @@ def test_the_unprefixed_anthropic_key_is_never_used(env, monkeypatch, tmp_path, 
 def test_build_model_picks_the_adapter(monkeypatch):
     from tests.unit.research.support import config
 
-    qwen = runner.build_model("qwen", "k", config().model)
+    qwen = runner.build_model("qwen", "k", config().model, base_url=FAKE_QWEN_URL)
     assert isinstance(qwen, QwenClient)
+    assert qwen._url == f"{FAKE_QWEN_URL}/chat/completions"
 
     class FakeSDK:
         def __init__(self, **kwargs):
@@ -63,3 +65,36 @@ def test_build_model_picks_the_adapter(monkeypatch):
     monkeypatch.setattr("trading_agent.research.anthropic_client.anthropic.Anthropic", FakeSDK)
     model = config(model_provider="anthropic", model_name="claude-sonnet-5-5").model
     assert isinstance(runner.build_model("anthropic", "k", model), AnthropicClient)
+
+
+def test_qwen_gets_its_endpoint_from_the_environment(env):
+    code, _, _, seen = run()
+    assert code == runner.EXIT_OK and seen["base_url"] == FAKE_QWEN_URL
+
+
+@pytest.mark.parametrize(
+    "value",
+    [
+        None,
+        "http://qwen.example.test/v1",
+        "qwen.example.test/v1",
+        "https://",
+        " https://x.example.test",
+    ],
+)
+def test_qwen_refuses_to_start_without_an_https_endpoint(env, monkeypatch, caplog, value):
+    if value is None:
+        monkeypatch.delenv("RESEARCH_QWEN_BASE_URL")
+    else:
+        monkeypatch.setenv("RESEARCH_QWEN_BASE_URL", value)
+    code, _, printed, seen = run()
+    assert code == runner.EXIT_REFUSED and "model" not in seen
+    assert "RESEARCH_QWEN_BASE_URL" in caplog.text
+    assert "example.test" not in caplog.text + "\n".join(printed)  # never echoed
+
+
+def test_anthropic_doesnt_need_the_qwen_endpoint(env, monkeypatch, tmp_path):
+    monkeypatch.delenv("RESEARCH_QWEN_BASE_URL")
+    monkeypatch.setenv("RESEARCH_ANTHROPIC_API_KEY", FAKE_ANTHROPIC)
+    code, _, _, seen = run(config_path=anthropic_config(tmp_path))
+    assert code == runner.EXIT_OK and seen["base_url"] is None

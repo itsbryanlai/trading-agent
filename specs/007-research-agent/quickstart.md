@@ -33,7 +33,7 @@ TEST_DATABASE_URL=postgresql://postgres:dev@localhost:5433/postgres .venv/bin/py
 
 ## 4. Owner: a try-out run (no writes)
 
-Set `RESEARCH_FINNHUB_API_KEY` and `RESEARCH_DASHSCOPE_API_KEY` in your own shell. Optionally add one or two tickers to `config/research.yaml`'s `watchlist` locally. Then run:
+Set `RESEARCH_FINNHUB_API_KEY`, `RESEARCH_DASHSCOPE_API_KEY` and `RESEARCH_QWEN_BASE_URL` in your own shell. The base URL must match the key: `https://token-plan.maas.qwencloudapi.com/compatible-mode/v1` for a Token Plan key (`sk-sp-…`), `https://maas.qwencloudapi.com/compatible-mode/v1` for pay-as-you-go (`sk-ws-…`). Optionally add one or two tickers to `config/research.yaml`'s `watchlist` locally. Then run:
 
 ```bash
 .venv/bin/python -m trading_agent.research --dry-run
@@ -51,4 +51,4 @@ In a local copy of `config/research.yaml`, set `model.provider: anthropic` and `
 
 ## 6. Enabling it
 
-This feature sets `research.enabled: true` in `config/schedule.yaml`. Nothing runs until the orchestrator is deployed, which is a later item. On the orchestrator's service, set the four `RESEARCH_*` variables. Put the same DashScope key in `RESEARCH_DASHSCOPE_API_KEY`, as decided.
+This feature sets `research.enabled: true` in `config/schedule.yaml`. Nothing runs until the orchestrator is deployed, which is a later item. On the orchestrator's service, set the five `RESEARCH_*` variables. Put the owner's key in `RESEARCH_DASHSCOPE_API_KEY`, as decided, and its matching endpoint in `RESEARCH_QWEN_BASE_URL`.

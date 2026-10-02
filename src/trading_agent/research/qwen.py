@@ -1,5 +1,8 @@
 """Qwen through QwenCloud's OpenAI-compatible API (ADR 0018; research R5).
 
+The endpoint isn't in the source: it comes from RESEARCH_QWEN_BASE_URL, so the same
+code serves a pay-as-you-go key or a Token Plan key, each with its own endpoint.
+
 Standard library only: one POST to /chat/completions, in strict JSON Schema mode
 (supported for the Qwen3.7-Plus series, per QwenCloud's structured-output guide)
 with thinking off (thinking needs streaming there). The key travels in the
@@ -24,7 +27,6 @@ from trading_agent.research.ports import (
     ModelUnavailable,
 )
 
-BASE_URL = "https://maas.qwencloudapi.com/compatible-mode/v1"
 SCHEMA_NAME = "research_answer"
 
 
@@ -36,15 +38,15 @@ class QwenClient:
         model: str,
         max_output_tokens: int,
         timeout: float,
+        base_url: str,
         opener: Callable | None = None,
-        base_url: str = BASE_URL,
     ) -> None:
         self._key = api_key
         self._model = model
         self._max_tokens = max_output_tokens
         self._timeout = timeout
         self._open = opener or urlopen
-        self._url = f"{base_url}/chat/completions"
+        self._url = f"{base_url.rstrip('/')}/chat/completions"
 
     def __repr__(self) -> str:
         return f"QwenClient(model={self._model!r}, <key hidden>)"

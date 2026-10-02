@@ -97,3 +97,9 @@ def test_no_module_names_another_components_credential():
         text = path.read_text()
         for name in OTHER_COMPONENTS_VARIABLES:
             assert name not in text, f"{path.name} mentions {name}"
+
+
+def test_no_model_endpoint_is_in_the_source():
+    """Qwen's endpoint comes from RESEARCH_QWEN_BASE_URL (owner's decision)."""
+    for path in _modules():
+        assert "qwencloudapi" not in path.read_text(), path.name

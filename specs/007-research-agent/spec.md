@@ -17,6 +17,10 @@
 - Q: May Research write "hold" reports? → A: No. Research writes buy or sell only: it can't see holdings, so "hold" would carry a meaningless target. A "hold" proposal is dropped and logged, and neutral or mixed news on a name produces no report.
 - Q: If some of the news can't be fetched, does Research carry on or fail the run? → A: It carries on with what it has. The run fails only if every news fetch fails, or the US symbol list can't be fetched. Otherwise every report it writes names the missing sources in its rationale, and the run exits with success.
 
+### Session 2026-10-02 (after the first dry run)
+
+- Q: Which QwenCloud key and endpoint does Research use? → A: The owner's **Token Plan** key (`sk-sp-…`), with the Token Plan endpoint. Pay-as-you-go and Token Plan keys each work only with their own endpoint, so the endpoint isn't in the source: it comes from `RESEARCH_QWEN_BASE_URL` (https only), required when the provider is Qwen. Switching to a pay-as-you-go key needs only a different key and base URL, no code change.
+
 ### Session 2026-10-01 (after `/speckit-analyze`)
 
 - Q: How is a proposed symbol tied to the news it cites, so an injected article can't push an unrelated listed ticker? → A: At least one cited article must be tagged with that symbol by the news provider, or come from that symbol's own company-news feed. Otherwise the proposal is dropped (`uncited_symbol`). This narrows Research to watchlist names and tagged articles; an injected article can only push the ticker it is filed under.
@@ -223,7 +227,8 @@ Before enabling Research, or after changing its model or watchlist, the owner ca
 - **FR-018**: Research MUST read only its own prefixed variables ([ADR 0015](../../docs/adr/0015-orchestrator-starts-agents-with-their-own-credentials.md)):
   - `RESEARCH_DATABASE_URL`;
   - `RESEARCH_FINNHUB_API_KEY`;
-  - the configured provider's key: `RESEARCH_DASHSCOPE_API_KEY` for Qwen, or `RESEARCH_ANTHROPIC_API_KEY` for Anthropic.
+  - the configured provider's key: `RESEARCH_DASHSCOPE_API_KEY` for Qwen, or `RESEARCH_ANTHROPIC_API_KEY` for Anthropic;
+  - for Qwen, its endpoint: `RESEARCH_QWEN_BASE_URL`, an `https://` URL matching the key's type (Clarifications).
   
   It MUST require only the configured provider's key. It MUST NOT log, print or store any variable's value.
 - **FR-019**: Research's configuration MUST be validated at start: unknown keys, missing keys and out-of-range values all mean refusing to start.
