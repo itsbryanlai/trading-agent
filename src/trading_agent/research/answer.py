@@ -207,9 +207,18 @@ def _check_one(item, articles, listings, rationale_max_chars) -> CheckedReport |
 # so "AMERICAN AIRLINES GROUP INC" is matched as "AMERICAN AIRLINES".
 _SUFFIXES = frozenset(
     """INC INCORPORATED CORP CORPORATION CO COMPANY LTD LIMITED PLC LLC LP SA NV AG SE
-    HOLDINGS HOLDING GROUP CL CLASS A B C SHS ORD ADR DE NEW""".split()
+    HOLDINGS HOLDING GROUP CL CLASS A B C SHS ORD ADR DE NEW COM""".split()
 )
 MIN_NAME_CHARS = 4  # shorter names ("AT T", "GE") match too much ordinary text
+# Listing names that are everyday words (review M2): "price target", "the news", "a
+# block" say nothing about the company, so their name never makes a source primary.
+# Not exhaustive; extend it when a dry run shows another.
+COMMON_WORD_NAMES = frozenset(
+    """TARGET NEWS SNAP BLOCK PROGRESSIVE BALL CARRIER ROOT UNITY GLOBAL GENERAL
+    NATIONAL UNITED AMERICAN FIRST CATALYST FRONTIER""".split()
+)
+# A ticker this short in parentheses reads as an abbreviation, e.g. "(AI)" (review M2).
+MIN_PAREN_TICKER_CHARS = 3
 _EXCHANGES = r"(?:NASDAQ|NYSE(?:\s+AMERICAN)?|AMEX|CBOE)"
 
 
@@ -251,15 +260,17 @@ def cites(article: Article, symbol: str, listing_name: str) -> bool:
 
 def _names(text: str, symbol: str, listing_name: str) -> bool:
     ticker = re.escape(symbol)
-    forms = (
+    forms = [
         rf"\${ticker}\b",  # $AAPL
-        rf"\(\s*(?:{_EXCHANGES}\s*:\s*)?{ticker}\s*\)",  # (AAPL), (NASDAQ: AAPL)
+        rf"\(\s*{_EXCHANGES}\s*:\s*{ticker}\s*\)",  # (NASDAQ: AAPL)
         rf"\b{_EXCHANGES}\s*:\s*{ticker}\b",  # NASDAQ: AAPL
-    )
+    ]
+    if len(symbol) >= MIN_PAREN_TICKER_CHARS:
+        forms.append(rf"\(\s*{ticker}\s*\)")  # (AAPL)
     if any(re.search(form, text) for form in forms):
         return True
     name = company_name(listing_name)
-    if name is None:
+    if name is None or name in COMMON_WORD_NAMES:
         return False
     words = " ".join(re.sub(r"[^A-Z0-9]+", " ", text.upper()).split())
     return f" {name} " in f" {words} "

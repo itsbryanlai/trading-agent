@@ -97,3 +97,40 @@ def test_naming_the_company_is_primary_even_when_also_tagged():
         "secondary"
     )
     assert relevance(one(headline="Chip stocks rally"), "AAPL", "APPLE INC") is None
+
+
+@pytest.mark.parametrize(
+    ("symbol", "listing", "headline"),
+    [
+        ("AI", "C3.AI INC-A", "Artificial intelligence (AI) spending rises"),
+        ("TGT", "TARGET CORP", "Analysts lift their price target"),
+        ("NWSA", "NEWS CORP - CLASS A", "Markets react to the news"),
+        ("SQ", "BLOCK INC", "A block of shares changed hands"),
+    ],
+)
+def test_ordinary_words_dont_make_a_source_primary(symbol, listing, headline):
+    """Review M2."""
+    from trading_agent.research.answer import relevance
+
+    assert relevance(one(headline=headline), symbol, listing) is None
+    assert relevance(one(headline=headline, related=(symbol,)), symbol, listing) == "secondary"
+
+
+def test_short_tickers_still_count_as_dollar_or_exchange_forms():
+    from trading_agent.research.answer import relevance
+
+    assert relevance(one(headline="Why $AI jumped"), "AI", "C3.AI INC-A") == "primary"
+    assert relevance(one(headline="C3 (NYSE: AI) jumped"), "AI", "C3.AI INC-A") == "primary"
+
+
+def test_dot_com_names_match_without_the_com():
+    from trading_agent.research.answer import company_name, relevance
+
+    assert company_name("AMAZON.COM INC") == "AMAZON"
+    assert relevance(one(headline="Amazon cuts prices"), "AMZN", "AMAZON.COM INC") == "primary"
+
+
+def test_a_ticker_of_three_or_more_letters_in_parentheses_is_primary_alone():
+    from trading_agent.research.answer import relevance
+
+    assert relevance(one(headline="Shares (AAPL) rose"), "AAPL", "") == "primary"
