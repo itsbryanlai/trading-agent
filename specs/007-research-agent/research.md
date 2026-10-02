@@ -283,6 +283,6 @@ CHECK (CASE WHEN direction = 'no_action' THEN suggested_size_pct IS NULL
 
 The orchestrator passes only the names that are set (`service.py`), so listing both provider keys is harmless. `daily_at` stays 08:30, `interval_minutes` stays `null`, and the timeout stays 15.
 
-`.env.example` gains the four names. It notes that each agent gets its own prefixed variable even when the value is shared (the owner's choice), and that a Finnhub key shared with the reference job shares its rate limit.
+`.env.example` gains the five names (with `RESEARCH_QWEN_BASE_URL`). It notes that each agent gets its own prefixed variable even when the value is shared (the owner's choice), and that a Finnhub key shared with the reference job shares its rate limit.
 
 **Not deployed by this feature**: enabling it in config doesn't start anything until the orchestrator is deployed, which is a later item.

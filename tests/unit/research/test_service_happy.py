@@ -168,6 +168,7 @@ def test_the_run_logs_its_counts(caplog):
     assert "run started (prompt v2, provider qwen, model qwen3.7-plus)" in text
     assert "1 articles in window, 1 sent (" in text and "missing: none" in text
     assert "model used 1500 input and 200 output tokens" in text
+    assert "1 proposals received, 1 accepted, 0 dropped" in text
     assert "wrote 1 report(s)" in text
 
 

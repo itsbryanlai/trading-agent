@@ -569,8 +569,8 @@ text by writing it back, never with git.
 ## Phase 9: Convergence
 
 - [X] T049 In `src/trading_agent/research/service.py` `_fetch`, fail the run as `news_unavailable` when no news fetch succeeded, counting feeds skipped by the news deadline as not succeeded (today `failed == len(feeds)` ignores deadline-skipped feeds, so "general failed, the rest cut by the deadline" writes `No news in the window.` with exit 0); add the case to `tests/unit/research/test_service_failures.py` and mutation-check it, per FR-011 / US3/AC1–AC2 ("continues only if at least one succeeds") (contradicts)
-- [ ] T050 Log the number of proposals received and the total dropped in one INFO line after the check (e.g. `research: <r> proposals received, <d> dropped`), add the line to contracts/research-interface.md "Logs", and assert it in `tests/unit/research/test_service_happy.py`, per FR-021 (partial)
-- [ ] T051 Remove stale tag-only wording: the `service.py` comment "Only tagged articles can be cited for a symbol" (named articles can be cited since Clarifications 2026-10-02) and research.md R15's "`.env.example` gains the four names" (five, with `RESEARCH_QWEN_BASE_URL`), per spec Clarifications 2026-10-02 (contradicts)
+- [X] T050 Log the number of proposals received and the total dropped in one INFO line after the check (e.g. `research: <r> proposals received, <d> dropped`), add the line to contracts/research-interface.md "Logs", and assert it in `tests/unit/research/test_service_happy.py`, per FR-021 (partial)
+- [X] T051 Remove stale tag-only wording: the `service.py` comment "Only tagged articles can be cited for a symbol" (named articles can be cited since Clarifications 2026-10-02) and research.md R15's "`.env.example` gains the four names" (five, with `RESEARCH_QWEN_BASE_URL`), per spec Clarifications 2026-10-02 (contradicts)
 
 ## Phase 10: Fixes from the adversarial review (owner: "go with the recommendations", 2026-10-03)
 
@@ -580,6 +580,6 @@ text by writing it back, never with git.
 - [X] T055 M3: budget the worst case against 840 s (900 s less a 60 s margin); pass `connect_timeout` to the database connection; fit the prompt with a binary search instead of re-serialising after each dropped article.
 - [X] T056 L1: cap the whole `rationale_md`, the "Missing news" line included, at `rationale_max_chars`.
 - [X] T057 L3: reject a non-zero size that rounds down to 0; store `-0` as `0`.
-- [ ] T058 L4: refuse HTTP redirects in Research's Finnhub and Qwen adapters (a 3xx is "unavailable"), so a key header never follows a redirect; the same for `reference/finnhub.py` in its own commit.
+- [X] T058 L4: refuse HTTP redirects in Research's Finnhub and Qwen adapters (a 3xx is "unavailable"), so a key header never follows a redirect; the same for `reference/finnhub.py` in its own commit.
 - [ ] T059 `PROMPT_VERSION = "0.2"` (docs/policy/versioning.md); logs read `prompt v0.2`; rename earlier mentions to v0.1/v0.2.
-- [ ] T060 Spec US2 "Independent Test": replace the tag-only wording with the current relevance rule (converge note).
+- [X] T060 Spec US2 "Independent Test": replace the tag-only wording with the current relevance rule (converge note).

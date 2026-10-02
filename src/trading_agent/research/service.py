@@ -253,8 +253,8 @@ class ResearchRun:
         built = p.build(chosen.articles, open_reports, today, self.cfg.max_input_chars)
         outcome.input_chars = built.input_chars
         outcome.articles = built.articles
-        # Only tagged articles can be cited for a symbol (the relevance rule), so this
-        # tells "nothing to cite" from "nothing interesting".
+        # Tagged articles are the ones citable for a symbol without naming it (secondary
+        # relevance), so this helps tell "nothing to cite" from "nothing interesting".
         outcome.tagged_articles = sum(1 for art in built.articles if art.related)
         log.info(
             "research: %d articles in window, %d sent (%d tagged with a ticker; %d chars, "
@@ -296,6 +296,12 @@ class ResearchRun:
             log.error("research: %s: answer not in the required shape", UNUSABLE_ANSWER)
             raise _Failed(UNUSABLE_ANSWER)
         outcome.drops = checked.drops
+        log.info(
+            "research: %d proposals received, %d accepted, %d dropped",
+            checked.received,
+            len(checked.reports),
+            len(checked.drops),
+        )
         for drop in checked.drops:
             log.info(
                 "research: dropped proposal %d (%s): %s",

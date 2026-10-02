@@ -90,7 +90,7 @@ These checks cover the structured fields: symbol, direction, conviction, size an
 
 **Why this priority**: news is reachable by attackers, and the PM acts on these reports with no human in between ([ADR 0006](../../docs/adr/0006-autonomous-operation-with-daily-loss-breaker.md)). An invented citation or symbol would look like evidence to the PM.
 
-**Independent Test**: Feed a stand-in model each kind of bad answer, and check that no proposal with any invalid part is ever written. The bad answers are: a citation to an unfetched article, a made-up ticker, a malformed ticker, an out-of-range conviction, a size of 0 or over 100, an unknown direction, malformed output, and a mix of valid and invalid proposals, and a listed ticker that none of its cited articles is tagged with.
+**Independent Test**: Feed a stand-in model each kind of bad answer, and check that no proposal with any invalid part is ever written. The bad answers are: a citation to an unfetched article, a made-up ticker, a malformed ticker, an out-of-range conviction, a size of 0 or over 100, an unknown direction, malformed output, and a mix of valid and invalid proposals, and a listed ticker that none of its cited articles is about (not tagged with it, not from its feed, not naming the company or a ticker form).
 
 **Acceptance Scenarios**:
 
