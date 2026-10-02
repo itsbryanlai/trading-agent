@@ -16,8 +16,13 @@ def _articles(*raws, cfg=None):
     return select(list(raws), {}, THU_0830, cfg or config()).articles
 
 
-def test_prompt_version_is_a_positive_int():
-    assert isinstance(PROMPT_VERSION, int) and PROMPT_VERSION >= 1
+def test_prompt_version_follows_the_versioning_policy():
+    """docs/policy/versioning.md: v0.1, v0.2, ... before the first release; no trailing
+    zeros; the bare number in the field."""
+    import re
+
+    assert re.fullmatch(r"\d+(\.\d+){0,2}", PROMPT_VERSION) and not PROMPT_VERSION.endswith(".0")
+    assert PROMPT_VERSION == "0.2"
 
 
 def test_the_system_prompt_states_the_rules():

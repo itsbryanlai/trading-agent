@@ -14,7 +14,9 @@ from datetime import date
 
 from trading_agent.research.selection import Article
 
-PROMPT_VERSION = 2  # v2: articles may be cited for a company they name (2026-10-02)
+# docs/policy/versioning.md. v0.1: the first prompt; v0.2: articles may be cited for a
+# company they name (2026-10-02).
+PROMPT_VERSION = "0.2"
 
 SYSTEM_PROMPT = """\
 You are the Research analyst of a paper-trading system for US-listed equities. You read \

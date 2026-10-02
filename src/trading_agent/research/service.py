@@ -198,7 +198,7 @@ class ResearchRun:
         expires_at = calendar.close_time(today if in_window else _next_session(today))
 
         log.info(
-            "research: run started (prompt v%d, provider %s, model %s)",
+            "research: run started (prompt v%s, provider %s, model %s)",
             p.PROMPT_VERSION,
             self.cfg.model.provider,
             self.cfg.model.name,

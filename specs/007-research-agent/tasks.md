@@ -557,7 +557,7 @@ text by writing it back, never with git.
   news could never support a proposal. A cited article now also counts when it names
   the company (from the symbol list's company names) or gives the ticker as `$SYM`,
   `(SYM)` or `EXCHANGE: SYM`. `NewsSource.us_symbols()` returns symbol → company
-  name. Prompt v2 tells the model so. New tests: `tests/unit/research/test_relevance.py`
+  name. Prompt v0.2 (was numbered 2 before docs/policy/versioning.md) tells the model so. New tests: `tests/unit/research/test_relevance.py`
   (all mutation-checked), and an injection case showing the accepted trade-off.
 - **Each source is marked `primary` or `secondary`** (spec Clarifications 2026-10-03,
   after the watchlist dry run showed loosely related articles in a symbol's feed).
@@ -581,5 +581,5 @@ text by writing it back, never with git.
 - [X] T056 L1: cap the whole `rationale_md`, the "Missing news" line included, at `rationale_max_chars`.
 - [X] T057 L3: reject a non-zero size that rounds down to 0; store `-0` as `0`.
 - [X] T058 L4: refuse HTTP redirects in Research's Finnhub and Qwen adapters (a 3xx is "unavailable"), so a key header never follows a redirect; the same for `reference/finnhub.py` in its own commit.
-- [ ] T059 `PROMPT_VERSION = "0.2"` (docs/policy/versioning.md); logs read `prompt v0.2`; rename earlier mentions to v0.1/v0.2.
+- [X] T059 `PROMPT_VERSION = "0.2"` (docs/policy/versioning.md); logs read `prompt v0.2`; rename earlier mentions to v0.1/v0.2.
 - [X] T060 Spec US2 "Independent Test": replace the tag-only wording with the current relevance rule (converge note).

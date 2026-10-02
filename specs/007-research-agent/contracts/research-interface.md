@@ -78,7 +78,7 @@ The JSON Schema sent to the provider is generated from this table in code (`answ
 
 | Level | When | Message |
 |---|---|---|
-| INFO | start | `research: run started (prompt v<N>, provider <p>, model <m>)` |
+| INFO | start | `research: run started (prompt v<version>, provider <p>, model <m>)` |
 | INFO | news | `research: <k> articles in window, <n> sent (<t> tagged with a ticker; <c> chars, <d> dropped for size); missing: <feeds or none>` |
 | INFO | model | `research: model used <in> input and <out> output tokens` |
 | INFO | check | `research: <r> proposals received, <a> accepted, <d> dropped` |
