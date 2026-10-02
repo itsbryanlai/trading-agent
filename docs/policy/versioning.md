@@ -37,3 +37,6 @@ These are sequence numbers or identifiers, not versions, and keep their own form
 - **Feature folders and branches:** `NNN-name`.
 - **The risk config's `config_version`:** a hash of `config/risk.yaml`, written on every verdict (`specs/002-risk-gate`).
 - **Dependency pins** in `pyproject.toml`: they follow each package's own versions.
+- **The constitution** (`.specify/memory/constitution.md`): a governance document,
+  not a release. It keeps its own `MAJOR.MINOR.PATCH` amendment numbering, set by
+  its Governance section (currently `1.1.0`). Owner's decision, 2026-10-03.
