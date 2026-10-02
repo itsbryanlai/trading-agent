@@ -144,7 +144,7 @@ def _main(argv, news_factory, model_factory, connect, config_path, clock, sleep,
             conn.close()
 
     if dry_run:
-        _print_dry_run(outcome, out)
+        _print_dry_run(outcome, store.rows, out)
     return EXIT_FAILURE_RECORDED if outcome.failure is not None else EXIT_OK
 
 
@@ -165,11 +165,13 @@ def _optional(name: str) -> str | None:
 
 
 class DryRunStore:
-    """Reads open reports if a database is given; prints instead of writing."""
+    """Reads open reports if a database is given. Keeps the rows instead of writing
+    them; they're printed after the articles, in `_print_dry_run`."""
 
     def __init__(self, conn, out: Callable[[str], None]) -> None:
         self._reader = PgResearchStore(conn) if conn is not None else None
         self._out = out
+        self.rows: list[ReportRow] = []
         if conn is None:
             out(json.dumps({"note": "no database: open reports not read"}))
 
@@ -177,8 +179,7 @@ class DryRunStore:
         return self._reader.open_reports(now) if self._reader is not None else []
 
     def write(self, rows: list[ReportRow]) -> None:
-        for row in rows:
-            self._out(json.dumps({"would_write": _row_json(row)}, ensure_ascii=False))
+        self.rows.extend(rows)
 
 
 def _row_json(row: ReportRow) -> dict:
@@ -195,7 +196,8 @@ def _row_json(row: ReportRow) -> dict:
     }
 
 
-def _print_dry_run(outcome: RunOutcome, out) -> None:
+def _print_dry_run(outcome: RunOutcome, rows: list[ReportRow], out) -> None:
+    """Articles, then the would-be rows, then drops, then the summary."""
     for art in outcome.articles:  # public headlines, to see what the model was given
         out(
             json.dumps(
@@ -210,6 +212,8 @@ def _print_dry_run(outcome: RunOutcome, out) -> None:
                 ensure_ascii=False,
             )
         )
+    for row in rows:
+        out(json.dumps({"would_write": _row_json(row)}, ensure_ascii=False))
     for drop in outcome.drops:
         out(
             json.dumps(

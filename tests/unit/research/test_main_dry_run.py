@@ -117,3 +117,11 @@ def test_prints_the_articles_sent_to_the_model(env):
             "related": ["AAPL"],
         }
     ]
+
+
+def test_output_order_is_articles_rows_drops_summary(env):
+    _, _, lines, _ = dry()
+    kinds = [next(iter(line)) for line in lines if "note" not in line]
+    order = {"article": 0, "would_write": 1, "dropped": 2, "summary": 3}
+    assert [order[k] for k in kinds] == sorted(order[k] for k in kinds)
+    assert set(kinds) == set(order)
