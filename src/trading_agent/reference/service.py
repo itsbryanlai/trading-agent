@@ -156,7 +156,7 @@ class ReferenceJob:
 
     # --- the tick --------------------------------------------------------------
 
-    def tick(self, now: datetime) -> TickReport:
+    def tick(self, now: datetime) -> TickReport:  # noqa: C901, PLR0912, PLR0915 - baseline; split when next touched
         report = TickReport(day=calendar.trading_day(now))
         if not fetch_allowed(now):
             return report

@@ -168,7 +168,7 @@ def _current(
     return key, when
 
 
-def plan(now: datetime, cfg: ScheduleConfig, state: State) -> list:
+def plan(now: datetime, cfg: ScheduleConfig, state: State) -> list:  # noqa: PLR0912 - baseline; split when next touched
     _require_aware(now)
     actions: list = []
 

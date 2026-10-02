@@ -20,6 +20,7 @@ dependencies = [
 dev = [
     "pytest>=8",
     "ruff",
+    "import-linter>=2",
     "hypothesis>=6",
 ]
 
@@ -42,4 +43,26 @@ line-length = 100
 target-version = "py312"
 
 [tool.ruff.lint]
-select = ["E", "F", "I", "UP", "B"]
+select = ["E", "F", "I", "UP", "B", "C901", "PLR0912", "PLR0915"]
+
+[tool.ruff.lint.mccabe]
+max-complexity = 15
+
+[tool.ruff.lint.pylint]
+max-branches = 15
+max-statements = 50
+
+# Module boundaries (ADRs 0002, 0003, 0005, 0004). Run: lint-imports
+[tool.importlinter]
+root_package = "trading_agent"
+
+[[tool.importlinter.contracts]]
+name = "layers: higher components import only from layers below; siblings stay independent"
+type = "layers"
+containers = ["trading_agent"]
+layers = [
+    "execution | orchestrator | research",
+    "reference",
+    "risk",
+    "storage",
+]
