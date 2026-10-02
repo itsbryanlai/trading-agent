@@ -568,7 +568,7 @@ text by writing it back, never with git.
 
 ## Phase 9: Convergence
 
-- [ ] T049 In `src/trading_agent/research/service.py` `_fetch`, fail the run as `news_unavailable` when no news fetch succeeded, counting feeds skipped by the news deadline as not succeeded (today `failed == len(feeds)` ignores deadline-skipped feeds, so "general failed, the rest cut by the deadline" writes `No news in the window.` with exit 0); add the case to `tests/unit/research/test_service_failures.py` and mutation-check it, per FR-011 / US3/AC1–AC2 ("continues only if at least one succeeds") (contradicts)
+- [X] T049 In `src/trading_agent/research/service.py` `_fetch`, fail the run as `news_unavailable` when no news fetch succeeded, counting feeds skipped by the news deadline as not succeeded (today `failed == len(feeds)` ignores deadline-skipped feeds, so "general failed, the rest cut by the deadline" writes `No news in the window.` with exit 0); add the case to `tests/unit/research/test_service_failures.py` and mutation-check it, per FR-011 / US3/AC1–AC2 ("continues only if at least one succeeds") (contradicts)
 - [ ] T050 Log the number of proposals received and the total dropped in one INFO line after the check (e.g. `research: <r> proposals received, <d> dropped`), add the line to contracts/research-interface.md "Logs", and assert it in `tests/unit/research/test_service_happy.py`, per FR-021 (partial)
 - [ ] T051 Remove stale tag-only wording: the `service.py` comment "Only tagged articles can be cited for a symbol" (named articles can be cited since Clarifications 2026-10-02) and research.md R15's "`.env.example` gains the four names" (five, with `RESEARCH_QWEN_BASE_URL`), per spec Clarifications 2026-10-02 (contradicts)
 

@@ -356,6 +356,7 @@ class ResearchRun:
             name = feed or "general"
             if self.monotonic() >= deadline:
                 outcome.missing.append(name)
+                failed += 1  # not fetched counts as failed (review L2, converge T049)
                 continue
             try:
                 if feed is None:

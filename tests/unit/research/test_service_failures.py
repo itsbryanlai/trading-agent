@@ -257,3 +257,26 @@ def test_a_missing_line_longer_than_the_cap_is_cut_with_the_body():
     cfg = config(watchlist=watch, rationale_max_chars=200, finnhub_calls_per_minute=300)
     _, rows = outcome_of(news, FakeModel(GOOD.text), cfg)
     assert len(rows[0].rationale_md) == 200 and rows[0].rationale_md.endswith("…")
+
+
+def test_nothing_fetched_because_of_the_deadline_is_news_unavailable():
+    """Review L2 / converge T049: general news fails and the deadline skips the rest,
+    so nothing was fetched; that's a failure, not a quiet day."""
+
+    class SlowFailingNews(FakeNews):
+        def __init__(self, clock, **kw):
+            super().__init__(**kw)
+            self.clock = clock
+
+        def general_news(self):
+            self.clock.mono += 500  # past the deadline
+            raise ProviderUnavailable()
+
+    clock = Clock()
+    model = FakeModel()
+    news = SlowFailingNews(clock)
+    store = MemoryStore()
+    run, _ = make(news, model, store, config(watchlist=("MSFT", "NVDA")), clock)
+    outcome = run.run()
+    assert outcome.failure == "news_unavailable" and model.calls == []
+    assert outcome.missing == ["general", "MSFT", "NVDA"]
