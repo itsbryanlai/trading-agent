@@ -19,6 +19,7 @@ from dataclasses import dataclass
 from decimal import ROUND_DOWN, Decimal, InvalidOperation
 
 from trading_agent.reference.symbols import is_plausible_ticker
+from trading_agent.research import text
 from trading_agent.research.selection import Article
 
 # The drop reasons, in the order the rules apply (a closed set; contracts).
@@ -145,6 +146,8 @@ def _check_one(item, articles, listings, rationale_max_chars) -> CheckedReport |
     if not isinstance(item, dict) or set(item) != set(_FIELDS):
         return Drop(0, None, MALFORMED_ANSWER)
     rationale = item["rationale"]
+    if isinstance(rationale, str):
+        rationale = text.clean(rationale)  # review H1: no NUL or lone surrogate is stored
     if not isinstance(rationale, str) or not rationale.strip():
         return Drop(0, None, MALFORMED_ANSWER)
 

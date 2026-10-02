@@ -16,6 +16,7 @@ from urllib.error import HTTPError
 from urllib.parse import urlencode, urlsplit
 from urllib.request import Request, urlopen
 
+from trading_agent.research import text
 from trading_agent.research.ports import (
     KeyRejected,
     NotPermitted,
@@ -97,16 +98,16 @@ def _articles(body) -> list[RawArticle]:
     for item in body:
         if not isinstance(item, dict):
             continue
-        url, headline = item.get("url"), item.get("headline")
+        url, headline = item.get("url"), _text(item.get("headline"))
         published = _timestamp(item.get("datetime"))
-        if not _safe_url(url) or not isinstance(headline, str) or not headline.strip():
+        if not _safe_url(url) or not headline:
             continue
         if published is None:
             continue
         articles.append(
             RawArticle(
                 url=url,
-                headline=headline.strip(),
+                headline=headline,
                 summary=_text(item.get("summary")),
                 source=_text(item.get("source")),
                 published_at=published,
@@ -118,14 +119,15 @@ def _articles(body) -> list[RawArticle]:
 
 def _safe_url(value) -> bool:
     """Only http(s): a javascript: or data: link must never reach a report (analyze S3)."""
-    if not isinstance(value, str):
+    if not isinstance(value, str) or text.has_unsafe(value):
         return False
     parts = urlsplit(value.strip())
     return parts.scheme in ("http", "https") and bool(parts.netloc) and value == value.strip()
 
 
 def _text(value) -> str:
-    return value.strip() if isinstance(value, str) else ""
+    """Outside text, cleaned of characters Postgres refuses (review H1)."""
+    return text.clean(value).strip() if isinstance(value, str) else ""
 
 
 def _related(value) -> tuple[str, ...]:

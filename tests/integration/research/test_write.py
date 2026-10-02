@@ -176,3 +176,48 @@ def test_a_run_whose_model_fails_writes_one_failure_row(conn):
     assert only["direction"] == "no_action" and only["symbol"] is None
     assert (only["conviction"], only["suggested_size_pct"], only["sources"]) == (None, None, [])
     assert only["rationale_md"].startswith("Research run failed: model_unavailable.")
+
+
+def test_text_postgres_would_refuse_is_cleaned_before_the_write(conn):
+    """Review H1: a NUL or lone surrogate in the model's text or a headline must not
+    stop the write. The answer passes through the checker as in a real run."""
+    import json
+
+    from tests.unit.research.support import config, proposal
+    from trading_agent.research.answer import check
+    from trading_agent.research.finnhub import _articles
+    from trading_agent.research.selection import select
+
+    raw = _articles(
+        [
+            {
+                "url": "https://news.example.com/x",
+                "headline": "Apple\x00 beats\ud800",
+                "summary": "Apple\x07 raised guidance.",
+                "source": "Wire\x00",
+                "datetime": int(NOW_SESSION.timestamp()) - 3600,
+                "related": "AAPL",
+            }
+        ]
+    )
+    (art,) = select(raw, {}, NOW_SESSION, config()).articles
+    answer = json.dumps({"proposals": [proposal("AAPL", rationale="Up\x00 big\ud800.")]})
+    (report,) = check(answer, {art.id: art}, {"AAPL": "APPLE INC"}, (), 2000).reports
+    with as_role(conn, "ta_research"):
+        PgResearchStore(conn, _allow_savepoints=True).write(
+            [
+                ReportRow(
+                    report.symbol,
+                    report.direction,
+                    report.conviction,
+                    report.size,
+                    list(report.sources),
+                    report.rationale,
+                    LATER,
+                )
+            ]
+        )
+    (only,) = _rows(conn)
+    assert only["rationale_md"] == "Up big."
+    assert only["sources"][0]["title"] == "Apple beats"
+    assert only["sources"][0]["publisher"] == "Wire"

@@ -200,3 +200,19 @@ def test_status_mapping_matches_the_reference_adapter(code, per_symbol):
     with pytest.raises(Exception) as our_error:
         _call(ours, "company" if per_symbol else "symbols")
     assert _SAME[type(ref_error.value)] is type(our_error.value)
+
+
+def test_text_postgres_refuses_is_cleaned_at_the_boundary():
+    opener = Opener(
+        [
+            item(headline="Apple\x00 beats", summary="Bad\ud800 text", source="Wire\x07"),
+            item(url="https://news.example.com/nul\x00", headline="dropped: unsafe url"),
+            item(url="https://news.example.com/blank", headline="\x00\x01"),
+        ]
+    )
+    (article,) = FinnhubNews(KEY, opener=opener).general_news()
+    assert (article.headline, article.summary, article.source) == (
+        "Apple beats",
+        "Bad text",
+        "Wire",
+    )

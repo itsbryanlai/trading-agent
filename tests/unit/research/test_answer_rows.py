@@ -5,6 +5,8 @@ from __future__ import annotations
 import json
 from decimal import Decimal
 
+import pytest
+
 from tests.unit.research.support import THU_0830, article, config, proposal
 from trading_agent.research.answer import ANSWER_SCHEMA, ELLIPSIS, check
 from trading_agent.research.selection import select
@@ -146,3 +148,14 @@ def test_the_schema_is_strict_at_both_levels():
         }
     )
     assert item["properties"]["direction"]["enum"] == ["buy", "sell"]
+
+
+@pytest.mark.parametrize("bad", ["\x00", "\ud800", "\x1b"])
+def test_the_rationale_is_cleaned_of_unstorable_characters(bad):
+    (report,) = run([proposal(rationale=f"Strong{bad} quarter.")]).reports
+    assert report.rationale == "Strong quarter."
+
+
+def test_a_rationale_of_only_unstorable_characters_is_malformed():
+    checked = run([proposal(rationale="\x00\x00")])
+    assert [d.reason for d in checked.drops] == ["malformed_answer"]

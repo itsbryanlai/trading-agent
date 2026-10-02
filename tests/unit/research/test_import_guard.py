@@ -12,7 +12,7 @@ import ast
 from pathlib import Path
 
 RESEARCH = Path(__file__).resolve().parents[3] / "src" / "trading_agent" / "research"
-PURE = ("selection.py", "prompt.py", "answer.py")
+PURE = ("selection.py", "prompt.py", "answer.py", "text.py")
 FORBIDDEN_ANYWHERE = (
     "alpaca",
     "openai",
