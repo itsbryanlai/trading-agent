@@ -66,7 +66,7 @@ class StopFlag:
         self.requested = signal.Signals(signum).name
 
 
-def main(
+def main(  # noqa: PLR0915 - baseline; split when next touched
     *,
     connect: Callable = psycopg.connect,
     launcher_factory: Callable = SubprocessLauncher,
