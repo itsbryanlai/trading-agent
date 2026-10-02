@@ -70,3 +70,28 @@ def test_articles_are_dropped_from_the_end_until_the_input_fits():
 def test_the_user_document_is_deterministic():
     arts = _articles(article("one"), article("two"))
     assert build(arts, [], TODAY, 300_000) == build(arts, [], TODAY, 300_000)
+
+
+def test_fitting_takes_about_log_n_serialisations(monkeypatch):
+    """Review M3: not one per dropped article."""
+    from trading_agent.research import prompt
+
+    many = config(general_news_max_articles=100)
+    arts = _articles(*[article(f"a{i:03d}", summary="s" * 900) for i in range(100)], cfg=many)
+    assert len(arts) == 100
+    calls = []
+    real = prompt._document
+    monkeypatch.setattr(prompt, "_document", lambda *a: calls.append(1) or real(*a))
+    fitted = build(arts, [], TODAY, max_input_chars=20_000)
+    assert 0 < len(fitted.articles) < 100 and fitted.input_chars <= 20_000
+    assert len(calls) <= 10
+
+
+def test_the_fit_keeps_the_longest_prefix_that_fits():
+    arts = _articles(*[article(f"b{i:02d}", summary="s" * 500) for i in range(20)])
+    for limit in range(2_500, 13_000, 97):  # many limits, so every boundary is hit
+        fitted = build(arts, [], TODAY, max_input_chars=limit)
+        n = len(fitted.articles)
+        assert fitted.input_chars <= limit
+        if n < len(arts):
+            assert build(arts[: n + 1], [], TODAY, max_input_chars=10**9).input_chars > limit

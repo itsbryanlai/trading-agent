@@ -23,6 +23,10 @@ RUN_BUDGET_SECONDS = 900
 NEWS_CALL_TIMEOUT_SECONDS = 10
 # Selection, the write and start-up.
 RUN_SLACK_SECONDS = 60
+# Headroom under the orchestrator's timeout for what can't be bounded exactly: per-read
+# socket timeouts that a trickling response stretches, the Anthropic SDK's wait before
+# its retry, the database connect (review M3).
+RUN_MARGIN_SECONDS = 60
 MAX_WATCHLIST = 50
 
 PROVIDER_KEYS = {
@@ -115,10 +119,11 @@ def load_config(path: Path = DEFAULT_CONFIG_PATH) -> ResearchConfig:
         model=ModelConfig(provider=provider, name=name, anthropic_effort=effort, **model_ints),
         **ints,
     )
-    if config.worst_case_seconds > RUN_BUDGET_SECONDS:
+    if config.worst_case_seconds > RUN_BUDGET_SECONDS - RUN_MARGIN_SECONDS:
         raise ResearchConfigError(
             f"worst-case run time {config.worst_case_seconds:.0f} s exceeds the "
-            f"{RUN_BUDGET_SECONDS} s run budget (research R11): lower model.timeout_seconds "
+            f"{RUN_BUDGET_SECONDS - RUN_MARGIN_SECONDS} s run budget ({RUN_BUDGET_SECONDS} s less "
+            f"{RUN_MARGIN_SECONDS} s margin; research R11): lower model.timeout_seconds "
             "or the watchlist, or raise finnhub_calls_per_minute"
         )
     return config

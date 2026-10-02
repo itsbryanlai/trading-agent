@@ -50,6 +50,8 @@ NEWS_KEY_VARIABLE = "RESEARCH_FINNHUB_API_KEY"
 # sent to it.
 QWEN_BASE_URL_VARIABLE = "RESEARCH_QWEN_BASE_URL"
 
+CONNECT_TIMEOUT_SECONDS = 10  # within the run budget's margin (review M3)
+
 EXIT_OK = 0
 EXIT_FAILURE_RECORDED = 1
 EXIT_REFUSED = 2
@@ -114,7 +116,12 @@ def _main(argv, news_factory, model_factory, connect, config_path, clock, sleep,
     conn = None
     if database_url is not None:
         try:
-            conn = connect(database_url, autocommit=True, row_factory=dict_row)
+            conn = connect(
+                database_url,
+                autocommit=True,
+                row_factory=dict_row,
+                connect_timeout=CONNECT_TIMEOUT_SECONDS,
+            )
         except psycopg.OperationalError as exc:
             log.critical("research: database unreachable: %s", type(exc).__name__)
             return EXIT_DATABASE

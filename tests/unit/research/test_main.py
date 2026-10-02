@@ -119,6 +119,7 @@ def test_happy_path(env, caplog):
     assert code == runner.EXIT_OK
     assert len(conn.written) == 1 and conn.closed
     assert seen["connect"][1]["autocommit"] is True
+    assert seen["connect"][1]["connect_timeout"] == 10
     assert seen["news_key"] == FAKE_FINNHUB
     assert seen["model"] == ("qwen", FAKE_DASHSCOPE, "qwen3.7-plus")
     _no_secret_in(caplog, printed)

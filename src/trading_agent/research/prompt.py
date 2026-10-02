@@ -89,17 +89,31 @@ def _document(articles: Sequence[Article], open_reports, today: date) -> str:
 
 
 def build(articles: Sequence[Article], open_reports, today: date, max_input_chars: int) -> Prompt:
-    """Drop whole articles from the end until system + user fit `max_input_chars`."""
-    kept = list(articles)
-    while True:
-        user = _document(kept, open_reports, today)
-        size = len(SYSTEM_PROMPT) + len(user)
-        if size <= max_input_chars or not kept:
-            return Prompt(
-                system=SYSTEM_PROMPT,
-                user=user,
-                articles=tuple(kept),
-                dropped_for_size=len(articles) - len(kept),
-                input_chars=size,
-            )
-        kept.pop()
+    """Keep the longest prefix of `articles` whose prompt fits `max_input_chars`.
+
+    The size grows with each article kept, so a binary search finds that prefix in
+    about log2(n) serialisations rather than one per dropped article (review M3)."""
+
+    def size(count: int) -> tuple[int, str]:
+        user = _document(articles[:count], open_reports, today)
+        return len(SYSTEM_PROMPT) + len(user), user
+
+    fits, user = size(len(articles))
+    keep = len(articles)
+    if fits > max_input_chars:
+        low, high = 0, len(articles) - 1  # the answer is in [low, high]
+        while low < high:
+            middle = (low + high + 1) // 2
+            if size(middle)[0] <= max_input_chars:
+                low = middle
+            else:
+                high = middle - 1
+        keep = low
+        fits, user = size(keep)
+    return Prompt(
+        system=SYSTEM_PROMPT,
+        user=user,
+        articles=tuple(articles[:keep]),
+        dropped_for_size=len(articles) - keep,
+        input_chars=fits,
+    )

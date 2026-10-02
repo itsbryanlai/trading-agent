@@ -32,24 +32,24 @@ def test_the_shipped_config_fits():
 def test_over_budget_is_refused(tmp_path):
     data = changed(("model", "timeout_seconds"), 360)
     data["watchlist"] = TICKERS[:50]  # 720 + 52 × 12 + 60 = 1404 s
-    with pytest.raises(ResearchConfigError, match="900 s run budget"):
+    with pytest.raises(ResearchConfigError, match="840 s run budget"):
         load(tmp_path, data)
 
 
 def test_exactly_at_the_budget_is_accepted(tmp_path):
-    # 2 × 300 + (N + 2) × (2 + 10) + 60 = 900  →  N = 18
+    # 2 × 300 + (N + 2) × (2 + 10) + 60 = 840 (900 less the 60 s margin)  →  N = 13
     data = changed(("model", "timeout_seconds"), 300)
-    data["watchlist"] = TICKERS[:18]
-    assert load(tmp_path, data).worst_case_seconds == 900
-    data["watchlist"] = TICKERS[:19]
+    data["watchlist"] = TICKERS[:13]
+    assert load(tmp_path, data).worst_case_seconds == 840
+    data["watchlist"] = TICKERS[:14]
     with pytest.raises(ResearchConfigError, match="run budget"):
         load(tmp_path, data)
 
 
-def test_the_default_timeout_allows_a_watchlist_of_38(tmp_path):
-    data = changed(("watchlist",), TICKERS[:38])
-    assert load(tmp_path, data).worst_case_seconds <= RUN_BUDGET_SECONDS
-    data["watchlist"] = TICKERS[:39]
+def test_the_default_timeout_allows_a_watchlist_of_33(tmp_path):
+    data = changed(("watchlist",), TICKERS[:33])
+    assert load(tmp_path, data).worst_case_seconds <= RUN_BUDGET_SECONDS - 60
+    data["watchlist"] = TICKERS[:34]
     with pytest.raises(ResearchConfigError, match="run budget"):
         load(tmp_path, data)
 

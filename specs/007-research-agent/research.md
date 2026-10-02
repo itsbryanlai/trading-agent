@@ -218,10 +218,10 @@ These match the reference job's 2 and 3. The orchestrator records any non-zero c
 **The timeout bound ties to the orchestrator.** Individual bounds can't guarantee the fit: 360 s × 2, 50 symbols and 1 call a minute would take almost an hour. So the loader also checks the combination:
 
 ```text
-2 × timeout_seconds + (len(watchlist) + 2) × (60 / finnhub_calls_per_minute + 10) + 60 ≤ RUN_BUDGET_SECONDS (900)
+2 × timeout_seconds + (len(watchlist) + 2) × (60 / finnhub_calls_per_minute + 10) + 60 ≤ RUN_BUDGET_SECONDS (900) − RUN_MARGIN_SECONDS (60) = 840
 ```
 
-The `+ 10` is Finnhub's per-call timeout (analyze T1), and the 60 s is slack for selection, the write and start-up. A config failing this is refused (exit 2). A test asserts that `RUN_BUDGET_SECONDS` equals `config/schedule.yaml`'s `research.timeout_minutes × 60`, so neither file can drift past the other. The shipped defaults (180 s, an empty watchlist, 30 a minute) take 444 s. At 180 s and 30 a minute, the watchlist can hold up to 38 symbols; at 300 s, only 18 (that's why the default is 180). The same term is the news deadline in R3.
+The `+ 10` is Finnhub's per-call timeout (analyze T1), and the 60 s slack covers selection, the write and start-up. The further 60 s margin (review M3) is for what can't be bounded exactly: per-read socket timeouts that a slow response stretches, the Anthropic SDK's wait before its retry, and the database connect (10 s timeout). A config failing this is refused (exit 2). A test asserts that `RUN_BUDGET_SECONDS` equals `config/schedule.yaml`'s `research.timeout_minutes × 60`. The shipped defaults (180 s, an empty watchlist, 30 a minute) take 444 s. At 180 s and 30 a minute the watchlist can hold up to 33 symbols; at 300 s, 13. The same news term is the news deadline in R3.
 
 **Switching to Sonnet** means setting `provider: anthropic` and `name: claude-sonnet-5-5`, plus setting `RESEARCH_ANTHROPIC_API_KEY`.
 

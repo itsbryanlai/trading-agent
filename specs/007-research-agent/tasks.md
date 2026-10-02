@@ -577,7 +577,7 @@ text by writing it back, never with git.
 - [X] T052 H1: strip C0 control characters (except `\n`, `\t`) and lone surrogates from Finnhub text (headline, summary, source) and the model's rationale; reject a URL containing any control character. A NUL or lone surrogate must never reach the write. Add both to the SC-002 property's strategy.
 - [X] T053 M1: re-check the trading window just before the write; if the close (less the 1-minute margin) has passed, write nothing, log `research: window_closed`, and exit 1.
 - [X] T054 M2: in company names, drop a trailing `COM`; keep a stop-list of listing names that are common words (their name match doesn't make a source primary); a 1–2 letter ticker in parentheses doesn't make a source primary (`$X` and `EXCHANGE: X` still do).
-- [ ] T055 M3: budget the worst case against 840 s (900 s less a 60 s margin); pass `connect_timeout` to the database connection; fit the prompt with a binary search instead of re-serialising after each dropped article.
+- [X] T055 M3: budget the worst case against 840 s (900 s less a 60 s margin); pass `connect_timeout` to the database connection; fit the prompt with a binary search instead of re-serialising after each dropped article.
 - [ ] T056 L1: cap the whole `rationale_md`, the "Missing news" line included, at `rationale_max_chars`.
 - [ ] T057 L3: reject a non-zero size that rounds down to 0; store `-0` as `0`.
 - [ ] T058 L4: refuse HTTP redirects in Research's Finnhub and Qwen adapters (a 3xx is "unavailable"), so a key header never follows a redirect; the same for `reference/finnhub.py` in its own commit.
