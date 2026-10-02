@@ -79,3 +79,14 @@ def test_qwen_doesnt_follow_a_redirect(server):
         client.complete("s", "u", {})
     assert info.value.status == 302
     assert landed == []
+
+
+def test_the_reference_jobs_finnhub_doesnt_follow_a_redirect(server, monkeypatch):
+    from trading_agent.reference import finnhub as reference_finnhub
+    from trading_agent.reference.provider import ProviderUnavailable as RefUnavailable
+
+    base, landed = server
+    monkeypatch.setattr(reference_finnhub, "BASE_URL", base)
+    with pytest.raises(RefUnavailable):
+        reference_finnhub.FinnhubProvider(FAKE_KEY).get_quote("AAPL")
+    assert landed == []
