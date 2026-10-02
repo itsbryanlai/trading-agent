@@ -53,6 +53,8 @@ MODEL_REFUSED = "model_refused"
 MODEL_TRUNCATED = "model_truncated"
 UNUSABLE_ANSWER = "unusable_answer"
 INTERNAL_ERROR = "internal_error"
+# Not a row category: the run ran out of window before writing, so nothing is written.
+WINDOW_CLOSED = "window_closed"
 
 _FAILURE_SENTENCES = {
     NEWS_UNAVAILABLE: "No news could be fetched, or the news key was rejected.",
@@ -222,6 +224,15 @@ class ResearchRun:
             replace(row, expires_at=expires_at, rationale_md=_with_missing(row, outcome.missing))
             for row in outcome.rows
         ]
+        if not self.dry_run and self.clock() >= expires_at - CLOSE_MARGIN:
+            # Review M1: the run can outlast the window it started in (the write comes
+            # minutes after the start), and a row written at or after the close would
+            # break `expires_at > generated_at`. Nothing is written; exit 1.
+            log.error(
+                "research: %s: the close passed before the write; nothing written", WINDOW_CLOSED
+            )
+            outcome.rows, outcome.failure = [], WINDOW_CLOSED
+            return outcome
         self.store.write(outcome.rows)  # not caught: a database error is exit 3
         if outcome.failure is None and outcome.rows[0].direction != "no_action":
             log.info("research: wrote %d report(s)", len(outcome.rows))

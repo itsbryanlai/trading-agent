@@ -14,7 +14,7 @@ Any other argument means exit 2.
 | Code | Meaning |
 |---|---|
 | 0 | Wrote reports, or a "nothing to argue" or "all dropped" `no_action`; or outside the trading window, so nothing was done |
-| 1 | Wrote a failure `no_action` |
+| 1 | Wrote a failure `no_action`; or the close passed while the run was going, so nothing could be written (`window_closed`, logged) |
 | 2 | Refused to start: config, a missing variable, or an unknown argument |
 | 3 | The database was unreachable, or the read or write failed |
 | 4 | Crashed: an unexpected exception escaped, so no report could be written |

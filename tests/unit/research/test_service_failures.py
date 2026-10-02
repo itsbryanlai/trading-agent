@@ -191,3 +191,49 @@ def test_model_failures_log_the_http_status_but_never_the_message(error, suffix,
     logged = "\n".join(messages(caplog))
     assert f": {type(error).__name__}{suffix}\n" in logged + "\n"
     assert MARKER not in logged
+
+
+def test_a_run_that_outlasts_the_window_writes_nothing(caplog):
+    """Review M1: started before the close, still running at it."""
+    from datetime import timedelta
+
+    from tests.unit.research.support import THU_CLOSE
+
+    class SlowModel(FakeModel):
+        def __init__(self, clock):
+            super().__init__(GOOD.text)
+            self.clock = clock
+
+        def complete(self, system, user, schema):
+            self.clock.now = THU_CLOSE - timedelta(seconds=30)  # inside the 1-minute margin
+            return super().complete(system, user, schema)
+
+    caplog.set_level(logging.INFO, logger="trading_agent.research")
+    clock = Clock(THU_CLOSE - timedelta(minutes=5))
+    store = MemoryStore()
+    run, _ = make(model=SlowModel(clock), store=store, clock=clock)
+    outcome = run.run()
+    assert store.writes == []
+    assert outcome.failure == "window_closed" and outcome.rows == []
+    assert any("window_closed" in m for m in messages(caplog))
+
+
+def test_a_dry_run_is_not_cut_off_by_the_close():
+    from datetime import timedelta
+
+    from tests.unit.research.support import THU_CLOSE
+
+    class SlowModel(FakeModel):
+        def __init__(self, clock):
+            super().__init__(GOOD.text)
+            self.clock = clock
+
+        def complete(self, system, user, schema):
+            self.clock.now = THU_CLOSE - timedelta(seconds=30)
+            return super().complete(system, user, schema)
+
+    clock = Clock(THU_CLOSE - timedelta(minutes=5))
+    store = MemoryStore()
+    run, _ = make(model=SlowModel(clock), store=store, clock=clock, dry_run=True)
+    run.run()
+    assert len(store.writes) == 1  # a dry run writes nothing real, so it always shows

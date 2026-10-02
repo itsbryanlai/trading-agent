@@ -177,7 +177,7 @@ JSON encoding means no article text can break out of its field.
 | Code | Meaning |
 |---|---|
 | 0 | Ran and wrote reports, including the "nothing to argue" `no_action`; or outside the trading window, so nothing was done |
-| 1 | Wrote a failure `no_action` report (FR-017) |
+| 1 | Wrote a failure `no_action` report (FR-017); or the window closed before the write (review M1: rechecked just before writing, since a row written at or after the close would break `expires_at > generated_at`), so nothing was written and `research: window_closed` is logged |
 | 2 | Refused to start: bad config, a missing variable, or an unknown argument |
 | 3 | The database was unreachable, or the read or write failed |
 | 4 | Crashed: an exception escaped everything else, so no report could be written. `__main__` catches it, logs its type and exits 4, never Python's default 1, so a crash is never mistaken for a recorded failure (analyze G2) |
