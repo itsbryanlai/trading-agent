@@ -44,3 +44,5 @@ What this makes easier, harder, or locks in going forward.
 | [0014](0014-fresh-confirmed-stop-loss-triggers-and-intraday-equity.md) | Stop-loss triggers must be fresh and confirmed; equity is recorded every stop-loss window |
 | [0015](0015-orchestrator-starts-agents-with-their-own-credentials.md) | The orchestrator starts each agent as a process, passing it only its own credentials |
 | [0016](0016-market-data-for-the-llm-agents.md) | Market data for the LLM agents comes from read-only Finnhub keys |
+| [0017](0017-original-analysts-skip-incubation.md) | The original analysts skip incubation |
+| [0018](0018-qwen-as-a-model-provider.md) | Qwen is an approved model provider alongside Anthropic |

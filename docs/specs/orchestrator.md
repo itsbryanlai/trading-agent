@@ -18,8 +18,9 @@ output.
     none from 15:30 ET, or 30 minutes before an early close
     ([ADR 0011](../adr/0011-event-driven-portfolio-manager-runs.md)).
 
-  The config can't loosen those rules. News-triggered Research is decided in the Research
-  feature.
+  The config can't loosen those rules. Research runs daily only, with no news-triggered
+  runs ([`specs/007-research-agent`](../../specs/007-research-agent/spec.md)); it is the
+  first agent enabled in `config/schedule.yaml`.
 - Its own run records, so a restart knows what already ran today.
 - The time the most recent report was written, and nothing else about reports.
   It uses this to trigger an event-driven PM run when a new report has arrived

@@ -1,15 +1,14 @@
 <!--
 Sync Impact Report
-Version change: (none) → 1.0.0
-Modified principles: n/a (initial ratification)
-Added sections:
-  - Core Principles I–VII
-  - Technology & Deployment Constraints
-  - Development Workflow
-  - Governance
-Removed sections: n/a
-Templates requiring follow-up: none — this is the first ratified constitution;
-  no prior spec/plan/tasks artifacts exist yet to re-check against it.
+Version change: 1.0.0 → 1.1.0 (MINOR: materially expanded guidance)
+Modified sections:
+  - Technology & Deployment Constraints: LLM agents may use Anthropic (`anthropic`
+    SDK) or Qwen (QwenCloud's OpenAI-compatible API), chosen per agent by
+    configuration (ADR 0018); the Qwen (DashScope) key added to the credentials list.
+Modified principles: none.
+Added / removed sections: none.
+Templates requiring follow-up: none. The plan template's Constitution Check reads
+  this file directly.
 Deferred TODOs: none.
 -->
 
@@ -118,8 +117,11 @@ user," never "moving money."
 - Python throughout, matching the precedent established by the sibling
   `trading-bot` project: FastAPI + Jinja2 (server-rendered, no frontend
   build step) for the dashboard, `psycopg` for Postgres access, an
-  in-process scheduler for the orchestrator, the `anthropic` SDK for every
-  LLM agent.
+  in-process scheduler for the orchestrator. Each LLM agent uses an approved
+  model provider, chosen per agent in version-controlled configuration:
+  Anthropic through the `anthropic` SDK, or Qwen through QwenCloud's
+  OpenAI-compatible API ([ADR 0018](../../docs/adr/0018-qwen-as-a-model-provider.md)).
+  A further provider requires its own ADR.
 - Postgres is the only durable store. No component may rely on container
   filesystem state surviving a redeploy; anything worth keeping is a
   database row.
@@ -128,7 +130,7 @@ user," never "moving money."
   service — mirroring `trading-bot`'s proven `railway.json` /
   `railway.web.json` split.
 - Credentials are never committed. Each component's credential (Alpaca,
-  Anthropic, Finnhub, Telegram bot token, database role connection string)
+  Anthropic, Qwen (DashScope), Finnhub, Telegram bot token, database role connection string)
   is distinct and scoped to that component; `.env.example` is kept current
   as new credentials are introduced.
 
@@ -170,4 +172,4 @@ fixes with no behavioral change. Compliance with these principles is
 reviewed the same way any other code review checks compliance with
 `docs/specs/` and `docs/adr/`.
 
-**Version**: 1.0.0 | **Ratified**: 2026-09-26 | **Last Amended**: 2026-09-26
+**Version**: 1.1.0 | **Ratified**: 2026-09-26 | **Last Amended**: 2026-10-01

@@ -15,8 +15,9 @@ from decimal import Decimal, InvalidOperation
 from http.client import HTTPException
 from urllib.error import HTTPError
 from urllib.parse import urlencode
-from urllib.request import Request, urlopen
+from urllib.request import Request
 
+from trading_agent.no_redirect import open_without_redirects
 from trading_agent.reference.provider import (
     KeyRejected,
     Listing,
@@ -41,7 +42,7 @@ class FinnhubProvider:
         timeout: float = TIMEOUT_SECONDS,
     ) -> None:
         self._key = api_key
-        self._open = opener or urlopen
+        self._open = opener or open_without_redirects()  # a key never follows a redirect
         self._timeout = timeout
 
     def __repr__(self) -> str:
