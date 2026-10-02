@@ -9,7 +9,7 @@ from tests.unit.research.support import THU_0830, article, config, proposal
 from trading_agent.research.answer import ANSWER_SCHEMA, ELLIPSIS, check
 from trading_agent.research.selection import select
 
-SYMBOLS = frozenset({"AAPL", "MSFT", "NVDA"})
+SYMBOLS = {"AAPL": "APPLE INC", "MSFT": "MICROSOFT CORP", "NVDA": "NVIDIA CORP"}
 
 
 def _articles():

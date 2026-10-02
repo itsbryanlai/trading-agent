@@ -62,7 +62,7 @@ One JSON object with exactly one key, `{"proposals": [...]}`; anything else is `
 | `conviction` | integer | 1–5 |
 | `suggested_size_pct` | number | buy: above 0, at most 100; sell: 0–100 |
 | `rationale` | string | cut to `rationale_max_chars` |
-| `article_ids` | array of strings | non-empty; each one given in this run; at least one tagged with the symbol, or from its company-news feed |
+| `article_ids` | array of strings | non-empty; each one given in this run; at least one about the company (tagged, from its company-news feed, naming the company, or `$SYM`, `(SYM)`, `EXCHANGE: SYM`) |
 
 The JSON Schema sent to the provider is generated from this table in code (`answer.ANSWER_SCHEMA`), so the prompt and the checker can't drift apart.
 

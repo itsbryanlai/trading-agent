@@ -97,8 +97,15 @@ def test_company_news_request_uses_the_dates():
 
 
 def test_symbol_list():
-    opener = Opener([{"symbol": "AAPL"}, {"symbol": "BRK.B"}, {"nope": 1}, "x"])
-    assert FinnhubNews(KEY, opener=opener).us_symbols() == frozenset({"AAPL", "BRK.B"})
+    opener = Opener(
+        [
+            {"symbol": "AAPL", "description": "APPLE INC"},
+            {"symbol": "BRK.B", "description": None},
+            {"nope": 1},
+            "x",
+        ]
+    )
+    assert FinnhubNews(KEY, opener=opener).us_symbols() == {"AAPL": "APPLE INC", "BRK.B": ""}
     parts = urlsplit(opener.requests[0][0].full_url)
     assert parts.path == "/api/v1/stock/symbol" and parse_qs(parts.query) == {"exchange": ["US"]}
 

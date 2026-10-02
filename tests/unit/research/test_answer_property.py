@@ -14,10 +14,10 @@ from hypothesis import strategies as st
 
 from tests.unit.research.support import THU_0830, article, config
 from trading_agent.reference.symbols import is_plausible_ticker
-from trading_agent.research.answer import DROP_REASONS, check
+from trading_agent.research.answer import DROP_REASONS, check, cites
 from trading_agent.research.selection import select
 
-SYMBOLS = frozenset({"AAPL", "MSFT", "NVDA"})
+SYMBOLS = {"AAPL": "APPLE INC", "MSFT": "MICROSOFT CORP", "NVDA": "NVIDIA CORP"}
 CAP = 300
 OPEN = (("NVDA", "buy"),)
 
@@ -132,7 +132,7 @@ def _assert_valid(report):
             "published_at": a.published_at.isoformat(),
         }
     cited = [a for a in ARTICLES.values() if any(s["url"] == a.url for s in report.sources)]
-    assert any(report.symbol in a.related for a in cited)
+    assert any(cites(a, report.symbol, SYMBOLS[report.symbol]) for a in cited)
     assert (report.symbol, report.direction) not in OPEN
     assert 0 < len(report.rationale) <= CAP
 

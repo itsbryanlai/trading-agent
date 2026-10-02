@@ -63,9 +63,10 @@ news-triggered runs.
   dropped, with its reason logged, when its symbol is malformed or not
   US-listed; its direction isn't buy or sell; its conviction isn't 1–5; its
   size is out of range; it cites no article, or one not fetched in this run;
-  **none of its cited articles is tagged with the symbol or comes from that
-  symbol's own company-news feed** (so an injected article can only push the
-  ticker it's filed under); it repeats a symbol already proposed in the run; or
+  **none of its cited articles is about the company** — tagged with the
+  symbol or from its company-news feed, naming the company in its headline or
+  summary, or giving the ticker as `$SYM`, `(SYM)` or `EXCHANGE: SYM` (so an
+  injected article can only push a company it names or is filed under); it repeats a symbol already proposed in the run; or
   it matches a still-open report's symbol and direction. If nothing valid is
   left, one `no_action` row says how many proposals were dropped and why.
 - **News source unavailable**: if every news fetch fails, or the news key is

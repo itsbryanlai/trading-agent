@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import json
 import math
+import re
 from collections.abc import Collection, Mapping
 from dataclasses import dataclass
 from decimal import ROUND_DOWN, Decimal, InvalidOperation
@@ -108,7 +109,7 @@ class Checked:
 def check(
     text: str,
     articles: Mapping[str, Article],
-    us_symbols: Collection[str],
+    listings: Mapping[str, str],
     open_reports: Collection[tuple[str, str]],
     rationale_max_chars: int,
 ) -> Checked:
@@ -128,7 +129,7 @@ def check(
     accepted: list[CheckedReport] = []
     drops: list[Drop] = []
     for index, item in enumerate(proposals):
-        result = _check_one(item, articles, us_symbols, rationale_max_chars)
+        result = _check_one(item, articles, listings, rationale_max_chars)
         if isinstance(result, Drop):
             drops.append(Drop(index, result.symbol, result.reason))
         elif any(r.symbol == result.symbol for r in accepted):
@@ -140,7 +141,7 @@ def check(
     return Checked(tuple(accepted), tuple(drops), unusable=False, received=len(proposals))
 
 
-def _check_one(item, articles, us_symbols, rationale_max_chars) -> CheckedReport | Drop:
+def _check_one(item, articles, listings, rationale_max_chars) -> CheckedReport | Drop:
     if not isinstance(item, dict) or set(item) != set(_FIELDS):
         return Drop(0, None, MALFORMED_ANSWER)
     rationale = item["rationale"]
@@ -150,7 +151,7 @@ def _check_one(item, articles, us_symbols, rationale_max_chars) -> CheckedReport
     symbol = item["symbol"]
     if not is_plausible_ticker(symbol):
         return Drop(0, None, INVALID_SYMBOL)
-    if symbol not in us_symbols:
+    if symbol not in listings:
         return Drop(0, symbol, UNLISTED_SYMBOL)
 
     direction = item["direction"]
@@ -171,7 +172,7 @@ def _check_one(item, articles, us_symbols, rationale_max_chars) -> CheckedReport
     if any(i not in articles for i in ids):
         return Drop(0, symbol, UNKNOWN_CITATION)
     cited = [articles[i] for i in dict.fromkeys(ids)]
-    if not any(symbol in a.related for a in cited):
+    if not any(cites(a, symbol, listings[symbol]) for a in cited):
         return Drop(0, symbol, UNCITED_SYMBOL)
 
     return CheckedReport(
@@ -190,6 +191,51 @@ def _check_one(item, articles, us_symbols, rationale_max_chars) -> CheckedReport
             for a in cited
         ),
     )
+
+
+# --- relevance (spec Clarifications 2026-10-02, option 3) ---------------------------
+
+# Corporate words dropped from the end (and "THE" from the start) of a listing's name,
+# so "AMERICAN AIRLINES GROUP INC" is matched as "AMERICAN AIRLINES".
+_SUFFIXES = frozenset(
+    """INC INCORPORATED CORP CORPORATION CO COMPANY LTD LIMITED PLC LLC LP SA NV AG SE
+    HOLDINGS HOLDING GROUP CL CLASS A B C SHS ORD ADR DE NEW""".split()
+)
+MIN_NAME_CHARS = 4  # shorter names ("AT T", "GE") match too much ordinary text
+_EXCHANGES = r"(?:NASDAQ|NYSE(?:\s+AMERICAN)?|AMEX|CBOE)"
+
+
+def company_name(listing_name: str) -> str | None:
+    """The words to look for in an article, or None when too short to be safe."""
+    words = re.sub(r"[^A-Z0-9]+", " ", listing_name.upper()).split()
+    if words[:1] == ["THE"]:
+        words = words[1:]
+    while words and words[-1] in _SUFFIXES:
+        words.pop()
+    name = " ".join(words)
+    return name if len(name.replace(" ", "")) >= MIN_NAME_CHARS else None
+
+
+def cites(article: Article, symbol: str, listing_name: str) -> bool:
+    """Is this article about `symbol`? Tagged with it (or from its own feed), naming the
+    company in its headline or summary, or giving the ticker as $SYM, (SYM) or
+    EXCHANGE: SYM. An injected article can only push a company it names."""
+    if symbol in article.related:
+        return True
+    text = f"{article.title} {article.summary}"
+    ticker = re.escape(symbol)
+    forms = (
+        rf"\${ticker}\b",  # $AAPL
+        rf"\(\s*(?:{_EXCHANGES}\s*:\s*)?{ticker}\s*\)",  # (AAPL), (NASDAQ: AAPL)
+        rf"\b{_EXCHANGES}\s*:\s*{ticker}\b",  # NASDAQ: AAPL
+    )
+    if any(re.search(form, text) for form in forms):
+        return True
+    name = company_name(listing_name)
+    if name is None:
+        return False
+    words = " ".join(re.sub(r"[^A-Z0-9]+", " ", text.upper()).split())
+    return f" {name} " in f" {words} "
 
 
 def _size(value, direction: str) -> Decimal | None:

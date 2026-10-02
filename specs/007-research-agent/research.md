@@ -129,7 +129,7 @@ An answer that isn't a JSON object with exactly one key, `proposals`, holding a 
 | `invalid_size` | not a number, not finite, above 100, or below the floor: above 0 for a buy, at least 0 for a sell |
 | `no_citation` | `article_ids` empty or not a list of strings |
 | `unknown_citation` | any identifier not given to the model in this run |
-| `uncited_symbol` | none of the cited articles has the symbol in its `related` tags or came from that symbol's company-news feed (spec Clarifications, analyze S1) |
+| `uncited_symbol` | no cited article is about the company: none has the symbol in its `related` tags or came from its company-news feed, names the company (Finnhub's `description` from the symbol list, with trailing corporate words such as INC, CORP, GROUP, CL B dropped and a leading THE, matched as whole words, ignoring case; names under 4 letters are ignored), or gives the ticker as `$SYM`, `(SYM)`, `(EXCHANGE: SYM)` or `EXCHANGE: SYM` (spec Clarifications 2026-10-02, widening analyze S1) |
 | `duplicate_symbol` | a later proposal for a symbol already accepted in this answer |
 | `already_open` | a still-open Research report has the same symbol and direction (FR-009) |
 

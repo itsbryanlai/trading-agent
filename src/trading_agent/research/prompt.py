@@ -14,7 +14,7 @@ from datetime import date
 
 from trading_agent.research.selection import Article
 
-PROMPT_VERSION = 1
+PROMPT_VERSION = 2  # v2: articles may be cited for a company they name (2026-10-02)
 
 SYSTEM_PROMPT = """\
 You are the Research analyst of a paper-trading system for US-listed equities. You read \
@@ -35,8 +35,9 @@ Answer with a JSON object of exactly this form, and nothing else:
 "suggested_size_pct": ..., "rationale": ..., "article_ids": [...]}]}
 
 Rules for each proposal:
-- "symbol": a US ticker the cited news is about. Cite at least one article tagged with \
-that symbol in "related".
+- "symbol": the US ticker of a company the cited news is about. At least one cited \
+article must be about that company: tagged with the symbol in "related", or naming the \
+company or its ticker in its title or summary.
 - "direction": "buy" or "sell" only. If the news on a name is neutral or mixed, make no \
 proposal on it.
 - "conviction": an integer from 1 (weak) to 5 (strong). Conflicting news means a lower \

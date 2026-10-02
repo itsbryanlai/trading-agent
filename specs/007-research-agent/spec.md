@@ -19,6 +19,7 @@
 
 ### Session 2026-10-02 (after the first dry run)
 
+- Q: General news carries no ticker tags, so under the tag-only relevance rule it can never support a proposal. Widen the rule? → A: Yes (the owner chose this over skipping the model call when nothing is tagged). A cited article is about a symbol when it is tagged with it, comes from its company-news feed, names the company in its headline or summary (the company name from the US symbol list, corporate words like INC or CORP dropped, whole words, names under 4 characters ignored), or gives the ticker as `$SYM`, `(SYM)` or `EXCHANGE: SYM`. This replaces the tag-only rule below. Accepted trade-off: an injected article can push any listed company it names, not only one it's filed under; every other check still applies.
 - Q: Which QwenCloud key and endpoint does Research use? → A: The owner's **Token Plan** key (`sk-sp-…`), with the Token Plan endpoint. Pay-as-you-go and Token Plan keys each work only with their own endpoint, so the endpoint isn't in the source: it comes from `RESEARCH_QWEN_BASE_URL` (https only), required when the provider is Qwen. Switching to a pay-as-you-go key needs only a different key and base URL, no code change.
 
 ### Session 2026-10-01 (after `/speckit-analyze`)
@@ -76,7 +77,7 @@ The model reads text anyone can publish, so its answer is never trusted as is. B
 - **Shape:** the answer must match a fixed shape.
 - **Citations:** every citation must point to an article fetched in this run. The recorded title, link, publisher and time are copied from that article, never from the model's words.
 - **Symbols:** every symbol must be well-formed and appear in the day's list of US-listed symbols.
-- **Relevance:** at least one cited article must be tagged with the symbol, or come from that symbol's own company-news feed (Clarifications).
+- **Relevance:** at least one cited article must be about the company: tagged with the symbol (or from that symbol's own company-news feed), naming the company in its headline or summary, or giving the ticker as `$SYM`, `(SYM)` or `EXCHANGE: SYM` (Clarifications).
 - **Values:** direction, conviction and suggested size must be within the allowed values.
 
 A proposal that fails any check is dropped and the reason logged. If nothing valid is left, Research writes a single `no_action` report saying how many proposals were dropped and why.
@@ -194,7 +195,7 @@ Before enabling Research, or after changing its model or watchlist, the owner ca
   - **Conviction:** it is not a whole number from 1 to 5.
   - **Size:** it is not at most 100, or it is not greater than 0 (for a buy) or at least 0 (for a sell, where 0 means a full exit).
   - **Citations:** it cites no article, or any article not fetched in this run.
-  - **Relevance:** none of its cited articles is tagged with the symbol or comes from that symbol's company-news feed.
+  - **Relevance:** none of its cited articles is about the company: none is tagged with the symbol or from its company-news feed, names the company, or gives the ticker as `$SYM`, `(SYM)` or `EXCHANGE: SYM` (Clarifications, 2026-10-02).
 - **FR-008**: A written report's citations MUST be built from the fetched articles' own title, link, publisher and publication time, never from the model's text.
 - **FR-009**: Research MUST write at most one report per symbol per run. It MUST NOT write a report with the same symbol and direction as one of its own still-open reports.
 - **FR-010**: The rationale MUST be capped at a configured length.

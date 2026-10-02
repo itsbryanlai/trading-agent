@@ -50,15 +50,16 @@ class FinnhubNews:
         params = {"symbol": symbol, "from": start.isoformat(), "to": end.isoformat()}
         return _articles(self._get("/company-news", params, per_symbol=True))
 
-    def us_symbols(self) -> frozenset[str]:
+    def us_symbols(self) -> dict[str, str]:
+        """Symbol → company name (Finnhub's `description`), used by the relevance rule."""
         body = self._get("/stock/symbol", {"exchange": "US"}, per_symbol=False)
         if not isinstance(body, list):
             raise ProviderUnavailable("/stock/symbol: unexpected response shape")
-        return frozenset(
-            item["symbol"]
+        return {
+            item["symbol"]: _text(item.get("description"))
             for item in body
             if isinstance(item, dict) and isinstance(item.get("symbol"), str)
-        )
+        }
 
     # --- HTTP --------------------------------------------------------------------
 

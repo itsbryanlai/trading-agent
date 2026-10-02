@@ -49,7 +49,9 @@ class NewsSource(Protocol):
 
     def company_news(self, symbol: str, start: date, end: date) -> list[RawArticle]: ...
 
-    def us_symbols(self) -> frozenset[str]: ...
+    def us_symbols(self) -> dict[str, str]:
+        """US-listed symbols, each with its company name ("" when unknown)."""
+        ...
 
 
 # --- model -----------------------------------------------------------------------

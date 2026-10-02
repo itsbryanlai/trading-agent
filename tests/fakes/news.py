@@ -12,12 +12,16 @@ class FakeNews:
         self,
         general: list[RawArticle] | None = None,
         by_symbol: dict[str, list[RawArticle]] | None = None,
-        symbols: frozenset[str] = frozenset({"AAPL", "MSFT", "NVDA"}),
+        symbols: dict[str, str] | None = None,
         errors: dict[str, Exception] | None = None,
     ) -> None:
         self.general = general or []
         self.by_symbol = by_symbol or {}
-        self.symbols = symbols
+        self.symbols = (
+            symbols
+            if symbols is not None
+            else {"AAPL": "APPLE INC", "MSFT": "MICROSOFT CORP", "NVDA": "NVIDIA CORP"}
+        )
         # Keys: "general", "symbols", or a ticker for its company news.
         self.errors = errors or {}
         self.calls: list[tuple] = []
@@ -36,7 +40,7 @@ class FakeNews:
         self._maybe_raise(symbol)
         return list(self.by_symbol.get(symbol, []))
 
-    def us_symbols(self) -> frozenset[str]:
+    def us_symbols(self) -> dict[str, str]:
         self.calls.append(("symbols",))
         self._maybe_raise("symbols")
-        return self.symbols
+        return dict(self.symbols)

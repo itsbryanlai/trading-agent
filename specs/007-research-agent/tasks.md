@@ -544,3 +544,18 @@ text by writing it back, never with git.
   up to 38 symbols.
 - **Before deploying,** confirm the Railway migration admin owns `reports`
   (migration 0011). This was already on the list for 004.
+
+## Changes after the first real dry runs (2026-10-02/03)
+
+- **Qwen's endpoint comes from `RESEARCH_QWEN_BASE_URL`** (https only, required for
+  Qwen), not the source: the owner uses a Token Plan key, whose endpoint differs from
+  pay-as-you-go. The orchestrator passes the new variable (five `RESEARCH_*` names).
+- **New logs:** the news line counts articles tagged with a ticker, and model failures
+  log the provider's HTTP status (a number carried on the error, never its message).
+- **The relevance rule is wider** (spec Clarifications 2026-10-02). The dry run showed
+  0 of 19 general-news articles carry ticker tags, so under the tag-only rule general
+  news could never support a proposal. A cited article now also counts when it names
+  the company (from the symbol list's company names) or gives the ticker as `$SYM`,
+  `(SYM)` or `EXCHANGE: SYM`. `NewsSource.us_symbols()` returns symbol → company
+  name. Prompt v2 tells the model so. New tests: `tests/unit/research/test_relevance.py`
+  (all mutation-checked), and an injection case showing the accepted trade-off.
