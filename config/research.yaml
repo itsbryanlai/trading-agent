@@ -28,5 +28,5 @@ model:
   provider: qwen                 # qwen | anthropic
   name: qwen3.7-plus             # e.g. claude-sonnet-5-5 with provider: anthropic
   max_output_tokens: 8000
-  timeout_seconds: 180            # with the run budget, allows a watchlist of up to 33 (research R11)
+  timeout_seconds: 180            # with the run budget, allows a watchlist of up to 31 (research R11)
   anthropic_effort: medium       # low | medium | high (Anthropic only)
