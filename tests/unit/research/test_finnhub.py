@@ -16,13 +16,14 @@ from trading_agent.reference.provider import KeyRejected as RefKeyRejected
 from trading_agent.reference.provider import NotPermitted as RefNotPermitted
 from trading_agent.reference.provider import ProviderUnavailable as RefUnavailable
 from trading_agent.reference.provider import RateLimited as RefRateLimited
-from trading_agent.research.finnhub import BASE_URL, FinnhubNews
+from trading_agent.research.finnhub import BASE_URL, SYMBOL_LIST_MICS, FinnhubNews
 from trading_agent.research.ports import (
     KeyRejected,
     NotPermitted,
     ProviderUnavailable,
     RateLimited,
 )
+from trading_agent.risk.rules import US_LISTED_MICS
 
 KEY = "test-key-not-real"
 T = int(datetime(2026, 10, 1, 11, 0, tzinfo=UTC).timestamp())
@@ -96,18 +97,60 @@ def test_company_news_request_uses_the_dates():
     }
 
 
-def test_symbol_list():
-    opener = Opener(
-        [
-            {"symbol": "AAPL", "description": "APPLE INC"},
-            {"symbol": "BRK.B", "description": None},
-            {"nope": 1},
-            "x",
-        ]
+class ByMic(Opener):
+    """Answers each /stock/symbol request from its `mic`; a mic mapped to an exception raises it."""
+
+    def __init__(self, by_mic):
+        super().__init__()
+        self.by_mic = by_mic
+
+    def __call__(self, request, timeout):
+        self.requests.append((request, timeout))
+        answer = self.by_mic[parse_qs(urlsplit(request.full_url).query)["mic"][0]]
+        if isinstance(answer, Exception):
+            raise answer
+        return Response(json.dumps(answer).encode())
+
+
+def test_symbol_list_is_one_request_per_exchange_the_gate_allows():
+    # Finnhub redirects the all-US request (exchange=US alone) to its home page, so the
+    # list is asked for per exchange and merged.
+    opener = ByMic(
+        {
+            "XNAS": [
+                {"symbol": "AAPL", "description": "APPLE INC"},
+                {"nope": 1},
+                "x",
+            ],
+            "XNYS": [{"symbol": "BRK.B", "description": None}],
+            "XASE": [],
+        }
     )
     assert FinnhubNews(KEY, opener=opener).us_symbols() == {"AAPL": "APPLE INC", "BRK.B": ""}
-    parts = urlsplit(opener.requests[0][0].full_url)
-    assert parts.path == "/api/v1/stock/symbol" and parse_qs(parts.query) == {"exchange": ["US"]}
+    queries = [parse_qs(urlsplit(r.full_url).query) for r, _ in opener.requests]
+    assert queries == [{"exchange": ["US"], "mic": [mic]} for mic in SYMBOL_LIST_MICS]
+    assert {urlsplit(r.full_url).path for r, _ in opener.requests} == {"/api/v1/stock/symbol"}
+    assert {t for _, t in opener.requests} == {10}
+
+
+def test_the_exchanges_asked_for_are_the_ones_the_gate_allows():
+    # Research can't import the gate's list (test_import_guard), so this keeps them equal.
+    assert set(SYMBOL_LIST_MICS) == US_LISTED_MICS and len(SYMBOL_LIST_MICS) == 3
+
+
+@pytest.mark.parametrize("failing", SYMBOL_LIST_MICS)
+def test_one_exchange_failing_fails_the_whole_list(failing):
+    # A partial list would call real symbols unlisted, so no partial list is returned.
+    answers = {mic: [{"symbol": f"S{mic}", "description": "X"}] for mic in SYMBOL_LIST_MICS}
+    answers[failing] = http_error(500)
+    with pytest.raises(ProviderUnavailable):
+        FinnhubNews(KEY, opener=ByMic(answers)).us_symbols()
+
+
+def test_a_redirect_is_unavailable_not_followed():
+    # What Finnhub did to the all-US request: HTTP 302 to "/".
+    with pytest.raises(ProviderUnavailable):
+        FinnhubNews(KEY, opener=Opener(error=http_error(302))).us_symbols()
 
 
 @pytest.mark.parametrize(
