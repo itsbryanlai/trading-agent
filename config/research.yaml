@@ -12,7 +12,7 @@
 # model.name: claude-sonnet-5-5, and set RESEARCH_ANTHROPIC_API_KEY.
 
 # Symbols whose company news is read every run. The owner fills this in.
-watchlist: []
+watchlist: [AAPL, MSFT, NVDA, GOOGL, AMZN, META, TSLA, JPM, XOM, UNH, JNJ, WMT]
 
 general_news_max_articles: 20
 articles_per_symbol: 5
