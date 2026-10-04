@@ -26,7 +26,7 @@ These are the decisions behind [plan.md](plan.md), numbered P1–P16 so tasks, c
 - `reference` is a layer below the PM, so importing it is allowed. Research (007 R3) duplicated its own news adapter because it needed endpoints the reference port doesn't have; the PM needs only `/quote`, which the port already has. Nothing in `reference` changes.
 - The adapter already keeps the key in a header, never follows a redirect, has a 10-second timeout, maps 401 to `KeyRejected`, a 403 on one symbol to `NotPermitted`, 429 to `RateLimited`, and everything else to `ProviderUnavailable`, and parses Finnhub's `t` into an aware time (feature 004 H1).
 
-**Pacing and deadline**: calls are spaced at `60 / finnhub_calls_per_minute` seconds (default 30 a minute, as Research and the reference job, since the key may share their account). The quote phase stops at `quote_phase_seconds` (default 120) from its start; unfetched symbols count as missing. Symbols under consideration are quoted first, newest report first, then held symbols with no report.
+**Pacing and deadline**: calls are spaced at `60 / finnhub_calls_per_minute` seconds (default 30 a minute, as Research and the reference job, since the key may share their account). The quote phase stops at `quote_phase_seconds` (default 90, room for about 45 calls) from its start; unfetched symbols count as missing. Symbols under consideration are quoted first, newest report first, then held symbols with no report.
 
 **Failures**:
 - **`KeyRejected`** anywhere: the run stops and fails as `quote_key_rejected` (exit 1). A broken key must never look like a quiet day.
@@ -40,7 +40,9 @@ These are the decisions behind [plan.md](plan.md), numbered P1–P16 so tasks, c
 - `timestamp` is set, is at or after today's open (`calendar.open_time(today)`), and is no later than now plus 60 seconds (clock skew);
 - `now − timestamp ≤ quote_max_age_minutes` (default **5**).
 
-**Why 5 minutes, not the spec's assumed 15**: the gate rejects a decision whose quote is more than 15 minutes old when it evaluates it (P12). A quote's age at the gate is its age when fetched, plus the rest of the run, plus up to one gate pass. The config loader enforces `quote_max_age_minutes × 60 + worst_case + 60 ≤ 900` (P11), so a decision the PM writes is never stale at the gate unless the gate's loop itself is late. At the defaults that's 300 + 480 + 60 = 840 s. Every symbol the gate will buy clears a $10M average daily dollar-volume floor, so a 5-minute-old last trade is already unusual.
+**Why 5 minutes**: the gate rejects a decision whose quote is more than 15 minutes old when it evaluates it (P12). A quote's age at the gate is its age when fetched, plus the rest of the run, plus up to one gate pass. The config loader enforces `quote_max_age_minutes × 60 + worst_case + 120 ≤ 900` (P11), so a decision the PM writes is never stale at the gate unless the gate's loop itself is late. At the defaults that's 300 + 450 + 120 = 870 s.
+
+**Each quote is judged at its own fetch time** (analyze F1): the service's injected clock is read when each quote arrives, and that time is the `now` for freshness. Judging every quote against the run's start would make a quote traded after the start look like it came from the future once the phase passed 60 seconds. Every symbol the gate will buy clears a $10M average daily dollar-volume floor, so a 5-minute-old last trade is already unusual.
 
 ## P5. A shared `trading_agent.llm` package for the model clients
 
@@ -52,7 +54,7 @@ These are the decisions behind [plan.md](plan.md), numbered P1–P16 so tasks, c
 | `research/qwen.py` | `llm/qwen.py`, with the schema name as a constructor argument (`research_answer`, `pm_answer`) |
 | `research/anthropic_client.py` | `llm/anthropic_client.py`, taking an `llm.ModelSettings` instead of Research's `ModelConfig` |
 | the model section of `research/config.py` (`provider`, `name`, `max_output_tokens`, `timeout_seconds`, `anthropic_effort`, the provider-key names) | `llm/settings.py`: `parse_model_settings(section, *, timeout_bounds)` and `provider_variables(prefix, provider)` |
-| the `https://` check on `RESEARCH_QWEN_BASE_URL` in `research/__main__.py` | `llm/settings.py`: `require_qwen_base_url(value, variable_name)` |
+| the `https://` check on `RESEARCH_QWEN_BASE_URL` in `research/__main__.py` | `llm/settings.py`: `require_https_base_url(value, variable)` |
 
 `pyproject.toml`'s import-linter layers become:
 
@@ -181,7 +183,7 @@ Strict like `research.yaml`: every key required, unknown keys rejected, exact ty
 |---|---|---|
 | `quote_max_age_minutes` | 5 | 1–10 |
 | `finnhub_calls_per_minute` | 30 | 1–300 |
-| `quote_phase_seconds` | 120 | 10–300 |
+| `quote_phase_seconds` | 90 | 10–300 |
 | `journal_entries` | 5 | 0–20 |
 | `journal_summary_max_chars` | 2000 | 200–10000 |
 | `rationale_max_chars` | 2000 | 200–10000 |
@@ -198,10 +200,10 @@ Strict like `research.yaml`: every key required, unknown keys rejected, exact ty
 ```text
 worst_case = quote_phase_seconds + 2 × timeout_seconds + 60 (slack)
 worst_case ≤ RUN_BUDGET_SECONDS (600) − RUN_MARGIN_SECONDS (60)          # the orchestrator's timeout
-quote_max_age_minutes × 60 + worst_case + GATE_PASS_SECONDS (60) ≤ 900    # the gate's staleness limit (P12)
+quote_max_age_minutes × 60 + worst_case + 2 × PASS_SECONDS (120) ≤ 900    # the gate's staleness limit (P12)
 ```
 
-The second bounds a quote's age at the gate: at most `quote_max_age` old when fetched (at the earliest, the start of the quote phase), then aged by the rest of the run (at most `worst_case`), then by one gate pass. Tests pin `RUN_BUDGET_SECONDS` to `config/schedule.yaml`'s `portfolio_manager.timeout_minutes × 60`, 900 to the gate's `MAX_DECISION_QUOTE_AGE`, and 60 to the gate loop's `PASS_SECONDS`. The shipped defaults: worst case 120 + 300 + 60 = 480 s ≤ 540; and 300 + 480 + 60 = 840 s ≤ 900.
+The second bounds a quote's age at the gate: at most `quote_max_age` old when fetched (at the earliest, the start of the quote phase), then aged by the rest of the run (at most `worst_case`), then by the wait for the gate. The gate's loop sleeps `PASS_SECONDS` after each pass, so its interval is 60 seconds plus the pass's own time; the check allows two passes' worth (analyze F2). Tests pin `RUN_BUDGET_SECONDS` to `config/schedule.yaml`'s `portfolio_manager.timeout_minutes × 60`, 900 to the gate's `MAX_DECISION_QUOTE_AGE`, and 120 to twice the gate loop's `PASS_SECONDS`. The shipped defaults: worst case 90 + 300 + 60 = 450 s ≤ 540; and 300 + 450 + 120 = 870 s ≤ 900.
 
 **Provider variables** follow from the provider: `PORTFOLIO_MANAGER_DASHSCOPE_API_KEY` and `PORTFOLIO_MANAGER_QWEN_BASE_URL` (https only), or `PORTFOLIO_MANAGER_ANTHROPIC_API_KEY`. Only that one is required (FR-021).
 
@@ -210,8 +212,8 @@ The second bounds a quote's age at the gate: at most `quote_max_age` old when fe
 **Decision** (spec Clarifications Q1, Q5; ADR 0019):
 
 1. **Migration 0012** adds `decisions.quote_time timestamptz NOT NULL`: the trade time of the quote the PM recorded (FR-013). No grant changes: the PM's table-level `INSERT` covers it.
-2. **`risk.model.DecisionRequest`** gains `quote_time`. **`risk.gate`** gains `MAX_DECISION_QUOTE_AGE = timedelta(minutes=15)`, a code constant beside `MAX_TRIGGER_AGE` (ADR 0014), and a rule: a decision whose `now − quote_time > MAX_DECISION_QUOTE_AGE` is rejected as `decision_stale`. Precedence: right after `market_closed`, for buys and sell decisions alike; stop-loss triggers are unaffected.
-3. **`risk.runner.evaluate_pending_decisions(conn, now)`**: every `decisions` row from today's New York trading day, `direction <> 'hold'`, with no verdict, ordered by `generated_at, id`, each through the existing `evaluate_decision` (idempotent, advisory-locked). Errors are isolated per decision, a lost connection propagates, and an invalid risk config stops the pass, all exactly as `evaluate_pending_triggers` does. A decision from an earlier day is logged and left alone.
+2. **`risk.model.DecisionRequest`** gains `quote_time`. **`risk.gate`** gains `MAX_DECISION_QUOTE_AGE = timedelta(minutes=15)`, a code constant beside `MAX_TRIGGER_AGE` (ADR 0014), and a rule: a decision whose `now − quote_time > MAX_DECISION_QUOTE_AGE` is rejected as `decision_stale`. Precedence: the first rejection after `market_closed`, for buys and sell decisions alike; stop-loss triggers are unaffected. It is checked **after** the core computes `crossed` (whether today's equity is at or below the loss line), and returns `record_halt=crossed`, so a stale decision still records the daily-loss halt, which the 002 contract requires on every evaluation (analyze G1).
+3. **`risk.runner.evaluate_pending_decisions(conn, now)`**: every `decisions` row from today's New York trading day (filtered in SQL), `direction <> 'hold'`, with no verdict, ordered by `generated_at, id`, each through the existing `evaluate_decision` (idempotent, advisory-locked). Errors are isolated per decision, a lost connection propagates, and an invalid risk config stops the pass, all exactly as `evaluate_pending_triggers` does. A decision from an earlier day is never picked, so it's left alone without a log line every pass (analyze T3).
 4. **`risk.__main__`**: each 60-second pass evaluates pending triggers, then pending decisions. Triggers first, because they are exits.
 
 **Why a constant, not a `config/risk.yaml` key**: like `MAX_TRIGGER_AGE`, it is a rule about whether an observation is still usable, not a risk limit the owner tunes. Keeping it out of `risk.yaml` means no schema change to the reviewed limits file, and the PM's config cross-check pins it by test. If the owner prefers a `risk.yaml` key, that's a reviewed change to the limits file (plan.md, flagged item 2).

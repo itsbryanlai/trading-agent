@@ -37,7 +37,7 @@ The Risk Gate's own loop then evaluates each buy or sell decision within a minut
 
 **Project Type**: an LLM agent in the existing `trading_agent` package, one run per process; plus a change to a deterministic service.
 
-**Performance Goals**: fits the orchestrator's 10-minute PM timeout by construction (P11: the shipped defaults' worst case is 8 minutes). A decision has a verdict within about 60 seconds of being written (SC-006).
+**Performance Goals**: fits the orchestrator's 10-minute PM timeout by construction (P11: the shipped defaults' worst case is 7.5 minutes). A decision has a verdict within about 60 seconds of being written (SC-006).
 
 **Constraints**:
 - **No broker credential, no `config/risk.yaml`, no verdicts or orders read.** The only writes are its own decisions and links.
@@ -132,7 +132,7 @@ tests/
     └── storage/               # 0012; grants unchanged; helpers gain quote_time
 
 docs/specs/portfolio-manager-agent.md, docs/specs/data-model.md,
-docs/architecture/overview.md, docs/adr/README.md, docs/policy/versioning.md,
+docs/architecture/overview.md, docs/policy/versioning.md,
 specs/002-risk-gate/contracts/{gate-interface,rejection-rules}.md      # FR-026, ADR 0019
 .env.example                                                            # PORTFOLIO_MANAGER_*
 ```
@@ -152,7 +152,7 @@ specs/002-risk-gate/contracts/{gate-interface,rejection-rules}.md      # FR-026,
 
    **ADR 0019 accepted** by the owner on 2026-10-04, with the recommendations on items 1–4.
 3. **Two spec refinements found while planning**, made in the spec alongside this plan:
-   - **Quote freshness is 5 minutes, not 15** (P4): the gate's 15-minute rule counts from the quote's time, and the PM's run takes up to 8 minutes, so the PM must fetch fresher quotes for its decisions to arrive in time. The config loader enforces the arithmetic.
+   - **Quote freshness is 5 minutes, not 15** (P4): the gate's 15-minute rule counts from the quote's time, and the PM's run takes up to 7.5 minutes, so the PM must fetch fresher quotes for its decisions to arrive in time. The config loader enforces the arithmetic.
    - **A run where no symbol gets a fresh quote fails** (exit 1, `no_fresh_quotes`) instead of passing as quiet (P3). A rejected market-data key fails too. The spec's User Story 4 said such a run "succeeds"; that would hide a broken key or feed.
 4. **"Everything dropped" exits 0.** The model answered and code refused every proposal; that's the checks working, logged reason by reason. If you'd rather see it as a failed run in the orchestrator's records, it's a one-line change.
 5. **Prompts reach Alibaba's servers** with Qwen as the provider, carrying the paper account's positions, cash and equity. You chose this knowingly (Clarifications); noted again because it's the first agent whose prompt holds portfolio data.

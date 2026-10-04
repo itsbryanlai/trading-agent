@@ -36,7 +36,7 @@ scripts/lint.sh
 
 ## 4. Owner: a try-out run (no writes)
 
-During market hours, with a database that holds some reports (for example after a Research run), set these in your own Terminal tab: `PORTFOLIO_MANAGER_DATABASE_URL`, `PORTFOLIO_MANAGER_FINNHUB_API_KEY`, `PORTFOLIO_MANAGER_DASHSCOPE_API_KEY` and `PORTFOLIO_MANAGER_QWEN_BASE_URL` (the endpoint matching the key, as in [007's quickstart](../007-research-agent/quickstart.md#4-owner-a-try-out-run-no-writes)). Then run:
+During market hours (off-session there's no snapshot for today and no fresh quote, so the try-out reports that), with a database that holds some reports (for example after a Research run), set these in your own Terminal tab: `PORTFOLIO_MANAGER_DATABASE_URL`, `PORTFOLIO_MANAGER_FINNHUB_API_KEY`, `PORTFOLIO_MANAGER_DASHSCOPE_API_KEY` and `PORTFOLIO_MANAGER_QWEN_BASE_URL` (the endpoint matching the key, as in [007's quickstart](../007-research-agent/quickstart.md#4-owner-a-try-out-run-no-writes)). Then run:
 
 ```bash
 .venv/bin/python -m trading_agent.portfolio_manager --dry-run

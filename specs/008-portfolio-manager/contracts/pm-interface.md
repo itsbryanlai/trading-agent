@@ -5,7 +5,7 @@
 | Command | Does |
 |---|---|
 | `python -m trading_agent.portfolio_manager` | One run: read, quote, call the model, check, write. Started by the orchestrator (morning session and event-driven runs, [ADR 0011](../../../docs/adr/0011-event-driven-portfolio-manager-runs.md)), or by hand. |
-| `python -m trading_agent.portfolio_manager --dry-run` | Everything except the write, and without the market-hours check. Prints JSON lines: each symbol considered (`candidate`: symbol, quote, quote time, current weight, report ids), each skipped symbol (`skipped`: symbol, reason), each would-be row (`would_write`), each drop (`dropped`) and a `summary` (token use, input size). Needs the database (read only). |
+| `python -m trading_agent.portfolio_manager --dry-run` | Everything except the write, and without the market-hours check. Useful only during a session: off-session there is no snapshot for today and no quote is fresh, so it reports that failure (analyze L4). Prints JSON lines: each symbol considered (`candidate`: symbol, quote, quote time, current weight, report ids), each skipped symbol (`skipped`: symbol, reason), each would-be row (`would_write`), each drop (`dropped`) and a `summary` (token use, input size). Needs the database (read only). |
 
 Any other argument means exit 2.
 
@@ -38,7 +38,7 @@ Every key is required, unknown keys are rejected, and any error means exit 2. Bo
 ```yaml
 quote_max_age_minutes: 5          # a quote older than this when fetched is stale
 finnhub_calls_per_minute: 30
-quote_phase_seconds: 120          # stop fetching quotes after this long
+quote_phase_seconds: 90           # stop fetching quotes after this long
 journal_entries: 5                # recent journal days shown to the model
 journal_summary_max_chars: 2000
 rationale_max_chars: 2000         # each report's rationale, cut before the model sees it

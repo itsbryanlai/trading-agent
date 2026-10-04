@@ -13,7 +13,7 @@ Every change here is order logic, flagged before it's applied (CLAUDE.md), and r
 ## `runner.evaluate_pending_decisions(conn, now, config_path=…) -> int`
 
 - **Picks**: `decisions` whose New York date of `generated_at` is `now`'s trading day, `direction <> 'hold'`, and no `risk_verdicts` row; ordered by `generated_at, id`.
-- **Earlier days**: logged as a warning and left alone, never evaluated.
+- **Earlier days**: never picked (the query filters to today), so never evaluated and never logged each pass.
 - **Isolation**: one decision's unexpected error is logged and the rest still run. `psycopg.OperationalError` propagates (the loop exits for a restart). `RiskConfigError` stops the pass, logged once.
 - **Returns** how many were evaluated. Logs `risk gate: decision <id> approved` or `… rejected (<rule>)`.
 
@@ -27,7 +27,7 @@ Each pass, every `PASS_SECONDS` (60): pending stop-loss triggers first, then pen
 |---|---|---|
 | 1a | `decision_stale` | *decision only, buy or sell*: `now − quote_time > MAX_DECISION_QUOTE_AGE` (15 minutes, a code constant beside `MAX_TRIGGER_AGE`). The PM's next run decides again on a fresh quote. |
 
-- **Precedence**: right after `market_closed`, before every other rule, for buys and sell decisions alike.
+- **Precedence**: the first rejection after `market_closed`, before every other rule, for buys and sell decisions alike. It's checked after the core computes whether the loss line is crossed, and returns `record_halt` with that result, so a stale decision still records the daily-loss halt (the 002 contract: "on every evaluation").
 - **Stop-loss triggers**: unaffected; they keep `stop_loss_trigger_stale`.
 - **Exits**: the "Exits" section's list of what can reject an exit gains `decision_stale`, for sell decisions only.
 
