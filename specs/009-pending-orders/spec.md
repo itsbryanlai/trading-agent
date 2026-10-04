@@ -13,6 +13,7 @@
 ### Session 2026-10-05
 
 - Q: While an order on a symbol is in flight, should the gate size a new decision from the settled holdings, or reject any new decision on that symbol until the earlier approval ends? → A: Size from the settled holdings and order only the difference. The target stays exact, and a changed decision, including a PM exit, never waits behind an unfilled order.
+- Q: When the gate checks the cash reserve for a new buy, should it subtract the unsettled cost of in-flight buys on every symbol, as Execution does? → A: Yes. In-flight buys on every symbol reduce the cash the gate sees, valued at each approval's own price ceiling. It only tightens buys; exits are unaffected.
 
 ## User Scenarios & Testing *(mandatory)*
 
@@ -72,7 +73,8 @@ Counting in-flight orders never stops a position from being exited and never wea
 
 1. **Given** a breached stop-loss on a held position with an in-flight buy of more shares, **When** the trigger is evaluated, **Then** the exit is approved for the shares held, exactly as today.
 2. **Given** the daily-loss line crossed and an in-flight buy, **When** any decision is evaluated, **Then** the halt is recorded and buys are rejected, exactly as today.
-3. **Given** in-flight orders on other symbols, **When** a decision on AAPL is evaluated, **Then** its verdict depends only on AAPL's own in-flight orders.
+3. **Given** in-flight sells on other symbols, **When** a decision on AAPL is evaluated, **Then** its verdict is the same as with none. In-flight buys on other symbols affect only a buy's cash reserve check (FR-001a).
+4. **Given** $100,000 equity, $25,000 cash, the 20% reserve and an in-flight MSFT buy costing $4,000 at its ceiling, **When** a decision buys AAPL, **Then** the gate trims or rejects it on the cash reserve as if cash were $21,000.
 
 ---
 
@@ -89,7 +91,8 @@ Counting in-flight orders never stops a position from being exited and never wea
 
 ### Functional Requirements
 
-- **FR-001**: When evaluating a buy or sell decision, the gate MUST account for every in-flight approval on the same symbol from the same trading day, from decisions and stop-loss triggers alike.
+- **FR-001**: When evaluating a buy or sell decision, the gate MUST account for every in-flight approval on the same symbol from the same trading day, from decisions and stop-loss triggers alike: the target and the position ceiling are measured against the settled holdings.
+- **FR-001a**: When evaluating a buy, the gate's cash reserve check MUST subtract the unsettled cost of in-flight buys on every symbol from the same trading day, each valued at its approval's price ceiling, as Execution's own check does (Clarifications). This only tightens buys.
 - **FR-002**: Re-deciding a target that the settled holdings already meet MUST be rejected as `target_already_met`, so it produces no order and uses no slot of the daily order cap.
 - **FR-003**: A decision whose target differs from the settled holdings MUST be sized from the settled holdings, so it orders only the difference: a buy from the settled holdings up to the target, a sell from the settled holdings down to it. No new rule blocks a decision because an earlier order is in flight (Clarifications).
 - **FR-004**: A stop-loss exit MUST be evaluated exactly as today. No in-flight order may block, delay or shrink it.
@@ -111,6 +114,7 @@ Counting in-flight orders never stops a position from being exited and never wea
 ### Measurable Outcomes
 
 - **SC-001**: Across the test suite, deciding the same target any number of times while an order is in flight produces exactly one approved order.
+- **SC-002a**: No approved buy, together with every in-flight buy, would take cash below the reserve at the approvals' price ceilings.
 - **SC-002**: No approved sell, together with the in-flight sells on the same symbol, exceeds the shares held.
 - **SC-003**: Every existing Risk Gate test whose scenario has nothing in flight gives the same verdict as before.
 - **SC-004**: Every stop-loss exit test gives the same verdict whether or not orders are in flight.
