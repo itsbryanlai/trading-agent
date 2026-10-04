@@ -64,5 +64,5 @@ layers = [
     "execution | orchestrator | research | portfolio_manager",
     "reference",
     "risk",
-    "storage",
+    "llm | storage",
 ]

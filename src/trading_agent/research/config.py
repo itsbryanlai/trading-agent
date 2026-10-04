@@ -13,6 +13,7 @@ from pathlib import Path
 
 import yaml
 
+from trading_agent.llm.settings import ModelSettings
 from trading_agent.reference.symbols import is_plausible_ticker
 
 DEFAULT_CONFIG_PATH = Path(__file__).resolve().parents[3] / "config" / "research.yaml"
@@ -58,13 +59,8 @@ class ResearchConfigError(Exception):
     pass
 
 
-@dataclass(frozen=True)
-class ModelConfig:
-    provider: str
-    name: str
-    max_output_tokens: int
-    timeout_seconds: int
-    anthropic_effort: str
+# T007 removes this alias.
+ModelConfig = ModelSettings
 
 
 @dataclass(frozen=True)

@@ -59,7 +59,7 @@ description: "Task list for the Portfolio Manager agent (feature 008)"
 
 ### The `trading_agent.llm` move (research P5): refactor only, no behaviour change
 
-- [ ] T004 Create `src/trading_agent/llm/` with the port and the settings type, no adapter yet:
+- [x] T004 Create `src/trading_agent/llm/` with the port and the settings type, no adapter yet:
   - `llm/__init__.py` (docstring: the model port and adapters shared by the LLM agents, ADR 0018; imports only `trading_agent.no_redirect` and `anthropic`);
   - `llm/ports.py`, holding `ModelError` (with `status`), `ModelKeyRejected`, `ModelRejected`, `ModelUnavailable`, `ModelRefused`, `ModelTruncated`, `ModelReply` and `ModelClient`, moved verbatim out of `research/ports.py`;
   - `research/ports.py` keeps only the news port and, until T006, re-imports the moved model names from `trading_agent.llm.ports` with a comment `# moved to trading_agent.llm (feature 008, research P5); removed in T006`;
