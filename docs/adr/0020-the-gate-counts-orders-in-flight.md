@@ -2,7 +2,7 @@
 
 Status: accepted
 
-Accepted by the owner on 2026-10-05, with the plan for `specs/009-pending-orders`.
+Accepted by the owner on 2026-10-05, with the plan for `specs/009-pending-orders`. Amended before merge the same day, with the owner's explicit OK, after `/speckit-analyze` (findings F1–F3): the position ceiling never counts in-flight sells, in-flight buys are valued at their ceiling when sizing more, and the brief double count of a fill is recorded.
 
 ## Context
 
@@ -15,9 +15,10 @@ The gate's database role can read its own verdicts, but not `orders` or `executi
 ## Decision
 
 1. **A narrow view gives the gate what's in flight.** Migration 0013 adds `in_flight_orders`: one row per approval from a trading day that hasn't ended, with only its trading day, symbol, side, unsettled quantity and (for buys) price ceiling. An approval has ended once its order is filled, rejected, canceled or expired, or Execution refused it. The view runs with its owner's rights, like `reference_candidate_symbols`, and `ta_risk_gate` is granted `SELECT` on it alone. No grant on `orders` or `execution_refusals`, and no write.
-2. **Decisions are sized from settled holdings**: shares held, plus today's in-flight buys, minus today's in-flight sells, on the same symbol. Re-deciding a met target is `target_already_met`; a changed target orders only the difference. A sell is also capped at the shares held less those already being sold, so it can only ever be smaller than today's rule gives.
-3. **A buy's cash reserve check subtracts every in-flight buy's unsettled cost**, on any symbol, each at its own price ceiling, as Execution's check does. This only tightens buys.
-4. **Stop-loss exits, the daily-loss breaker, the pause, the order cap and the universe rules are unchanged.** None reads an in-flight number, and no limit in `config/risk.yaml` changes.
+2. **Decisions are sized from settled holdings**: shares held, plus today's in-flight buys, minus today's in-flight sells, on the same symbol, with in-flight buys valued at their own price ceiling. Re-deciding a met target is not approved; a changed target orders only the difference. A sell is also capped at the shares held less those already being sold, so it can only ever be smaller than today's rule gives.
+3. **The position ceiling counts shares held plus in-flight buys, and never subtracts in-flight sells**: a sell that might not fill can't make room, exactly as in Execution's check.
+4. **A buy's cash reserve check subtracts every in-flight buy's unsettled cost**, on any symbol, each at its own price ceiling, at least as strict as Execution's check. This only tightens buys.
+5. **Stop-loss exits, the daily-loss breaker, the pause, the order cap and the universe rules are unchanged.** None reads an in-flight number, and no limit in `config/risk.yaml` changes.
 
 ## Alternatives considered
 
@@ -31,4 +32,5 @@ The gate's database role can read its own verdicts, but not `orders` or `executi
 - **A target weight means what it says while orders are working.** Re-running the PM is harmless again, as [0011](0011-event-driven-portfolio-manager-runs.md) intended.
 - **A sell can't anticipate an in-flight buy.** With 50 held and 24 being bought, a decision to exit sells 50; once the buy fills, the PM's next run decides again on 24 held. Canceling in-flight orders is out of scope.
 - **The gate's verdicts match Execution's checks more closely**, so fewer approvals end in a refusal.
-- **The gate depends on Execution keeping `orders` current.** If Execution stopped updating it, an order that has filled would look in flight, which makes the gate stricter, never looser.
+- **The gate depends on Execution keeping `orders` current.** If Execution stopped updating it, a filled buy would look in flight, which makes buys stricter; a filled sell would look in flight, which shrinks later PM sells on that symbol. Neither loosens the position ceiling or the cash reserve.
+- **A fill can be counted twice for a moment** when Execution records it in the holdings before the order. For that moment a buy is sized smaller and a PM sell can be shrunk; it corrects itself on Execution's next tick. Hard limits and stop-loss exits are unaffected.
