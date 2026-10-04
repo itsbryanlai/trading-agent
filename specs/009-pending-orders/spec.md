@@ -15,6 +15,7 @@
 - Q: While an order on a symbol is in flight, should the gate size a new decision from the settled holdings, or reject any new decision on that symbol until the earlier approval ends? → A: Size from the settled holdings and order only the difference. The target stays exact, and a changed decision, including a PM exit, never waits behind an unfilled order.
 - Q: When the gate checks the cash reserve for a new buy, should it subtract the unsettled cost of in-flight buys on every symbol, as Execution does? → A: Yes. In-flight buys on every symbol reduce the cash the gate sees, valued at each approval's own price ceiling. It only tightens buys; exits are unaffected.
 - Q (after `/speckit-analyze`): should in-flight sells free room under the position ceiling, and how is an in-flight buy valued when sizing more? → A: In-flight sells never free room: the ceiling counts shares held plus in-flight buys, as Execution does (analyze F1). In-flight buys are valued at their own price ceiling when working out how much more to buy, so re-deciding the same target orders nothing (analyze F2). Owner, 2026-10-05.
+- Q (after the adversarial review): may an in-flight order ever loosen a verdict, for example an in-flight buy enlarging a partial sell, or an in-flight sell (including a stop-loss exit) enlarging a buy? → A: No. One rule: in-flight orders only ever make a verdict stricter. A buy counts in-flight buys and ignores in-flight sells; a sell counts in-flight sells and ignores in-flight buys. Owner, 2026-10-05.
 
 ## User Scenarios & Testing *(mandatory)*
 
@@ -26,7 +27,7 @@ The users are:
 **Terms**:
 - **In flight**: an approval from today that hasn't ended yet. Either Execution hasn't acted on it yet, or it placed an order that is still working, or partly filled and still working. An approval has ended once its order is filled, rejected, canceled or expired, or once Execution refused it.
 - **Unsettled quantity**: the shares an in-flight approval may still add (a buy) or remove (a sell): its approved quantity, less what has already filled. Filled shares are already in the holdings.
-- **Settled holdings**: the shares held now, plus the unsettled quantity of in-flight buys, minus that of in-flight sells. It's where the holdings will be if every in-flight order fills.
+- **Settled holdings**: what a decision is measured against while orders are in flight. For a buy, the shares held plus the unsettled quantity of in-flight buys. For a sell, the shares held minus the unsettled quantity of in-flight sells. An order that might not fill can only make a verdict stricter, never looser (Clarifications).
 
 ### User Story 1 - Re-deciding the same target orders nothing more (Priority: P1)
 
@@ -94,7 +95,7 @@ Counting in-flight orders never stops a position from being exited and never wea
 
 ### Functional Requirements
 
-- **FR-001**: When evaluating a buy or sell decision, the gate MUST account for every in-flight approval on the same symbol from the same trading day, from decisions and stop-loss triggers alike: the distance to the target is measured from the settled holdings, with in-flight buys valued at their own price ceiling. The position ceiling counts shares held plus in-flight buys and MUST NOT be loosened by in-flight sells (Clarifications).
+- **FR-001**: When evaluating a buy or sell decision, the gate MUST account for every in-flight approval on the same symbol from the same trading day, from decisions and stop-loss triggers alike: the distance to the target is measured from the settled holdings (for a buy, with in-flight buys valued at their own price ceiling). The position ceiling counts shares held plus in-flight buys. No in-flight order may make any verdict looser than the gate would give without it (Clarifications).
 - **FR-001a**: When evaluating a buy, the gate's cash reserve check MUST subtract the unsettled cost of in-flight buys on every symbol from the same trading day, each valued at its approval's price ceiling, at least as strict as Execution's own check (Clarifications). This only tightens buys.
 - **FR-002**: Re-deciding a target that the settled holdings already meet MUST be rejected as `target_already_met`, so it produces no order and uses no slot of the daily order cap.
 - **FR-003**: A decision whose target differs from the settled holdings MUST be sized from the settled holdings, so it orders only the difference: a buy from the settled holdings up to the target, a sell from the settled holdings down to it. No new rule blocks a decision because an earlier order is in flight (Clarifications).
@@ -117,9 +118,10 @@ Counting in-flight orders never stops a position from being exited and never wea
 ### Measurable Outcomes
 
 - **SC-001**: Across the test suite, deciding the same target any number of times while an order is in flight produces exactly one approved order.
-- **SC-002a**: No approved buy, together with every in-flight buy, would take cash below the reserve at the approvals' price ceilings.
+- **SC-002a**: No approved buy, together with every in-flight buy, would take the account snapshot's cash below the reserve at the approvals' price ceilings.
 - **SC-002**: No approved sell, together with the in-flight sells on the same symbol, exceeds the shares held.
 - **SC-003**: Every existing Risk Gate test whose scenario has nothing in flight gives the same verdict as before.
+- **SC-003a**: For any in-flight orders, no approved buy or sell is larger than the gate would have approved before this feature, and nothing it rejected then is approved now.
 - **SC-004**: Every stop-loss exit test gives the same verdict whether or not orders are in flight.
 - **SC-005**: The gate's role can read the order state it needs, and an integration test proves it still can't write any table it couldn't write before.
 

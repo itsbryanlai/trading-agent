@@ -45,38 +45,48 @@ An approval is **in flight** when it is `approved` and either:
 
 `risk.service._load_context` reads them from the view in the same transaction and under the same advisory lock as every other input, so an evaluation sees one consistent moment, and no two evaluations interleave (002 research G10). The pure core stays a function of its inputs (FR-006).
 
-## I4. Buy sizing
+## I4. One rule: in-flight orders only ever make a verdict stricter
 
-**Decision** (amended after `/speckit-analyze` F1, F2; owner, 2026-10-05): in `risk.gate._buy`:
-- **Settled value**: `settled_value = shares_held × quote + in_flight_buy_cost_symbol − in_flight_sell_qty × quote`, floored at 0. In-flight buys are valued at their own price ceiling, the price they were sized at, so the same target re-decided leaves nothing to buy (analyze F2).
-- **Direction check**: `target × equity < settled_value − quote` is `direction_contradicts_target`, as today with `held × quote` replaced.
-- **Wanted**: `floor((target × equity − settled_value) / ceiling)`; below 1 is `target_already_met` (FR-002).
-- **Position room** counts in-flight buys and **never subtracts in-flight sells**: `floor(max_position_pct × equity / ceiling) − shares_held − in_flight_buy_qty`. An unfilled sell might never fill, so it can't make room. This is exactly how Execution's position check counts (analyze F1; FR-005).
-- **Cash room** subtracts every in-flight buy's cost: `floor((cash − in_flight_buy_cost_all − cash_reserve_pct × equity) / ceiling)` (FR-001a). This is at least as strict as Execution's check, which values open buys at their submitted price (at or below the ceiling) and doesn't yet count approvals it hasn't placed (analyze F5).
+**Decision** (owner, 2026-10-05, after the adversarial review): an order that might not fill can never loosen a verdict. So a buy counts in-flight **buys** and ignores in-flight sells; a sell counts in-flight **sells** and ignores in-flight buys. Every verdict is therefore at most as permissive as the gate gave before this feature, for any in-flight values, which a property test checks against a copy of the old `gate.py` (I9).
 
-With all four in-flight values at 0, every formula is exactly today's. The precedence of rules is unchanged; only their inputs change.
+This replaces the earlier "settled holdings" design, which let an in-flight buy enlarge a partial sell and an in-flight sell (including a stop-loss exit) enlarge a buy (adversarial review findings 1 and 4).
 
-**Accepted, as today**: once an order fills, its shares are valued at the quote while it was sized at the ceiling, so a re-decided target can buy a few more shares once, then converges. That's the gate's existing behaviour with nothing in flight, deliberately left alone (SC-003).
+## I4a. Buy sizing
+
+In `risk.gate._buy`:
+- **Value already committed**: `committed = shares_held × quote + in_flight_buy_cost_symbol`. In-flight buys are valued at their own price ceiling, the price they were sized at, so the same target re-decided leaves nothing to buy (analyze F2). In-flight sells are not subtracted.
+- **Direction check**: `target × equity < committed − quote` is `direction_contradicts_target`.
+- **Wanted**: `floor((target × equity − committed) / ceiling)`; below 1 is `target_already_met` (FR-002).
+- **Position room**: `floor(max_position_pct × equity / ceiling − shares_held − in_flight_buy_qty)`, as Execution's check counts (analyze F1).
+- **Cash room**: `floor((cash − in_flight_buy_cost_all − cash_reserve_pct × equity) / ceiling)` (FR-001a), at least as strict as Execution's check.
+
+With nothing in flight, every formula is exactly today's.
+
+**Accepted, as today**: once an order fills, its shares are valued at the quote while it was sized at the ceiling, so a re-decided target can buy a few more shares once, then converges. That's the gate's existing behaviour with nothing in flight.
 
 ## I5. Sell sizing
 
-**Decision**: in `risk.gate._sell`:
-- **`no_position`** still uses the physical `shares_held`. A symbol with only an in-flight buy has nothing to sell yet (spec US2-2).
-- **Available to sell**: `available = shares_held − in_flight_sell_qty`. If below 1: `target_already_met`, because every held share is already being sold (spec US1-3). This includes `in_flight_sell_qty > shares_held` (analyze F3).
-- **Target 0 (full exit)**: sell `available`.
-- **Partial target**: with `settled = shares_held + in_flight_buy_qty − in_flight_sell_qty` (floored at 0), `keep = ceil(target × equity / quote)`, `qty = min(settled − keep, available)`. Below 1: `target_already_met`. The direction check (`direction_contradicts_target`) uses `settled`.
+In `risk.gate._sell`:
+- **`no_position`**: the physical `shares_held`, as today.
+- **Available to sell**: `available = shares_held − in_flight_sell_qty`. In-flight buys are not added.
+- **Target 0 (full exit)**: if `available < 1`, `target_already_met`; otherwise sell `floor(available)`.
+- **Partial target**: after today's `no_account_snapshot_today` check, if `available < 1`, `target_already_met`. Otherwise the direction check is `target × equity > available × quote + quote`, `keep = ceil(target × equity / quote)`, and `qty = floor(available − keep)`; below 1 is `target_already_met`.
 
-**Why `min(…, available)`**: an in-flight buy raises `settled`, but its shares can't be sold before they arrive. Execution would refuse a sell above `held − open sells` anyway (`execution/checks.py` row for exits). Example: 50 held, 24 in flight to buy, target 0: sell 50 now. Once the buy fills, the PM's next run sees 24 held and decides again. That is accepted, and recorded in the ADR.
+Every sell quantity is at most today's, because `available ≤ shares_held` (SC-002). Example: 50 held, 24 being bought, target 0: sell 50 now; once the buy fills, the PM's next run sees 24 held and decides again.
 
-**Never more than today**: the sell quantity is never above what today's rule gives, because `available ≤ shares_held`. So this can only shrink a sell, never enlarge one (SC-002).
+**A target raised while a sell is in flight** (for example 50 held, a sell to 2% in flight, then a decision for 5%) is `direction_contradicts_target`: the in-flight sell will take the position to 2%, and the PM's next run can buy back up. Today's gate would have sold again; the new verdict is stricter.
 
 ## I5a. A fill seen twice for a moment
 
-Execution updates `orders.fill_qty` and `positions` from its broker calls; for a moment, `positions` can show a fill that `orders.fill_qty` doesn't yet (analyze F3). The gate then counts those shares twice:
-- **a buy fill**: settled holdings look higher, so a buy is sized smaller. Stricter.
-- **a sell fill**: held looks lower while the sell still counts in flight, so `available` and settled holdings look lower. A PM sell can be shrunk or rejected as `target_already_met`, and a buy's wanted quantity can look larger. The position room never subtracts sells (I4), so the ceiling holds; the cash and position limits are also re-checked live by Execution.
+Execution updates `orders.fill_qty` and `positions` from its broker calls; for a moment, `positions` can show a fill that `orders.fill_qty` doesn't yet (analyze F3). Under I4 the gate is then only stricter:
+- **a buy fill**: the shares count twice toward the committed value and the position room, so a buy is sized smaller.
+- **a sell fill**: held is already lower while the sell still counts in flight, so `available` is lower and a PM sell can be shrunk or come back as `target_already_met`. A buy ignores in-flight sells, so it isn't enlarged.
 
-Accepted: it lasts until Execution's next tick (about a minute) and the PM's next run decides again. Stop-loss exits don't read any in-flight number (I6).
+It lasts until Execution's next tick, about a minute. Stop-loss exits don't read any in-flight number (I6).
+
+## I5b. The account snapshot's cash can be older than a fill
+
+The gate reads cash from the latest account snapshot, which outside buys is taken about every 30 minutes. Once an in-flight buy fills, its cost leaves `in_flight_buy_cost_all` before a new snapshot shows the cash spent, so for up to that long the gate's cash check is as loose as it was before this feature, never looser (adversarial review finding 3). Execution re-checks live cash before every buy. The contract's cash guarantee is worded accordingly.
 
 ## I6. Stop-loss exits are untouched
 
@@ -95,10 +105,12 @@ Accepted: it lasts until Execution's next tick (about a minute) and the PM's nex
 - **Unit, pure core** (`tests/unit/risk/`):
   - the spec's acceptance scenarios with exact quantities: US1-1 to US1-3, US2-1 to US2-3, US3-1 to US3-4;
   - a property: with nothing in flight, every verdict equals today's (SC-003), checked by evaluating the same random inputs with the in-flight fields at 0;
+  - a property: **for arbitrary in-flight values, no verdict is looser than the old gate's** for the same decision and holdings: a buy approved now was approved then with at least this quantity, and a sell approved now was approved then with at least this quantity (I4);
   - a property: an approved sell never exceeds `shares_held − in_flight_sell_qty` (SC-002);
-  - a property: an approved buy plus `in_flight_buy_cost_all` keeps cash at or above the reserve at the ceilings, and `shares_held + in_flight_buy_qty` plus the buy stays within `max_position_pct` at the ceiling, whatever is in flight to sell (SC-002a, FR-005);
+  - a property: an approved buy plus `in_flight_buy_cost_all` keeps the snapshot's cash at or above the reserve at the ceilings, and `shares_held + in_flight_buy_qty` plus the buy stays within `max_position_pct` at the ceiling, whatever is in flight to sell (SC-002a, FR-005);
   - a property: re-evaluating any decision with its own approval added as in flight is not approved (SC-001; a trimmed approval may come back as a limit rejection rather than `target_already_met`, analyze F4);
   - a case: an in-flight sell larger than `shares_held` (I5a) gives `target_already_met` for a sell and no looser position room for a buy;
+  - the adversarial review's cases: 100 held at $200, equity $100,000, 50 being bought, a sell to 10% sells 50 (not 100); 20 held with a 20-share sell in flight, a buy to 5% buys 4 (not 19);
   - stop-loss verdicts are identical with arbitrary in-flight values (SC-004).
 - **Integration** (`tests/integration/`):
   - migration 0013: each in-flight state appears in the view (no outcome yet; submitted; partially filled with the right remainder), and each ended state doesn't (filled, rejected, canceled, expired, refused);
