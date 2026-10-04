@@ -1,7 +1,8 @@
 """Qwen through QwenCloud's OpenAI-compatible API (ADR 0018; research R5).
 
-The endpoint isn't in the source: it comes from RESEARCH_QWEN_BASE_URL, so the same
-code serves a pay-as-you-go key or a Token Plan key, each with its own endpoint.
+The endpoint isn't in the source: it comes from the calling agent's <PREFIX>QWEN_BASE_URL
+variable, so the same code serves a pay-as-you-go key or a Token Plan key, each with its
+own endpoint.
 
 Standard library only: one POST to /chat/completions, in strict JSON Schema mode
 (supported for the Qwen3.7-Plus series, per QwenCloud's structured-output guide)
@@ -18,8 +19,7 @@ from http.client import HTTPException
 from urllib.error import HTTPError
 from urllib.request import Request
 
-from trading_agent.no_redirect import open_without_redirects
-from trading_agent.research.ports import (
+from trading_agent.llm.ports import (
     ModelKeyRejected,
     ModelRefused,
     ModelRejected,
@@ -27,8 +27,7 @@ from trading_agent.research.ports import (
     ModelTruncated,
     ModelUnavailable,
 )
-
-SCHEMA_NAME = "research_answer"
+from trading_agent.no_redirect import open_without_redirects
 
 
 class QwenClient:
@@ -40,9 +39,11 @@ class QwenClient:
         max_output_tokens: int,
         timeout: float,
         base_url: str,
+        schema_name: str,
         opener: Callable | None = None,
     ) -> None:
         self._key = api_key
+        self._schema_name = schema_name
         self._model = model
         self._max_tokens = max_output_tokens
         self._timeout = timeout
@@ -65,7 +66,7 @@ class QwenClient:
             "enable_thinking": False,
             "response_format": {
                 "type": "json_schema",
-                "json_schema": {"name": SCHEMA_NAME, "strict": True, "schema": schema},
+                "json_schema": {"name": self._schema_name, "strict": True, "schema": schema},
             },
         }
         request = Request(

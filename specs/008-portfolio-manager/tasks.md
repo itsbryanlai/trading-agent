@@ -66,7 +66,7 @@ description: "Task list for the Portfolio Manager agent (feature 008)"
   - `llm/settings.py` with only the dataclass `ModelSettings(provider, name, max_output_tokens, timeout_seconds, anthropic_effort)`; `research/config.py`'s `ModelConfig` becomes the alias `ModelConfig = ModelSettings`, with a comment saying T007 removes it;
   - `pyproject.toml` import-linter layers: bottom layer `"llm | storage"`.
   The full offline suite, `scripts/lint.sh` and ruff pass unchanged. One commit, `LLM clients (feature 008): the model port and settings type move to trading_agent.llm (T004)`.
-- [ ] T005 Move the two adapters with `git mv`, so history follows the files, and update **every importer of the adapters in the same commit** (otherwise the suite breaks between commits):
+- [x] T005 Move the two adapters with `git mv`, so history follows the files, and update **every importer of the adapters in the same commit** (otherwise the suite breaks between commits):
   - `research/qwen.py` → `llm/qwen.py`; `research/anthropic_client.py` → `llm/anthropic_client.py` (imports `llm.ports` and `llm.settings.ModelSettings`);
   - `tests/unit/research/test_qwen.py` → `tests/unit/llm/test_qwen.py`; `tests/unit/research/test_anthropic_client.py` → `tests/unit/llm/test_anthropic_client.py` (with `tests/unit/llm/__init__.py`);
   - `llm/qwen.py`: `SCHEMA_NAME` becomes a required `schema_name` constructor argument; Research passes `"research_answer"`;

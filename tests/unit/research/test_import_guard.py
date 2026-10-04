@@ -32,8 +32,8 @@ FORBIDDEN_IN_PURE = (
     "time",
     "trading_agent.research.service",
     "trading_agent.research.finnhub",
-    "trading_agent.research.qwen",
-    "trading_agent.research.anthropic_client",
+    "trading_agent.llm.qwen",
+    "trading_agent.llm.anthropic_client",
 )
 OTHER_COMPONENTS_VARIABLES = (
     "ALPACA_",

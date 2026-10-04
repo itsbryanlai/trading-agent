@@ -61,10 +61,10 @@ EXIT_CRASHED = 4
 
 def build_model(provider: str, key: str, model: ModelConfig, *, base_url: str | None = None):
     if provider == "anthropic":
-        from trading_agent.research.anthropic_client import AnthropicClient
+        from trading_agent.llm.anthropic_client import AnthropicClient
 
         return AnthropicClient.from_key(key, model)
-    from trading_agent.research.qwen import QwenClient
+    from trading_agent.llm.qwen import QwenClient
 
     return QwenClient(
         key,
@@ -72,6 +72,7 @@ def build_model(provider: str, key: str, model: ModelConfig, *, base_url: str | 
         max_output_tokens=model.max_output_tokens,
         timeout=model.timeout_seconds,
         base_url=base_url,
+        schema_name="research_answer",
     )
 
 

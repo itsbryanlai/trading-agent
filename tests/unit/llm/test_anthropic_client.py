@@ -9,20 +9,26 @@ import anthropic
 import httpx2
 import pytest
 
-from tests.unit.research.support import config
-from trading_agent.research import anthropic_client as module
-from trading_agent.research.answer import ANSWER_SCHEMA
-from trading_agent.research.anthropic_client import AnthropicClient
-from trading_agent.research.ports import (
+from trading_agent.llm import anthropic_client as module
+from trading_agent.llm.anthropic_client import AnthropicClient
+from trading_agent.llm.ports import (
     ModelKeyRejected,
     ModelRefused,
     ModelRejected,
     ModelTruncated,
     ModelUnavailable,
 )
+from trading_agent.llm.settings import ModelSettings
+from trading_agent.research.answer import ANSWER_SCHEMA
 
 KEY = "fake-anthropic-not-real"
-MODEL = config(model_provider="anthropic", model_name="claude-sonnet-5-5").model
+MODEL = ModelSettings(
+    provider="anthropic",
+    name="claude-sonnet-5-5",
+    max_output_tokens=8000,
+    timeout_seconds=180,
+    anthropic_effort="medium",
+)
 
 
 def message(text='{"proposals": []}', stop="end_turn", blocks=None):
