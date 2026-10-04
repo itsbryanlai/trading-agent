@@ -126,6 +126,17 @@ access to `positions`, `reports` or `decisions`; the job applies the exact
 "recently named" window itself (`specs/004-reference-data` research D10).
 Readers: the `reference_data` role, the Assistant and the dashboard.
 
+## `in_flight_orders` (view)
+
+One row per approval from `risk_verdicts` that hasn't ended: Execution hasn't
+acted on it yet (no order, no refusal), or its order is `submitted` or
+`partially_filled`. Columns: `trading_day`, `symbol`, `side`, `unsettled_qty`
+(approved quantity less `fill_qty`, above 0) and `limit_price` (a buy's price
+ceiling; null for a sell). It runs with its owner's rights, so the Risk Gate
+reads it without any access to `orders` or `execution_refusals`; broker ids,
+fill prices and refusal reasons are not exposed. Readers: the Risk Gate, the
+Assistant and the dashboard ([ADR 0020](../adr/0020-the-gate-counts-orders-in-flight.md)).
+
 ## `orders`
 
 One row per order Execution actually submits to the broker.

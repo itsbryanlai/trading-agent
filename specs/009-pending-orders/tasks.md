@@ -69,7 +69,7 @@ description: "Task list for the Risk Gate counting orders in flight (feature 009
 
 ## Phase 5: Polish
 
-- [ ] T009 [P] Docs, one commit (`Docs (feature 009): …`):
+- [x] T009 [P] Docs, one commit (`Docs (feature 009): …`):
   - `specs/002-risk-gate/contracts/gate-interface.md` and `rejection-rules.md` per contracts/gate-changes.md;
   - `specs/001-data-model/contracts/role-grants.md`: the three `SELECT`s on `in_flight_orders`;
   - `docs/specs/risk-gate.md`: sizing from settled holdings, the cash reserve counting in-flight buys, ADR 0020;

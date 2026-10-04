@@ -55,6 +55,7 @@ that can.
 | `instrument_reference` ¹ ³ | — | — | — | S | — | — | — | S | S | — | S, I |
 | `execution_refusals` ² | — | — | — | — | S, I | S | — | S | S | — | — |
 | `reference_candidate_symbols` (view) ³ | — | — | — | — | — | — | — | S | S | — | S |
+| `in_flight_orders` (view) ⁵ | — | — | — | S | — | — | — | S | S | — | — |
 | `orchestrator_runs` ⁴ | — | — | — | — | — | — | S, I, U(pgid, finished_at, outcome, detail) | S | S | — | — |
 | `latest_report_time` (view) ⁴ | — | — | — | — | — | — | S | S | S | — | — |
 | `schema_migrations` | — | — | — | — | — | — | — | — | — | — | — |
@@ -114,3 +115,8 @@ computed — spec Clarifications).
 None. All generated keys are `gen_random_uuid()` defaults or caller-supplied (`orders.id`), so no
 `USAGE ON SEQUENCE` grants are needed — unlike `trading-bot`, where every `BIGSERIAL` table
 required one.
+
+⁵ Amended by `specs/009-pending-orders` (migration `0013`, ADR 0020). `in_flight_orders` shows the
+Risk Gate which of its approvals are still working: trading day, symbol, side, unsettled quantity
+and (for buys) price ceiling. It runs with its owner's rights, so the gate has no access to
+`orders` or `execution_refusals`. No role gained a write.

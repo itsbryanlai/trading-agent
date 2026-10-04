@@ -29,6 +29,10 @@ call and reads no environment beyond what its caller passes in.
   These are read directly and re-derived rather than trusted from the
   `decisions` row, matching Execution's own re-derivation discipline.
 - The daily universe reference data, for the universe re-check.
+- Today's approvals still in flight, from the `in_flight_orders` view: this
+  symbol's buy and sell quantities, the cost of its buys, and the cost of every
+  symbol's buys, each at its price ceiling
+  ([ADR 0020](../adr/0020-the-gate-counts-orders-in-flight.md)).
 
 ## `config/risk.yaml` contents
 
@@ -71,6 +75,15 @@ rule that fired.
 
 - **Market closed at evaluation time**: reject outright, regardless of any
   other rule — no order should ever be approved outside market hours.
+- **Orders still in flight** (ADR 0020): a decision is sized from settled
+  holdings, meaning shares held plus in-flight buys (valued at their own price
+  ceiling) less in-flight sells. Deciding a target again while its order works
+  is `target_already_met`; a changed target orders only the difference. The
+  position ceiling counts shares held plus in-flight buys and never subtracts
+  in-flight sells, and the cash reserve subtracts the cost of every in-flight
+  buy. A sell is capped at the shares held less those already being sold.
+  Stop-loss exits, the halt, the pause, the order cap and the universe checks
+  read none of this.
 - **Daily-loss halt already active**: reject every new-exposure decision
   outright; exits (sells, stop-loss triggers) are exempt, same as the
   per-day order cap.
