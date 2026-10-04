@@ -1,0 +1,85 @@
+# Runs on every pull request and every push to main: the same checks CLAUDE.md asks
+# for locally (tests, scripts/lint.sh, ruff), plus the integration suite against a
+# throwaway Postgres 16, matching the local `ta-pg` container (specs/001-data-model).
+#
+# No secrets: nothing here needs a credential, and no test reaches the network
+# (tests/conftest.py blocks it). The database is a disposable service container.
+
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install
+        run: |
+          python -m venv .venv
+          .venv/bin/pip install --quiet -e ".[dev]"
+      - name: Modularity (ruff, import layering, module size)
+        run: scripts/lint.sh
+      - name: Formatting
+        run: .venv/bin/ruff format --check src tests
+
+  unit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install
+        run: |
+          python -m venv .venv
+          .venv/bin/pip install --quiet -e ".[dev]"
+      - name: Offline tests
+        run: .venv/bin/python -m pytest tests/ -q
+
+  integration:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: dev
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      # A throwaway CI database, not a credential.
+      TEST_DATABASE_URL: postgresql://postgres:dev@localhost:5432/postgres
+      # Fail, rather than skip, if the database isn't there (tests/integration/conftest.py).
+      TEST_DATABASE_REQUIRED: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install
+        run: |
+          python -m venv .venv
+          .venv/bin/pip install --quiet -e ".[dev]"
+      - name: Integration tests
+        run: .venv/bin/python -m pytest tests/integration -m integration -q
