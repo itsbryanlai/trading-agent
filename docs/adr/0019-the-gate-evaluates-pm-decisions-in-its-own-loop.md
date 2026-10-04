@@ -1,6 +1,8 @@
 # 0019. The Risk Gate evaluates Portfolio Manager decisions in its own loop, and rejects decisions on stale quotes
 
-Status: proposed
+Status: accepted
+
+Accepted by the owner on 2026-10-04, with the plan for `specs/008-portfolio-manager`.
 
 ## Context
 
