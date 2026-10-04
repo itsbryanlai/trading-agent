@@ -16,6 +16,7 @@
 - Q: The database counts a report as `consumed` once a decision cites it, while the PM's behaviour spec says such a report is re-evaluated in later runs. Which reports does a run consider? → A: Every unexpired report, whether already decided on or not, marked as such, so a new report is weighed against earlier ones on the same name.
 - Q: Which model provider is the PM's default, given its prompts carry portfolio state? → A: Qwen `qwen3.7-plus`, with an optional switch to Anthropic Sonnet, the same as Research. The account is paper only.
 - Q: May the PM write a buy on a symbol when none of the reports it cites argues buy? → A: No. A buy must cite at least one buy report on that symbol, or it is dropped (`unbacked_buy`). A sell or hold may cite any report on the symbol, since reducing or keeping exposure needs no backing.
+- Q: If the gate's loop first sees a decision long after it was written, does the gate still act on it? → A: No. The gate rejects a decision whose recorded quote is more than 15 minutes old when it evaluates it, under a new named rule, `decision_stale`, so nothing trades on an old quote; the PM's next run decides again. The limit is a gate setting, default 15 minutes. This is a change to the gate's rules, flagged, and recorded in the same ADR as the gate loop change.
 
 ## User Scenarios & Testing *(mandatory)*
 
@@ -159,6 +160,7 @@ The Risk Gate's own loop does it (Clarifications). That loop already evaluates s
 2. **Given** a hold decision, **When** the gate's loop runs, **Then** no verdict is recorded.
 3. **Given** a decision from an earlier trading day with no verdict, **When** the gate's loop runs, **Then** it is not evaluated.
 4. **Given** a decision that already has a verdict, **When** the gate's loop runs again, **Then** nothing more is recorded for it.
+5. **Given** a buy or sell decision whose recorded quote is more than 15 minutes old when the gate's loop first evaluates it, **When** the gate evaluates it, **Then** it is rejected as `decision_stale` and no order follows.
 
 ---
 
@@ -220,7 +222,7 @@ The Risk Gate's own loop does it (Clarifications). That loop already evaluates s
 
 **Reaching the gate**
 
-- **FR-017**: Every buy or sell decision MUST be evaluated by the Risk Gate on the day it was written, without any human step and without the PM seeing the result. A hold MUST produce no verdict. The gate's own loop does this, in its own process with only its own login; a decision from an earlier trading day MUST NOT be evaluated. A new ADR superseding [ADR 0013](../../docs/adr/0013-deterministic-services-run-their-own-loops.md)'s point 3 MUST be accepted first, and the gate's contract (`specs/002-risk-gate/contracts/gate-interface.md`) updated to match.
+- **FR-017**: Every buy or sell decision MUST be evaluated by the Risk Gate on the day it was written, without any human step and without the PM seeing the result. A hold MUST produce no verdict. The gate's own loop does this, in its own process with only its own login; a decision from an earlier trading day MUST NOT be evaluated. The gate MUST reject, as `decision_stale`, a decision whose recorded quote is older than a gate setting (default 15 minutes) when it is evaluated; this is a new gate rule, applied to sells as well as buys (Clarifications). A new ADR superseding [ADR 0013](../../docs/adr/0013-deterministic-services-run-their-own-loops.md)'s point 3 MUST be accepted first, and the gate's contract (`specs/002-risk-gate/contracts/gate-interface.md`) updated to match.
 
 **Running**
 
@@ -259,7 +261,7 @@ The Risk Gate's own loop does it (Clarifications). That loop already evaluates s
 - **SC-003**: 100% of decisions on a symbol whose reports disagreed in direction cite both sides.
 - **SC-004**: Every run either writes all of its decisions or none, and every failed run ends with a non-zero status that the orchestrator records as failed.
 - **SC-005**: Changing the model provider needs only a configuration change and that provider's key, with no code change.
-- **SC-006**: On a normal trading day with the PM enabled, every buy or sell decision has a Risk Gate verdict within 2 minutes of being written, and no hold decision has one.
+- **SC-006**: On a normal trading day with the PM enabled, every buy or sell decision has a Risk Gate verdict within 2 minutes of being written, and no hold decision has one. No decision is approved on a quote older than the gate's staleness limit.
 - **SC-007**: No test reaches the network: quotes, both model providers and the database (offline tests) are stand-ins.
 - **SC-008**: 100% of written buy decisions cite at least one report arguing buy on the same symbol.
 
@@ -274,4 +276,4 @@ The Risk Gate's own loop does it (Clarifications). That loop already evaluates s
 - **Pause**: the orchestrator doesn't start the PM while trading is paused. The PM doesn't check the pause itself (`docs/specs/portfolio-manager-agent.md`).
 - **Reference data**: a symbol named in a report already gets universe data through the existing `reference_candidate_symbols` view. Event-driven runs start 5 minutes after the newest report so it can be recorded (`specs/005-orchestrator`).
 - **No shorting**: the PM never targets a negative weight. The schema allows 0 to 100 only.
-- **Out of scope**: the Opportunistic Identifier itself (its reports are read when it exists); the journal's writer; any change to the Risk Gate's limits or rules; any approval step.
+- **Out of scope**: the Opportunistic Identifier itself (its reports are read when it exists); the journal's writer; any change to the Risk Gate's existing limits, and any new gate rule other than `decision_stale`; any approval step.
