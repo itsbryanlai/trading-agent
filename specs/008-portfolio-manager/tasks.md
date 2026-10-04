@@ -178,7 +178,7 @@ description: "Task list for the Portfolio Manager agent (feature 008)"
 - [x] T041 [P] [US5] `tests/unit/portfolio_manager/test_main_provider.py`: with `provider: qwen`, only the DashScope key and base URL are required and the Anthropic key is never read; with `anthropic`, only its key; a missing one exits 2 naming the variable, never a value; a non-https base URL exits 2; the Qwen client gets `schema_name="pm_answer"`.
 - [x] T042 [P] [US5] `tests/unit/portfolio_manager/test_main_dry_run.py`: `--dry-run` prints `candidate`, `skipped`, `would_write`, `dropped` and `summary` JSON lines (contracts/pm-interface.md), calls `Store.write` never, skips the market-hours check, and needs the database URL; any other argument exits 2.
 - [x] T043 [US5] Implement provider selection and `--dry-run` in `__main__.py`. T041 and T042 pass. One commit. If `__main__.py` approaches 300 lines, split the dry-run printer into `portfolio_manager/dry_run.py`.
-- [ ] T044 [US5] Enable the PM in `config/schedule.yaml` (research P16): `enabled: true` and the five `PORTFOLIO_MANAGER_*` names, with the comments Research's entry has; update the file's header comment ("the PM is enabled, feature 008"). The orchestrator's config tests pass. Commit.
+- [x] T044 [US5] Enable the PM in `config/schedule.yaml` (research P16): `enabled: true` and the five `PORTFOLIO_MANAGER_*` names, with the comments Research's entry has; update the file's header comment ("the PM is enabled, feature 008"). The orchestrator's config tests pass. Commit.
 
 ---
 

@@ -37,9 +37,10 @@ def _with(tmp_path, agent, key, value):
 _DELETE = object()
 
 
-def test_shipped_file_loads_with_only_research_enabled():
+def test_shipped_file_loads_with_research_and_the_pm_enabled():
     config = load_config(DEFAULT_CONFIG_PATH)
-    assert [agent.name for agent in config.agents() if agent.enabled] == ["research"]
+    enabled = [agent.name for agent in config.agents() if agent.enabled]
+    assert enabled == ["research", "portfolio_manager"]
     assert config.research.env == (
         "RESEARCH_DATABASE_URL",
         "RESEARCH_FINNHUB_API_KEY",
@@ -56,6 +57,14 @@ def test_shipped_file_loads_with_only_research_enabled():
     assert pm.min_spacing == timedelta(minutes=30) and pm.report_wait == timedelta(minutes=5)
     assert pm.before_close == timedelta(minutes=30)
     assert config.research.timeout == timedelta(minutes=15)
+    assert pm.env == (
+        "PORTFOLIO_MANAGER_DATABASE_URL",
+        "PORTFOLIO_MANAGER_FINNHUB_API_KEY",
+        "PORTFOLIO_MANAGER_DASHSCOPE_API_KEY",
+        "PORTFOLIO_MANAGER_QWEN_BASE_URL",
+        "PORTFOLIO_MANAGER_ANTHROPIC_API_KEY",
+    )
+    assert pm.timeout == timedelta(minutes=10)
 
 
 def test_listed_variables_with_the_agents_prefix_are_accepted(tmp_path):
