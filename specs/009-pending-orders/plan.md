@@ -34,7 +34,7 @@ The Risk Gate sizes each decision from the **settled holdings**: shares held, pl
 
 | Principle | Check | Status |
 |---|---|---|
-| I. Deterministic trade path | The core stays a pure function: three more numbers in its context, no I/O. The new read happens in the existing caller, in the same locked transaction. | Pass |
+| I. Deterministic trade path | The core stays a pure function: four more numbers in its context, no I/O. The new read happens in the existing caller, in the same locked transaction. | Pass |
 | II. Analysts propose, PM decides | Not affected; the PM is unchanged. | Pass |
 | III. Least privilege | One new read: `SELECT` on a narrow view exposing quantities and ceilings only, justified in the spec (FR-007). No grant on `orders` or `execution_refusals`, no write. An integration test proves it. | Pass |
 | IV. Autonomous, one hard stop | No approval gate. The daily-loss breaker and stop-loss exits are untouched (research I6). | Pass |
@@ -68,7 +68,7 @@ docs/adr/0020-the-gate-counts-orders-in-flight.md   # accepted 2026-10-05
 src/trading_agent/
 ├── storage/migrations/0013_in_flight_orders.sql   # the view, its grants
 └── risk/
-    ├── model.py        # Context: in_flight_buy_qty, in_flight_sell_qty, in_flight_buy_cost
+    ├── model.py        # Context: four in-flight numbers (research I3)
     ├── service.py      # _load_context reads the view
     └── gate.py         # _buy and _sell size from settled holdings (I4, I5)
 
@@ -79,7 +79,7 @@ tests/
     └── risk/           # same-target decisions end to end
 
 specs/001-data-model/contracts/role-grants.md, specs/002-risk-gate/contracts/{gate-interface,rejection-rules}.md,
-docs/specs/risk-gate.md, docs/specs/data-model.md, docs/adr/README.md
+docs/specs/risk-gate.md, docs/specs/data-model.md
 ```
 
 **Structure Decision**: changes stay inside `risk` and `storage`. `risk.gate` stays pure; only `risk.service` reads the database. The layering is unchanged.

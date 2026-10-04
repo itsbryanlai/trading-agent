@@ -22,7 +22,7 @@ Rows: every `risk_verdicts` row with `verdict = 'approved'` that either has no `
 
 ## Risk Gate context (in memory)
 
-`risk.model.Context` gains `in_flight_buy_qty`, `in_flight_sell_qty` (this symbol, today) and `in_flight_buy_cost` (every symbol, today, at each approval's ceiling), all `Decimal`, default 0. Read in `risk.service._load_context` (research I3).
+`risk.model.Context` gains `in_flight_buy_qty`, `in_flight_buy_cost_symbol`, `in_flight_sell_qty` (this symbol, today) and `in_flight_buy_cost_all` (every symbol, today, at each approval's ceiling), all `Decimal`, default 0. Read in `risk.service._load_context` (research I3).
 
 ## Unchanged
 
