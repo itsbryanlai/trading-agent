@@ -63,7 +63,7 @@ and the pause flag, and writes only its own run records
 |---|---|---|---|
 | Research | Finnhub news (general + an owner watchlist), own credential; model per [ADR 0018](../adr/0018-qwen-as-a-model-provider.md) | `reports` (own rows) | daily at 08:30 ET ([`specs/007-research-agent`](../../specs/007-research-agent/spec.md)) |
 | Opportunistic Identifier | market data and fundamentals (read-only Finnhub key, [ADR 0016](../adr/0016-market-data-for-the-llm-agents.md)) | `reports` (own rows) | intraday polling |
-| Portfolio Manager | both agents' open reports, portfolio state, live quote (read-only Finnhub key, [ADR 0016](../adr/0016-market-data-for-the-llm-agents.md)), journal | `decisions` | morning session + event-driven on new reports, ≥30 min apart, none after 15:30 ET ([ADR 0011](../adr/0011-event-driven-portfolio-manager-runs.md)) |
+| Portfolio Manager | both agents' unexpired reports, portfolio state, live quote (read-only Finnhub key, [ADR 0016](../adr/0016-market-data-for-the-llm-agents.md)), journal, its own decisions from today; model per [ADR 0018](../adr/0018-qwen-as-a-model-provider.md) (Qwen by default) | `decisions` | morning session + event-driven on new reports, ≥30 min apart, none after 15:30 ET ([ADR 0011](../adr/0011-event-driven-portfolio-manager-runs.md)) |
 | Assistant | everything | nothing | on-demand (Telegram) |
 
 Full behavior, inputs/outputs, and edge cases for each are in
@@ -73,11 +73,11 @@ Full behavior, inputs/outputs, and edge cases for each are in
 
 | Service | Reads | Writes | Holds |
 |---|---|---|---|
-| Risk Gate | a `decisions` row, `config/risk.yaml`, market-open flag from caller | `risk_verdicts` | nothing (pure function, no credentials) |
+| Risk Gate | `decisions` rows and stop-loss triggers, `config/risk.yaml`; its own loop evaluates the ones without a verdict ([ADR 0019](../adr/0019-the-gate-evaluates-pm-decisions-in-its-own-loop.md)) | `risk_verdicts` | its own database login only (the rules are a pure function) |
 | Execution | an approved `risk_verdicts` row | `orders` | the only broker (Alpaca) credentials in the system |
 | Reference-data job | `reference_candidate_symbols` (held and recently named symbols), a seed list, Finnhub | `instrument_reference`, insert-only | a read-only Finnhub key; cannot trade |
 
-Execution, the Risk Gate's stop-loss trigger runner and the reference-data job each run
+Execution, the Risk Gate's loop (stop-loss triggers, then Portfolio Manager decisions) and the reference-data job each run
 their own loop in their own process ([ADR 0013](../adr/0013-deterministic-services-run-their-own-loops.md)).
 The reference-data job records the universe facts the gate checks every buy against, once per
 symbol per trading day, from 08:00 ET until the close; a symbol without today's row can't be

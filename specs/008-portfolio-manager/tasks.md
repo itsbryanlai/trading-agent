@@ -185,7 +185,7 @@ description: "Task list for the Portfolio Manager agent (feature 008)"
 ## Phase 9: Polish & cross-cutting
 
 - [x] T045 [P] `tests/unit/portfolio_manager/test_import_guard.py`: every module in `trading_agent.portfolio_manager` imports nothing from `execution`, `orchestrator`, `research`, or `risk` other than `risk.calendar`; no PM module's source contains `risk.yaml`. Mutation-check by adding a forbidden import. Commit.
-- [ ] T046 [P] Docs, one commit (`Docs (feature 008): …`), FR-026:
+- [x] T046 [P] Docs, one commit (`Docs (feature 008): …`), FR-026:
   - `docs/specs/portfolio-manager-agent.md`: unexpired reports including already-decided ones; its own decisions from today as an input; a buy must cite a buy report; the 5-minute quote freshness and `quote_time`; the hold's target weight; the gate's loop evaluates decisions (ADR 0019); failure exits;
   - `docs/specs/data-model.md`: `decisions.quote_time`; `risk_verdicts.rejection_rule` may be `decision_stale`;
   - `docs/architecture/overview.md`: the Risk Gate's row reads decisions in its own loop; the PM's model per ADR 0018 (Qwen default);
