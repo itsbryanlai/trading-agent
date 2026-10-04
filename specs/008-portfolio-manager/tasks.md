@@ -46,7 +46,7 @@ description: "Task list for the Portfolio Manager agent (feature 008)"
 
 ## Phase 1: Setup
 
-- [ ] T001 [P] Create the packages, one commit:
+- [x] T001 [P] Create the packages, one commit:
   - `src/trading_agent/portfolio_manager/__init__.py`, docstring naming ADR 0002, 0011, 0016, 0018 and 0019 and saying "writes only its own decisions and their report links; never reads config/risk.yaml, verdicts or orders; no broker";
   - `tests/unit/portfolio_manager/__init__.py`, `tests/integration/portfolio_manager/__init__.py`.
   Add `portfolio_manager` to the top layer of `pyproject.toml`'s import-linter contract: `"execution | orchestrator | research | portfolio_manager"`. Run `scripts/lint.sh`.
