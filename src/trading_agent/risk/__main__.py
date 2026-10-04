@@ -1,4 +1,6 @@
-"""The Risk Gate's trigger runner loop (ADR 0013): `python -m trading_agent.risk`.
+"""The Risk Gate's runner loop (ADR 0013, ADR 0019): `python -m trading_agent.risk`.
+
+Each pass evaluates pending stop-loss triggers first, then pending PM decisions.
 
 Holds only RISK_GATE_DATABASE_URL, never the broker keys. Exits non-zero on a
 lost database connection so the platform restarts it.
@@ -15,7 +17,7 @@ from datetime import UTC, datetime
 import psycopg
 from psycopg.rows import dict_row
 
-from trading_agent.risk.runner import evaluate_pending_triggers
+from trading_agent.risk.runner import evaluate_pending_decisions, evaluate_pending_triggers
 from trading_agent.storage.db import ConfigError, require_env
 
 log = logging.getLogger("trading_agent.risk")
@@ -31,6 +33,7 @@ def main(
     *,
     connect: Callable = psycopg.connect,
     evaluate: Callable = evaluate_pending_triggers,
+    evaluate_decisions: Callable = evaluate_pending_decisions,
     sleep: Callable[[float], None] = time.sleep,
     clock: Callable[[], datetime] = lambda: datetime.now(UTC),
     max_passes: int | None = None,
@@ -50,7 +53,9 @@ def main(
         while max_passes is None or passes < max_passes:
             if conn.closed:
                 raise psycopg.OperationalError("connection closed")
-            evaluate(conn, clock())
+            now = clock()
+            evaluate(conn, now)
+            evaluate_decisions(conn, now)
             passes += 1
             if max_passes is None or passes < max_passes:
                 sleep(PASS_SECONDS)

@@ -1,4 +1,4 @@
-"""ADR 0013: the gate's trigger runner loop exits on a lost database connection
+"""ADR 0013, ADR 0019: the gate's runner loop exits on a lost database connection
 and holds only the gate's credential. Stubbed; no database."""
 
 from __future__ import annotations
@@ -34,6 +34,7 @@ def test_passes_run_on_an_autocommit_connection(env):
     code = runner.main(
         connect=connect,
         evaluate=lambda conn, now: calls.append(now),
+        evaluate_decisions=lambda conn, now: None,
         sleep=lambda s: None,
         max_passes=3,
     )
@@ -44,8 +45,67 @@ def test_a_lost_connection_exits_for_a_restart(env):
     def dies(conn, now):
         raise psycopg.OperationalError("server closed the connection")
 
-    code = runner.main(connect=lambda *a, **k: Conn(), evaluate=dies, max_passes=5)
+    code = runner.main(
+        connect=lambda *a, **k: Conn(),
+        evaluate=dies,
+        evaluate_decisions=lambda conn, now: None,
+        sleep=lambda s: None,
+        max_passes=5,
+    )
     assert code == runner.EXIT_DATABASE_LOST
+
+
+def test_a_lost_connection_during_the_decisions_step_exits_for_a_restart(env):
+    def dies(conn, now):
+        raise psycopg.OperationalError("server closed the connection")
+
+    code = runner.main(
+        connect=lambda *a, **k: Conn(),
+        evaluate=lambda conn, now: None,
+        evaluate_decisions=dies,
+        sleep=lambda s: None,
+        max_passes=5,
+    )
+    assert code == runner.EXIT_DATABASE_LOST
+
+
+def test_each_pass_evaluates_triggers_then_decisions_on_the_same_clock_reading(env):
+    calls, times = [], iter(range(100))
+
+    code = runner.main(
+        connect=lambda *a, **k: Conn(),
+        evaluate=lambda conn, now: calls.append(("triggers", now)),
+        evaluate_decisions=lambda conn, now: calls.append(("decisions", now)),
+        sleep=lambda s: None,
+        clock=lambda: next(times),
+        max_passes=3,
+    )
+
+    assert code == runner.EXIT_OK
+    assert calls == [
+        ("triggers", 0),
+        ("decisions", 0),
+        ("triggers", 1),
+        ("decisions", 1),
+        ("triggers", 2),
+        ("decisions", 2),
+    ]
+
+
+def test_triggers_failing_with_a_lost_connection_means_decisions_are_not_attempted(env):
+    calls = []
+
+    def dies(conn, now):
+        raise psycopg.OperationalError("gone")
+
+    code = runner.main(
+        connect=lambda *a, **k: Conn(),
+        evaluate=dies,
+        evaluate_decisions=lambda conn, now: calls.append(now),
+        sleep=lambda s: None,
+        max_passes=2,
+    )
+    assert code == runner.EXIT_DATABASE_LOST and calls == []
 
 
 def test_a_missing_credential_refuses_to_start(monkeypatch):
