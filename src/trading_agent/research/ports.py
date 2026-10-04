@@ -11,16 +11,6 @@ from dataclasses import dataclass
 from datetime import date, datetime
 from typing import Protocol
 
-# moved to trading_agent.llm (feature 008, research P5); removed in T006
-from trading_agent.llm.ports import ModelClient as ModelClient
-from trading_agent.llm.ports import ModelError as ModelError
-from trading_agent.llm.ports import ModelKeyRejected as ModelKeyRejected
-from trading_agent.llm.ports import ModelRefused as ModelRefused
-from trading_agent.llm.ports import ModelRejected as ModelRejected
-from trading_agent.llm.ports import ModelReply as ModelReply
-from trading_agent.llm.ports import ModelTruncated as ModelTruncated
-from trading_agent.llm.ports import ModelUnavailable as ModelUnavailable
-
 # --- news ------------------------------------------------------------------------
 
 

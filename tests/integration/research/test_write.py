@@ -158,7 +158,7 @@ def test_a_run_whose_model_fails_writes_one_failure_row(conn):
     from tests.fakes.model import FakeModel
     from tests.fakes.news import FakeNews
     from tests.unit.research.support import Clock, article, config
-    from trading_agent.research.ports import ModelUnavailable
+    from trading_agent.llm.ports import ModelUnavailable
     from trading_agent.research.service import ResearchRun
 
     clock = Clock(NOW_SESSION)

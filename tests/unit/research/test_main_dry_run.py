@@ -88,7 +88,7 @@ def test_outside_the_window_it_still_runs_with_the_next_sessions_close(env):
 
 
 def test_a_model_failure_prints_its_category_and_is_exit_1(env):
-    from trading_agent.research.ports import ModelUnavailable
+    from trading_agent.llm.ports import ModelUnavailable
 
     code, conn, lines, _ = dry(model=FakeModel(error=ModelUnavailable()))
     assert code == runner.EXIT_FAILURE_RECORDED and conn.written == []

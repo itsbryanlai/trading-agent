@@ -11,18 +11,15 @@ from tests.fakes.model import FakeModel
 from tests.fakes.news import FakeNews
 from tests.unit.research.support import Clock, article, config, messages, proposal
 from tests.unit.research.test_service_happy import MemoryStore, make
-from trading_agent.research import service
-from trading_agent.research.ports import (
-    KeyRejected,
+from trading_agent.llm.ports import (
     ModelKeyRejected,
     ModelRefused,
     ModelRejected,
     ModelTruncated,
     ModelUnavailable,
-    NotPermitted,
-    ProviderUnavailable,
-    RateLimited,
 )
+from trading_agent.research import service
+from trading_agent.research.ports import KeyRejected, NotPermitted, ProviderUnavailable, RateLimited
 
 MARKER = "provider-body-marker-7f3a"  # must never reach a row or a log line
 APPLE = article("apple", related=("AAPL",))
