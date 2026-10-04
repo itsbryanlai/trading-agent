@@ -30,7 +30,7 @@ description: "Task list for the Risk Gate counting orders in flight (feature 009
 
 ## Phase 1: Foundational (blocks every story)
 
-- [ ] T001 Write the failing test `tests/integration/storage/test_in_flight_orders.py` (data-model.md, research I1). As the migration admin, build verdicts with the existing helpers (`tests/integration/storage/chain.py`) and assert the view `in_flight_orders`:
+- [x] T001 Write the failing test `tests/integration/storage/test_in_flight_orders.py` (data-model.md, research I1). As the migration admin, build verdicts with the existing helpers (`tests/integration/storage/chain.py`) and assert the view `in_flight_orders`:
   - shows an approved buy with no order and no refusal, with `unsettled_qty` = its approved qty and `limit_price` = its ceiling;
   - shows a `submitted` order with its full qty, and a `partially_filled` one with qty − `fill_qty`;
   - shows a sell with `limit_price` null;
@@ -38,7 +38,7 @@ description: "Task list for the Risk Gate counting orders in flight (feature 009
   - carries the verdict's `trading_day`;
   - exposes exactly the five columns `trading_day, symbol, side, unsettled_qty, limit_price`.
   Also: `ta_risk_gate`, `ta_assistant` and `ta_dashboard` can select from it; `ta_risk_gate` still can't select `orders` or `execution_refusals` (`42501`); no role gained a write. Update `tests/integration/storage/grants_matrix.py` for the three new `SELECT`s.
-- [ ] T002 Add `src/trading_agent/storage/migrations/0013_in_flight_orders.sql` exactly as data-model.md says: a header citing feature 009 and ADR 0020; `CREATE VIEW in_flight_orders AS …` with no `security_invoker` (owner's rights, like `reference_candidate_symbols`); the three grants. T001 passes; the full integration suite passes. One commit with T001 and the grants-matrix change, `Storage (feature 009): migration 0013 adds the in_flight_orders view (T001, T002, ADR 0020)`.
+- [x] T002 Add `src/trading_agent/storage/migrations/0013_in_flight_orders.sql` exactly as data-model.md says: a header citing feature 009 and ADR 0020; `CREATE VIEW in_flight_orders AS …` with no `security_invoker` (owner's rights, like `reference_candidate_symbols`); the three grants. T001 passes; the full integration suite passes. One commit with T001 and the grants-matrix change, `Storage (feature 009): migration 0013 adds the in_flight_orders view (T001, T002, ADR 0020)`.
 - [ ] T003 Add the four fields of research I3 (`in_flight_buy_qty`, `in_flight_buy_cost_symbol`, `in_flight_sell_qty`, `in_flight_buy_cost_all`; all `Decimal`, default `Decimal(0)`) to `risk.model.Context`, and give `tests/unit/risk/builders.py` the four at 0. In `risk/service.py`'s `_load_context`, read today's rows of `in_flight_orders` in the same cursor and transaction. Nothing in `gate.py` reads them yet, so every existing test passes unchanged. Commit with an integration assertion in `tests/integration/risk/` that `_load_context` returns the right four numbers for a symbol with one buy and one sell in flight and another symbol with a buy in flight, and 0s for an earlier day's approval.
 
 **Checkpoint**: the gate sees what's in flight; no verdict has changed yet.

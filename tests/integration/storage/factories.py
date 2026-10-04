@@ -106,6 +106,8 @@ OBJECTS: dict[str, ObjectSpec] = {
         ),
     ),
     "latest_report_time": ObjectSpec("view", probe_column="generated_at"),
+    # Feature 009
+    "in_flight_orders": ObjectSpec("view", probe_column="symbol"),
 }
 
 

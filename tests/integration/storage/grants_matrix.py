@@ -168,4 +168,11 @@ GRANTS: dict[str, dict[str, set[str]]] = {
         "ta_assistant": {"S"},
         "ta_dashboard": {"S"},
     },
+    # Feature 009 (migration 0013). What the gate may learn about its approvals still
+    # working: quantities and ceilings, never the orders or refusals themselves.
+    "in_flight_orders": {
+        "ta_risk_gate": {"S"},
+        "ta_assistant": {"S"},
+        "ta_dashboard": {"S"},
+    },
 }
