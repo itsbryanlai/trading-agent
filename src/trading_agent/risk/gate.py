@@ -111,12 +111,12 @@ def _sell(request: DecisionRequest, ctx: Context) -> Verdict:
     held = ctx.shares_held
     if held <= 0:
         return Verdict.reject(rules.NO_POSITION)
+    target = request.target_weight_pct / _HUNDRED
     # Shares already being sold can't be sold again (ADR 0020, research I5, I5a).
     available = held - ctx.in_flight_sell_qty
-    if available < 1:
-        return Verdict.reject(rules.TARGET_ALREADY_MET)
-    target = request.target_weight_pct / _HUNDRED
     if target == 0:
+        if available < 1:
+            return Verdict.reject(rules.TARGET_ALREADY_MET)
         qty = _floor(available)
         return Verdict.approve(_market_sell(request.symbol, qty, ctx, source="decision"))
     if ctx.equity is None:
