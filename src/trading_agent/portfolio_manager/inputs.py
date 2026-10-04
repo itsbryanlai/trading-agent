@@ -222,10 +222,15 @@ def _newest_first(reports: list[ReportRecord]) -> list[str]:
     return sorted(newest, key=lambda s: (-newest[s].timestamp(), s))
 
 
+def considered_symbols(data: Inputs, run_start: datetime) -> list[str]:
+    """Symbols with at least one unexpired, actionable report, newest report first."""
+    return _newest_first(_live_reports(data, run_start))
+
+
 def symbols_to_quote(data: Inputs, run_start: datetime) -> list[str]:
     """Symbols under consideration first (newest report first), then held symbols with
     no report (research P3)."""
-    considered = _newest_first(_live_reports(data, run_start))
+    considered = considered_symbols(data, run_start)
     held = [p.symbol for p in data.positions if p.symbol not in considered]
     return [*considered, *held]
 
