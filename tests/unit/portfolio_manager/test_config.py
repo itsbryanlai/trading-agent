@@ -38,6 +38,7 @@ def test_the_shipped_file_loads_with_the_documented_defaults():
     assert (cfg.quote_phase_seconds, cfg.journal_entries) == (90, 5)
     assert (cfg.journal_summary_max_chars, cfg.rationale_max_chars) == (2000, 2000)
     assert (cfg.reasoning_max_chars, cfg.max_input_chars) == (2000, 300000)
+    assert (cfg.source_title_max_chars, cfg.sources_per_report) == (300, 10)
     assert (cfg.model.provider, cfg.model.name) == ("qwen", "qwen3.7-plus")
     assert (cfg.model.max_output_tokens, cfg.model.timeout_seconds) == (8000, 150)
     assert cfg.provider_variables == (
@@ -111,6 +112,8 @@ BOUNDS = {
     "journal_summary_max_chars": (200, 10_000),
     "rationale_max_chars": (200, 10_000),
     "reasoning_max_chars": (200, 10_000),
+    "source_title_max_chars": (50, 2_000),
+    "sources_per_report": (1, 50),
     "max_input_chars": (10_000, 2_000_000),
 }
 

@@ -43,6 +43,8 @@ _INTS = {
     "journal_summary_max_chars": (200, 10_000),
     "rationale_max_chars": (200, 10_000),
     "reasoning_max_chars": (200, 10_000),
+    "source_title_max_chars": (50, 2_000),
+    "sources_per_report": (1, 50),
     "max_input_chars": (10_000, 2_000_000),
 }
 _KEYS = {"model", *_INTS}
@@ -60,6 +62,8 @@ class PortfolioManagerConfig:
     journal_entries: int
     journal_summary_max_chars: int
     rationale_max_chars: int
+    source_title_max_chars: int
+    sources_per_report: int
     reasoning_max_chars: int
     max_input_chars: int
     model: ModelSettings

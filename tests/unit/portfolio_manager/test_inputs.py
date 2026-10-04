@@ -278,3 +278,18 @@ def test_keeping_a_prefix_drops_the_rest_with_input_limit_and_their_report_ids()
     assert kept.account is built.account
     assert built.keeping(3) == built
     assert built.keeping(1).skipped == (("AAPL", "input_limit"), ("NVDA", "input_limit"))
+
+
+def test_source_text_is_capped_and_only_the_listed_sources_are_limited():
+    sources = [src("primary", title="t" * 80) for _ in range(4)]
+    sources[0]["publisher"] = "p" * 500
+    sources[0]["published_at"] = "d" * 500
+    r = only_report(
+        inputs([report("a", "AAPL", sources=sources)]),
+        source_title_max_chars=50,
+        sources_per_report=3,
+    )
+    assert len(r.sources) == 3
+    assert {len(s.title) for s in r.sources} == {50}
+    assert (len(r.sources[0].publisher), len(r.sources[0].published_at)) == (100, 40)
+    assert r.primary_sources == 4  # the evidence counts every source, shown or not

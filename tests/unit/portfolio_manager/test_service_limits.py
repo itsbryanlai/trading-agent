@@ -58,3 +58,24 @@ def test_over_the_input_limit_whole_symbols_go_from_the_end_and_are_logged(caplo
     # The model was never shown AAPL, so it cannot decide it, even with a valid-looking id.
     assert [d.symbol for d in store.written] == ["MSFT"]
     assert [(d.symbol, d.reason) for d in outcome.drops] == [("AAPL", "unknown_symbol")]
+
+
+def test_one_report_with_a_huge_title_and_many_sources_does_not_evict_the_others():
+    flood = [
+        {"title": "x" * 300_000, "publisher": "p" * 300_000, "relevance": "primary"}
+        for _ in range(500)
+    ]
+    data = inputs(
+        [
+            report("m", "MSFT", generated_at=NOW - timedelta(minutes=5), sources=flood),
+            report("a", "AAPL", generated_at=NOW - timedelta(hours=2)),
+        ]
+    )
+    outcome, _, model, _ = run(data, market(*QUOTES))
+    assert outcome.skipped == ()
+    assert sorted(outcome.candidates) == ["AAPL", "MSFT"]
+    (msft,) = [s for s in model_input(model)["symbols"] if s["symbol"] == "MSFT"]
+    (r,) = msft["reports"]
+    assert len(r["sources"]) == 10
+    assert r["evidence"]["primary_sources"] == 500
+    assert outcome.input_chars < 30_000

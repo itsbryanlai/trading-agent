@@ -121,6 +121,7 @@ The user message is one JSON document, so no field can end its own quoting or st
 - **`suggested_size_meaning`**: `"full exit"` for a sell at 0, otherwise `"target weight"`. Code sets it, so requirement 1 doesn't rest on the model reading a number.
 - **`evidence`** counts `relevance` per report, so requirement 2 doesn't rest on the model counting. A source with no `relevance` (an OI report, whose sources may not carry it) counts as neither and is shown as `"unmarked"`.
 - **URLs** are left out: the model doesn't need them, and they are attacker-chosen text.
+- **Every model-visible report field is capped** (review finding 2): each source `title` to `source_title_max_chars` (300), each `publisher` to 100 characters and each `published_at` to 40 (both fixed), and at most `sources_per_report` (10) sources are listed per report. `evidence` still counts every source. Without these, one report with a huge title or hundreds of sources could fill `max_input_chars` and evict every other candidate.
 - **Size limit**: each rationale is cut to `rationale_max_chars` (2,000) and each journal summary to `journal_summary_max_chars` (2,000). If the document still exceeds `max_input_chars` (300,000), whole symbols are dropped from the end of the order (newest report first) until it fits, logged as `input_limit`. Positions and the account are never dropped.
 
 ## P8. The answer's shape and its checks
@@ -188,6 +189,8 @@ Strict like `research.yaml`: every key required, unknown keys rejected, exact ty
 | `journal_summary_max_chars` | 2000 | 200–10000 |
 | `rationale_max_chars` | 2000 | 200–10000 |
 | `reasoning_max_chars` | 2000 | 200–10000 |
+| `source_title_max_chars` | 300 | 50–2000 |
+| `sources_per_report` | 10 | 1–50 |
 | `max_input_chars` | 300000 | 10000–2000000 |
 | `model.provider` | `qwen` | `qwen` or `anthropic` |
 | `model.name` | `qwen3.7-plus` | non-empty; for `anthropic`, starts with `claude-` |

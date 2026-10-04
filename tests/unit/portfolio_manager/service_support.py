@@ -40,6 +40,8 @@ class Settings:
     journal_entries: int = 5
     journal_summary_max_chars: int = 2000
     rationale_max_chars: int = 2000
+    source_title_max_chars: int = 300
+    sources_per_report: int = 10
     reasoning_max_chars: int = 2000
     max_input_chars: int = 300_000
     model: ModelSettings = field(

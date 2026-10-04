@@ -43,6 +43,8 @@ journal_entries: 5                # recent journal days shown to the model
 journal_summary_max_chars: 2000
 rationale_max_chars: 2000         # each report's rationale, cut before the model sees it
 reasoning_max_chars: 2000         # the PM's own reasoning, cut before it is written
+source_title_max_chars: 300       # each source's title, cut before the model sees it
+sources_per_report: 10            # sources listed per report (evidence counts cover all)
 max_input_chars: 300000
 model:
   provider: qwen                  # qwen | anthropic

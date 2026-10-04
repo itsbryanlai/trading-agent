@@ -7,9 +7,11 @@ and returns the symbols the model may decide, each with its reports, current wei
 earlier decisions today, plus the identifier map (`R1` -> database report id) that the
 answer checker holds the model to.
 
-Size (spec User Story 3): `build_candidates` cuts each rationale and journal summary to
-its limit; if the rendered document is still over `max_input_chars`, `Built.keeping`
-drops whole candidates from the end (prompt.fit_user_document drives it).
+Size (spec User Story 3): `build_candidates` cuts each rationale, journal summary and
+source title to its limit, each publisher to 100 characters, and shows at most
+`sources_per_report` sources per report (the evidence counts still count every one).
+If the rendered document is still over `max_input_chars`, `Built.keeping` drops whole
+candidates from the end (prompt.fit_user_document drives it).
 """
 
 from __future__ import annotations
@@ -26,6 +28,8 @@ FULL_EXIT = "full exit"
 TARGET_WEIGHT = "target weight"
 PRIMARY = "primary"
 SECONDARY = "secondary"
+PUBLISHER_MAX_CHARS = 100  # a name; not configurable
+PUBLISHED_AT_MAX_CHARS = 40  # a timestamp
 UNMARKED = "unmarked"
 INPUT_LIMIT = "input_limit"  # a skip reason, with freshness.QUOTE_MISSING and QUOTE_STALE
 
@@ -261,6 +265,8 @@ def build_candidates(
     max_age: timedelta,
     rationale_max_chars: int | None = None,
     journal_summary_max_chars: int | None = None,
+    source_title_max_chars: int | None = None,
+    sources_per_report: int | None = None,
 ) -> Built:
     if data.account is None:
         raise ValueError("an account snapshot is required")
@@ -297,7 +303,13 @@ def build_candidates(
                 quote_time=fresh[symbol].timestamp,
                 current_weight_pct=weight,
                 reports=tuple(
-                    _view(r, run_ids[r.id], rationale_max_chars)
+                    _view(
+                        r,
+                        run_ids[r.id],
+                        rationale_max_chars,
+                        source_title_max_chars,
+                        sources_per_report,
+                    )
                     for r in ordered
                     if r.symbol == symbol
                 ),
@@ -335,8 +347,14 @@ def _cut(value: str, limit: int | None) -> str:
     return value if limit is None else text.cap(value, limit)
 
 
-def _view(r: ReportRecord, run_id: str, rationale_max_chars: int | None) -> ReportView:
-    sources = tuple(_source(s) for s in r.sources)
+def _view(
+    r: ReportRecord,
+    run_id: str,
+    rationale_max_chars: int | None,
+    source_title_max_chars: int | None,
+    sources_per_report: int | None,
+) -> ReportView:
+    sources = tuple(_source(s, source_title_max_chars) for s in r.sources)
     full_exit = r.direction == "sell" and r.suggested_size_pct == 0
     return ReportView(
         run_id=run_id,
@@ -349,19 +367,20 @@ def _view(r: ReportRecord, run_id: str, rationale_max_chars: int | None) -> Repo
         already_decided_on=r.consumed,
         primary_sources=sum(s.relevance == PRIMARY for s in sources),
         secondary_sources=sum(s.relevance == SECONDARY for s in sources),
-        sources=sources,
+        # The evidence counts above cover every source; only the list shown is capped.
+        sources=sources if sources_per_report is None else sources[:sources_per_report],
         rationale=_cut(r.rationale_md, rationale_max_chars),
         generated_at=r.generated_at,
     )
 
 
-def _source(raw) -> SourceView:
+def _source(raw, title_max_chars: int | None) -> SourceView:
     raw = raw if isinstance(raw, dict) else {}
     relevance = raw.get("relevance")
     return SourceView(
-        title=str(raw.get("title") or ""),
-        publisher=str(raw.get("publisher") or ""),
-        published_at=str(raw.get("published_at") or ""),
+        title=_cut(str(raw.get("title") or ""), title_max_chars),
+        publisher=text.cap(str(raw.get("publisher") or ""), PUBLISHER_MAX_CHARS),
+        published_at=text.cap(str(raw.get("published_at") or ""), PUBLISHED_AT_MAX_CHARS),
         relevance=relevance if relevance in (PRIMARY, SECONDARY) else UNMARKED,
     )
 

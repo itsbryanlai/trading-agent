@@ -75,6 +75,8 @@ class Settings(Protocol):
     journal_entries: int
     journal_summary_max_chars: int
     rationale_max_chars: int
+    source_title_max_chars: int
+    sources_per_report: int
     reasoning_max_chars: int
     max_input_chars: int
     model: ModelSettings
@@ -167,6 +169,8 @@ def _run(
         max_age=max_age,
         rationale_max_chars=config.rationale_max_chars,
         journal_summary_max_chars=config.journal_summary_max_chars,
+        source_title_max_chars=config.source_title_max_chars,
+        sources_per_report=config.sources_per_report,
     )
     if not built.candidates:
         _log_quotes(built)
