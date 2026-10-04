@@ -21,14 +21,17 @@ import time
 from collections.abc import Callable, Sequence
 from datetime import UTC, datetime
 from pathlib import Path
-from urllib.parse import urlsplit
 
 import psycopg
 from psycopg.rows import dict_row
 
+from trading_agent.llm.settings import (
+    ModelSettings,
+    ModelSettingsError,
+    require_https_base_url,
+)
 from trading_agent.research.config import (
     DEFAULT_CONFIG_PATH,
-    ModelConfig,
     ResearchConfigError,
     load_config,
 )
@@ -59,7 +62,7 @@ EXIT_DATABASE = 3
 EXIT_CRASHED = 4
 
 
-def build_model(provider: str, key: str, model: ModelConfig, *, base_url: str | None = None):
+def build_model(provider: str, key: str, model: ModelSettings, *, base_url: str | None = None):
     if provider == "anthropic":
         from trading_agent.llm.anthropic_client import AnthropicClient
 
@@ -158,11 +161,11 @@ def _main(argv, news_factory, model_factory, connect, config_path, clock, sleep,
 
 def _qwen_base_url() -> str:
     value = require_env(QWEN_BASE_URL_VARIABLE)
-    parts = urlsplit(value)
-    if parts.scheme != "https" or not parts.netloc or value != value.strip():
+    try:
+        return require_https_base_url(value, QWEN_BASE_URL_VARIABLE)
+    except ModelSettingsError as exc:
         # Named, never echoed: the value is configuration, but stays out of logs.
-        raise ConfigError(f"{QWEN_BASE_URL_VARIABLE} must be an https:// URL")
-    return value
+        raise ConfigError(str(exc)) from exc
 
 
 def _optional(name: str) -> str | None:

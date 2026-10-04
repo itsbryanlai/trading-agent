@@ -13,7 +13,12 @@ from pathlib import Path
 
 import yaml
 
-from trading_agent.llm.settings import ModelSettings
+from trading_agent.llm.settings import (
+    ModelSettings,
+    ModelSettingsError,
+    parse_model_settings,
+    provider_variables,
+)
 from trading_agent.reference.symbols import is_plausible_ticker
 
 DEFAULT_CONFIG_PATH = Path(__file__).resolve().parents[3] / "config" / "research.yaml"
@@ -33,11 +38,8 @@ RUN_SLACK_SECONDS = 60
 RUN_MARGIN_SECONDS = 60
 MAX_WATCHLIST = 50
 
-PROVIDER_KEYS = {
-    "qwen": "RESEARCH_DASHSCOPE_API_KEY",
-    "anthropic": "RESEARCH_ANTHROPIC_API_KEY",
-}
-EFFORTS = ("low", "medium", "high")
+VARIABLE_PREFIX = "RESEARCH_"
+MODEL_TIMEOUT_BOUNDS = (30, 360)
 
 _INTS = {
     "general_news_max_articles": (0, 100),
@@ -47,20 +49,12 @@ _INTS = {
     "rationale_max_chars": (200, 10_000),
     "finnhub_calls_per_minute": (1, 300),
 }
-_MODEL_INTS = {
-    "max_output_tokens": (1000, 64_000),
-    "timeout_seconds": (30, 360),
-}
 _KEYS = {"watchlist", "model", *_INTS}
-_MODEL_KEYS = {"provider", "name", "anthropic_effort", *_MODEL_INTS}
+_MODEL_KEYS = {"provider", "name", "anthropic_effort", "max_output_tokens", "timeout_seconds"}
 
 
 class ResearchConfigError(Exception):
     pass
-
-
-# T007 removes this alias.
-ModelConfig = ModelSettings
 
 
 @dataclass(frozen=True)
@@ -72,11 +66,11 @@ class ResearchConfig:
     max_input_chars: int
     rationale_max_chars: int
     finnhub_calls_per_minute: int
-    model: ModelConfig
+    model: ModelSettings
 
     @property
     def provider_key_variable(self) -> str:
-        return PROVIDER_KEYS[self.model.provider]
+        return provider_variables(VARIABLE_PREFIX, self.model.provider)[0]
 
     @property
     def news_budget_seconds(self) -> float:
@@ -101,23 +95,14 @@ def load_config(path: Path = DEFAULT_CONFIG_PATH) -> ResearchConfig:
     _keys(model, _MODEL_KEYS, "model.")
 
     ints = {key: _int(data[key], key, *bounds) for key, bounds in _INTS.items()}
-    model_ints = {key: _int(model[key], f"model.{key}", *b) for key, b in _MODEL_INTS.items()}
-
-    provider = model["provider"]
-    if provider not in PROVIDER_KEYS:
-        raise ResearchConfigError(f"model.provider: must be one of {sorted(PROVIDER_KEYS)}")
-    name = model["name"]
-    if not isinstance(name, str) or not name.strip():
-        raise ResearchConfigError("model.name: must be a non-empty string")
-    if provider == "anthropic" and not name.startswith("claude-"):
-        raise ResearchConfigError("model.name: an anthropic model name starts with 'claude-'")
-    effort = model["anthropic_effort"]
-    if effort not in EFFORTS:
-        raise ResearchConfigError(f"model.anthropic_effort: must be one of {list(EFFORTS)}")
+    try:
+        settings = parse_model_settings(model, timeout_bounds=MODEL_TIMEOUT_BOUNDS)
+    except ModelSettingsError as exc:
+        raise ResearchConfigError(str(exc)) from exc
 
     config = ResearchConfig(
         watchlist=_watchlist(data["watchlist"]),
-        model=ModelConfig(provider=provider, name=name, anthropic_effort=effort, **model_ints),
+        model=settings,
         **ints,
     )
     if config.worst_case_seconds > RUN_BUDGET_SECONDS - RUN_MARGIN_SECONDS:
