@@ -38,7 +38,7 @@ The Risk Gate sizes each decision from the **settled holdings**: shares held, pl
 | II. Analysts propose, PM decides | Not affected; the PM is unchanged. | Pass |
 | III. Least privilege | One new read: `SELECT` on a narrow view exposing quantities and ceilings only, justified in the spec (FR-007). No grant on `orders` or `execution_refusals`, no write. An integration test proves it. | Pass |
 | IV. Autonomous, one hard stop | No approval gate. The daily-loss breaker and stop-loss exits are untouched (research I6). | Pass |
-| V. Spec and ADR first | Spec done; ADR 0020 proposed here, accepted before code. Gate contracts and `docs/specs/risk-gate.md` updated after it. `config/risk.yaml` untouched. | Pass, pending acceptance of ADR 0020 |
+| V. Spec and ADR first | Spec done; ADR 0020 accepted 2026-10-05, before code. Gate contracts and `docs/specs/risk-gate.md` updated after it. `config/risk.yaml` untouched. | Pass |
 | VI. Paper only | Not affected. | Pass |
 | VII. Read-only Assistant and dashboard | They gain `SELECT` on the new view, read-only, as for every table. | Pass |
 
@@ -59,7 +59,7 @@ specs/009-pending-orders/
 ├── checklists/requirements.md
 └── tasks.md                # /speckit-tasks
 
-docs/adr/0020-the-gate-counts-orders-in-flight.md   # proposed
+docs/adr/0020-the-gate-counts-orders-in-flight.md   # accepted 2026-10-05
 ```
 
 ### Source Code (repository root)
@@ -89,7 +89,7 @@ docs/specs/risk-gate.md, docs/specs/data-model.md, docs/adr/README.md
 1. **Order logic** (CLAUDE.md): the gate's buy and sell sizing changes (research I4, I5). No limit changes, no rule is added, and with nothing in flight every verdict is as before (a property test proves it).
 2. **A new read for the gate**: `SELECT` on one view (research I1). Not on `orders` or `execution_refusals`.
 3. **A sell can't count shares still being bought** (research I5): with 50 held and 24 being bought, an exit sells 50, and the PM decides again once the buy fills. Canceling in-flight orders stays out of scope.
-4. **ADR 0020 is `proposed`.** Your go-ahead on this plan accepts it; no code changes before that.
+4. **ADR 0020 accepted** by the owner on 2026-10-05, with items 1–3.
 
 ## Complexity Tracking
 
