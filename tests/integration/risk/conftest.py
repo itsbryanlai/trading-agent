@@ -53,7 +53,16 @@ def insert_position(conn, symbol="AAPL", qty=50, avg_entry="200") -> None:
     )
 
 
-def make_decision(conn, direction="buy", target="5", quote="200", symbol="AAPL") -> str:
+def make_decision(
+    conn,
+    direction="buy",
+    target="5",
+    quote="200",
+    symbol="AAPL",
+    quote_time=None,
+    generated_at=None,
+) -> str:
+    """`quote_time` defaults to the test clock's NOW; `generated_at` to NOW too."""
     report_id = conn.execute(
         "INSERT INTO reports (agent, symbol, direction, conviction, suggested_size_pct, sources, "
         "rationale_md, generated_at, expires_at) VALUES ('research', %s, 'buy', 4, 5, %s::jsonb, "
@@ -62,8 +71,9 @@ def make_decision(conn, direction="buy", target="5", quote="200", symbol="AAPL")
     ).fetchone()["id"]
     decision_id = conn.execute(
         "INSERT INTO decisions (symbol, direction, size_pct, reasoning_md, quote_at_decision, "
-        "quote_time) VALUES (%s, %s, %s, 'r', %s, now()) RETURNING id",
-        (symbol, direction, target, quote),
+        "quote_time, generated_at) VALUES (%s, %s, %s, 'r', %s, %s, %s) "
+        "RETURNING id",
+        (symbol, direction, target, quote, quote_time or NOW, generated_at or NOW),
     ).fetchone()["id"]
     conn.execute(
         "INSERT INTO decision_reports (decision_id, report_id) VALUES (%s, %s)",
