@@ -8,10 +8,10 @@ import yaml
 
 from tests.unit.research.conftest import FAKE_ANTHROPIC, FAKE_DASHSCOPE, FAKE_QWEN_URL
 from tests.unit.research.test_main import run
+from trading_agent.llm.anthropic_client import AnthropicClient
+from trading_agent.llm.qwen import QwenClient
 from trading_agent.research import __main__ as runner
-from trading_agent.research.anthropic_client import AnthropicClient
 from trading_agent.research.config import DEFAULT_CONFIG_PATH
-from trading_agent.research.qwen import QwenClient
 
 
 def anthropic_config(tmp_path):
@@ -62,7 +62,7 @@ def test_build_model_picks_the_adapter(monkeypatch):
         def __init__(self, **kwargs):
             self.messages = None
 
-    monkeypatch.setattr("trading_agent.research.anthropic_client.anthropic.Anthropic", FakeSDK)
+    monkeypatch.setattr("trading_agent.llm.anthropic_client.anthropic.Anthropic", FakeSDK)
     model = config(model_provider="anthropic", model_name="claude-sonnet-5-5").model
     assert isinstance(runner.build_model("anthropic", "k", model), AnthropicClient)
 

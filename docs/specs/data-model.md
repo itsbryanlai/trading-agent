@@ -54,6 +54,7 @@ One row per Portfolio Manager decision.
 | `size_pct` | numeric | PM's **target weight**: the share of equity the position should end up at (0 = exit fully). The Risk Gate orders the difference from the current weight (`specs/002-risk-gate`). |
 | `reasoning_md` | text (Markdown) | PM's own rationale, including how it weighed converging/conflicting reports |
 | `quote_at_decision` | numeric | the live quote the PM fetched itself, not trusted from a report |
+| `quote_time` | timestamptz | when that quote was traded. The Risk Gate rejects a decision whose quote is more than 15 minutes old when it evaluates it (`decision_stale`, [ADR 0019](../adr/0019-the-gate-evaluates-pm-decisions-in-its-own-loop.md)). |
 
 The report(s) a decision drew on — what enables per-agent attribution — are
 recorded in a separate `decision_reports (decision_id, report_id)` table
@@ -76,7 +77,7 @@ a `stop_loss_triggers` row, and exactly one of the two.
 | `evaluated_at` | timestamptz | |
 | `trading_day` | date | the only day the approval is valid (Execution never submits it on a later day) |
 | `verdict` | enum (`approved`, `rejected`) | |
-| `rejection_rule` | text | the named rule that fired, if rejected (`specs/002-risk-gate/contracts/rejection-rules.md`) |
+| `rejection_rule` | text | the named rule that fired, if rejected (`specs/002-risk-gate/contracts/rejection-rules.md`). For a decision this can be `decision_stale`. |
 | `approved_order` | jsonb | if approved: a limit buy with a price ceiling, or a market sell/exit, plus any trims |
 | `config_version` | text | which version of `config/risk.yaml` it was judged against |
 

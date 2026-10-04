@@ -7,9 +7,9 @@ import logging
 from tests.fakes.model import FakeModel
 from tests.unit.research.conftest import SECRETS
 from tests.unit.research.test_main import FakeConn, run
+from trading_agent.llm.ports import ModelUnavailable
 from trading_agent.research import __main__ as runner
 from trading_agent.research import service
-from trading_agent.research.ports import ModelUnavailable
 
 
 def test_a_recorded_failure_is_exit_1(env):

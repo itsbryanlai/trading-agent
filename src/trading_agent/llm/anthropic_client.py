@@ -12,8 +12,7 @@ from __future__ import annotations
 
 import anthropic
 
-from trading_agent.research.config import ModelConfig
-from trading_agent.research.ports import (
+from trading_agent.llm.ports import (
     ModelKeyRejected,
     ModelRefused,
     ModelRejected,
@@ -21,18 +20,19 @@ from trading_agent.research.ports import (
     ModelTruncated,
     ModelUnavailable,
 )
+from trading_agent.llm.settings import ModelSettings
 
 BASE_URL = "https://api.anthropic.com"
 MAX_RETRIES = 1
 
 
 class AnthropicClient:
-    def __init__(self, client, model: ModelConfig) -> None:
+    def __init__(self, client, model: ModelSettings) -> None:
         self._client = client
         self._model = model
 
     @classmethod
-    def from_key(cls, key: str, model: ModelConfig) -> AnthropicClient:
+    def from_key(cls, key: str, model: ModelSettings) -> AnthropicClient:
         client = anthropic.Anthropic(
             api_key=key,
             base_url=BASE_URL,

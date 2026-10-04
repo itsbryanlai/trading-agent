@@ -26,6 +26,7 @@ Rules:
 | The project's release version | `pyproject.toml` `version` | `0.1` |
 | Git tags for releases, when there are any | `vX`, `vX.Y`, `vX.Y.Z` | none yet |
 | Research's prompt | `PROMPT_VERSION` in `src/trading_agent/research/prompt.py`, logged with every run | `0.2` |
+| The Portfolio Manager's prompt | `PROMPT_VERSION` in `src/trading_agent/portfolio_manager/prompt.py`, logged with every run | `0.1` |
 | Any future versioned prompt or interface of an agent | its own constant, logged the same way | — |
 
 ## What it doesn't apply to

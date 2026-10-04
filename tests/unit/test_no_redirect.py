@@ -16,9 +16,10 @@ from urllib.request import Request
 import pytest
 
 from trading_agent import no_redirect
+from trading_agent.llm.ports import ModelUnavailable
+from trading_agent.llm.qwen import QwenClient
 from trading_agent.research import finnhub as research_finnhub
-from trading_agent.research.ports import ModelUnavailable, ProviderUnavailable
-from trading_agent.research.qwen import QwenClient
+from trading_agent.research.ports import ProviderUnavailable
 
 FAKE_KEY = "fake-key-not-real"
 
@@ -74,7 +75,14 @@ def test_finnhub_news_doesnt_follow_a_redirect(server, monkeypatch):
 
 def test_qwen_doesnt_follow_a_redirect(server):
     base, landed = server
-    client = QwenClient(FAKE_KEY, model="m", max_output_tokens=1000, timeout=5, base_url=base)
+    client = QwenClient(
+        FAKE_KEY,
+        model="m",
+        max_output_tokens=1000,
+        timeout=5,
+        base_url=base,
+        schema_name="research_answer",
+    )
     with pytest.raises(ModelUnavailable) as info:
         client.complete("s", "u", {})
     assert info.value.status == 302

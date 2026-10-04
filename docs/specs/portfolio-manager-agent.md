@@ -15,18 +15,31 @@ does that, deliberately outside the PM's own judgment), or placing orders
 
 ## Inputs
 
-- Every open report (`reports_with_status` where `status = 'open'`) from both
-  Research and the Opportunistic Identifier, regardless of which agent
-  produced it. A report's `rationale_md` is untrusted, model-written text that
+- Every report from both Research and the Opportunistic Identifier that has not
+  expired at the run's start, regardless of which agent produced it and whether
+  or not a decision already cites it (`reports_with_status` where `status` is
+  `open` or `consumed`). A report already decided on is shown as such, so a new
+  report on the same name is weighed against it. A `no_action` report names no
+  symbol and is never shown. A report's `rationale_md` is untrusted, model-written text that
   may quote the news: the PM treats it as data to weigh, never as
   instructions, and its prompt must keep it clearly separated from its own
   instructions (`specs/007-research-agent`, second-order prompt injection).
   Its `suggested_size_pct` is a target weight, like the PM's own `size_pct`.
 - Its own fresh reads, fetched itself rather than trusted from a report:
-  current portfolio state (`positions`, cash from the latest
-  `account_snapshots` row), a live quote for each symbol
-  under consideration, and recent `journal` entries for context on how things
-  have been going.
+  current portfolio state (`positions`, cash and equity from the latest
+  `account_snapshots` row of the current trading day), a live quote for each
+  symbol under consideration and each held symbol, and recent `journal` entries
+  for context on how things have been going.
+- **A fresh quote.** A quote counts as stale, and its symbol is left out of the
+  model's input and logged as skipped, when it has no trade time, a price of 0
+  or less, a time outside the current regular session, or an age over 5
+  minutes when it was fetched (`quote_max_age_minutes` in
+  `config/portfolio_manager.yaml`). The trade time is recorded on the decision
+  as `quote_time`.
+- **Its own decisions from today** on the symbols under consideration: each
+  one's direction, target weight and time, never its reasoning, so a later run
+  knows what an earlier one decided and model-written text doesn't feed back
+  into itself.
 - It does **not** read `config/risk.yaml` — the Risk Gate applies those
   limits independently afterward, so the PM's own reasoning isn't shaped by
   "what will pass," only by "what's the right call." (If this produces too
@@ -42,13 +55,24 @@ carrying:
   the position should end up at, not an amount to add. A full exit is `sell` at
   0. The direction must agree with the target (a buy targets more than the
   current weight, a sell less), or the Risk Gate rejects it.
+- the quote it was made on and that quote's own time (`quote_at_decision`,
+  `quote_time`)
 - the report(s) this decision drew on, recorded as `decision_reports` rows in
-  the same transaction, for per-agent attribution in the journal
+  the same transaction, for per-agent attribution in the journal. A buy must
+  cite at least one report that argues buy on that symbol, or it is dropped
+  before writing; a sell or hold may cite any report on the symbol. When the
+  reports on a symbol disagree, the decision must cite at least one from each
+  side.
 - `reasoning_md` — including, when both analysts converged on a symbol, how
   it weighed that convergence (a positive signal, not a sizing formula —
   convergence never mechanically doubles size)
 
-A symbol with no open report from either agent gets no decision — the PM does
+A **hold** records that the PM considered the symbol and chose not to trade.
+Its `size_pct` is the symbol's current weight, computed by code from the PM's
+own quote, positions and equity, not taken from the model. It gets no Risk Gate
+verdict.
+
+A symbol with no unexpired report from either agent gets no decision — the PM does
 not originate ideas of its own.
 
 ## Cadence
@@ -79,16 +103,36 @@ buy twice: a target already met produces no order.
   PM checking its own state.
 - **No open reports from either agent**: the PM's run produces no decisions.
   This is a normal outcome, not an error.
-- **A report it already decided on is still open in a later run**: re-evaluate
-  it on current state like any other. Deciding the same target again is
-  harmless, and the Risk Gate turns a met target into no order.
+- **A report it already decided on is still unexpired in a later run**:
+  re-evaluate it on current state like any other, marked as already decided on.
+  Deciding the same target again is harmless, and the Risk Gate turns a met
+  target into no order.
+- **A run outside the regular session** (only possible by hand): it writes
+  nothing and exits successfully.
+- **Failures** write nothing and exit non-zero: 1 for a failed run (no account
+  snapshot, a rejected key, no fresh quote, a model error, an unusable answer,
+  or the market closing before the write), 2 for a refusal to start (config, a
+  missing variable or an unknown argument), 3 for a database that is
+  unreachable or a read or write that fails, 4 for a crash. A run with nothing
+  to decide exits 0. Details: `specs/008-portfolio-manager/contracts/pm-interface.md`.
 
 ## Interfaces
 
-- Reads `reports` (all), `positions`, `account_snapshots`, `journal`. Writes
-  only to `decisions` and `decision_reports`.
+- Reads `reports` (all), `positions`, `account_snapshots`, `journal`, and its
+  own `decisions`. Writes only to `decisions` and `decision_reports`.
+- Calls one model, Qwen `qwen3.7-plus` by default or an Anthropic Sonnet model
+  by configuration ([ADR 0018](../adr/0018-qwen-as-a-model-provider.md)), once
+  per run and never a second provider. Its full behavior is specified in
+  [`specs/008-portfolio-manager`](../../specs/008-portfolio-manager/spec.md).
 - Never writes `risk_verdicts` or `orders` — a decision is a proposal until
   the Risk Gate and Execution act on it.
+- **How a decision reaches the gate.** The PM does not call the gate. The Risk
+  Gate's own loop (`python -m trading_agent.risk`) evaluates every buy or sell
+  decision from the current trading day that has no verdict, within about a
+  minute of it being written, and rejects one whose quote is more than 15
+  minutes old as `decision_stale`
+  ([ADR 0019](../adr/0019-the-gate-evaluates-pm-decisions-in-its-own-loop.md)).
+  The PM never sees the result.
 
 ## Non-goals
 

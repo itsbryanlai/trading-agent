@@ -37,6 +37,9 @@ def _ceil(value: Decimal) -> int:
 # How long a stop-loss observation stays usable (ADR 0014). Not a risk limit.
 MAX_TRIGGER_AGE = timedelta(minutes=10)
 
+# How long the quote on a PM decision stays usable (ADR 0019). Not a risk limit.
+MAX_DECISION_QUOTE_AGE = timedelta(minutes=15)
+
 
 def price_ceiling(quote: Decimal, tolerance_pct: Decimal) -> Decimal:
     """The most a buy may pay: quote plus tolerance, rounded down to the cent."""
@@ -51,6 +54,19 @@ def evaluate(request: Request, context: Context, config: RiskConfig) -> GateResu
     # a bad drop records the halt even if it's an exit (FR-009, SC-004). It only
     # ever rejects buys; an exit's verdict is unaffected.
     crossed = _loss_line_crossed(context, config)
+
+    # A decision sized from an old quote could sell more than its target meant. The
+    # halt is still recorded: a stale decision is not a reason to miss a crossing.
+    if (
+        isinstance(request, DecisionRequest)
+        and context.now - request.quote_time > MAX_DECISION_QUOTE_AGE
+    ):
+        return GateResult(
+            Verdict.reject(rules.DECISION_STALE),
+            config.version,
+            context.trading_day,
+            record_halt=crossed,
+        )
 
     if isinstance(request, StopLossRequest):
         verdict = _stop_loss(request, context, config)

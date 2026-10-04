@@ -34,8 +34,8 @@ def _report(conn, symbol, generated_at, expires_at, direction="buy"):
 def _decision(conn, symbol, generated_at):
     conn.execute(
         "INSERT INTO decisions (symbol, direction, size_pct, reasoning_md, quote_at_decision, "
-        "generated_at) VALUES (%s, 'buy', 5, 'r', 100, %s)",
-        (symbol, generated_at),
+        "generated_at, quote_time) VALUES (%s, 'buy', 5, 'r', 100, %s, %s)",
+        (symbol, generated_at, generated_at),
     )
 
 

@@ -20,11 +20,7 @@ from typing import Protocol
 import psycopg
 from psycopg.types.json import Jsonb
 
-from trading_agent.research import answer as a
-from trading_agent.research import prompt as p
-from trading_agent.research.config import ResearchConfig
-from trading_agent.research.ports import (
-    KeyRejected,
+from trading_agent.llm.ports import (
     ModelClient,
     ModelError,
     ModelKeyRejected,
@@ -32,10 +28,11 @@ from trading_agent.research.ports import (
     ModelRejected,
     ModelTruncated,
     ModelUnavailable,
-    NewsError,
-    NewsSource,
-    RawArticle,
 )
+from trading_agent.research import answer as a
+from trading_agent.research import prompt as p
+from trading_agent.research.config import ResearchConfig
+from trading_agent.research.ports import KeyRejected, NewsError, NewsSource, RawArticle
 from trading_agent.research.selection import select
 from trading_agent.risk import calendar
 

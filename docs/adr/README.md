@@ -46,3 +46,4 @@ What this makes easier, harder, or locks in going forward.
 | [0016](0016-market-data-for-the-llm-agents.md) | Market data for the LLM agents comes from read-only Finnhub keys |
 | [0017](0017-original-analysts-skip-incubation.md) | The original analysts skip incubation |
 | [0018](0018-qwen-as-a-model-provider.md) | Qwen is an approved model provider alongside Anthropic |
+| [0019](0019-the-gate-evaluates-pm-decisions-in-its-own-loop.md) | The Risk Gate evaluates Portfolio Manager decisions in its own loop, and rejects decisions on stale quotes |

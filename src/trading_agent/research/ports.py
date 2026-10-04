@@ -1,8 +1,8 @@
-"""Research's two ports (specs/007-research-agent/contracts/ports.md).
+"""Research's news port (specs/007-research-agent/contracts/ports.md).
 
-The only ways Research reaches the network: news (and the US symbol list), and one
-model call. Neither can write anything or reach a broker. Tests replace both with
-fakes (tests/fakes/news.py, tests/fakes/model.py).
+The way Research reaches the network for news (and the US symbol list). It can't
+write anything or reach a broker. The model port lives in trading_agent.llm. Tests
+replace this with tests/fakes/news.py.
 """
 
 from __future__ import annotations
@@ -52,47 +52,3 @@ class NewsSource(Protocol):
     def us_symbols(self) -> dict[str, str]:
         """US-listed symbols, each with its company name ("" when unknown)."""
         ...
-
-
-# --- model -----------------------------------------------------------------------
-
-
-class ModelError(Exception):
-    """`status` is the provider's HTTP status, when there was one. It's logged on its
-    own; the message never is, so nothing from a provider's response reaches a log."""
-
-    def __init__(self, message: str = "", *, status: int | None = None) -> None:
-        super().__init__(message)
-        self.status = status
-
-
-class ModelKeyRejected(ModelError):
-    """401 or 403."""
-
-
-class ModelRejected(ModelError):
-    """Any other 4xx: a refused schema, a prompt too long, an unknown model name."""
-
-
-class ModelUnavailable(ModelError):
-    """Network, timeout, 429 or 5xx."""
-
-
-class ModelRefused(ModelError):
-    """The model declined to answer."""
-
-
-class ModelTruncated(ModelError):
-    """The answer hit the output limit, so it can't be trusted to be complete."""
-
-
-@dataclass(frozen=True)
-class ModelReply:
-    text: str
-    input_tokens: int | None
-    output_tokens: int | None
-    finish: str | None
-
-
-class ModelClient(Protocol):
-    def complete(self, system: str, user: str, schema: dict) -> ModelReply: ...

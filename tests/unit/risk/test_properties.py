@@ -109,6 +109,7 @@ decisions = st.builds(
     direction=st.sampled_from(["buy", "sell"]),
     target_weight_pct=weights,
     quote=prices,
+    quote_time=st.just(NOW),
 )
 triggers = st.builds(
     StopLossRequest,
@@ -164,7 +165,7 @@ def buy_scenarios(draw) -> tuple[DecisionRequest, Context]:
             "cash": (ctx.equity * cash_share).quantize(Decimal("0.01")),
         }
     )
-    return DecisionRequest("AAPL", "buy", target, quote), ctx
+    return DecisionRequest("AAPL", "buy", target, quote, ctx.now), ctx
 
 
 @PROPERTY
@@ -263,7 +264,9 @@ def test_a_genuine_stop_loss_breach_is_always_approved(ctx, observed):
 def test_a_full_sell_of_a_held_position_is_always_approved(ctx, quote):
     if not ctx.shares_held:
         return
-    verdict = evaluate(DecisionRequest("AAPL", "sell", Decimal(0), quote), ctx, CONFIG).verdict
+    verdict = evaluate(
+        DecisionRequest("AAPL", "sell", Decimal(0), quote, ctx.now), ctx, CONFIG
+    ).verdict
     assert verdict.approved and verdict.order.qty == ctx.shares_held
 
 

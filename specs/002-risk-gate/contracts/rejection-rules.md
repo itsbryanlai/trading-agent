@@ -10,8 +10,11 @@ When several apply, the verdict names the one listed first for its request type.
 | # | Rule | Rejects when |
 |---|---|---|
 | 1 | `market_closed` | the exchange calendar says the market is not open at evaluation time (FR-007) |
+| 1a | `decision_stale` | *decision only, buy or sell*: the decision's quote is more than 15 minutes old at evaluation (`now − quote_time > MAX_DECISION_QUOTE_AGE`, a code constant, not in `config/risk.yaml`; [ADR 0019](../../../docs/adr/0019-the-gate-evaluates-pm-decisions-in-its-own-loop.md), added by `specs/008-portfolio-manager`). The first rejection after `market_closed`. The PM's next run decides again on a fresh quote. Stop-loss triggers are unaffected. |
 
 ## Exits: sell decisions and stop-loss triggers
+
+A sell decision can also be rejected `decision_stale` (rule 1a above, before every rule below); a stop-loss trigger never is.
 
 | # | Rule | Rejects when |
 |---|---|---|
@@ -22,7 +25,7 @@ When several apply, the verdict names the one listed first for its request type.
 | 5 | `direction_contradicts_target` | *sell decision only*: the target is more than one share *above* the holding (FR-003) |
 | 6 | `target_already_met` | *sell decision only*: fewer than one share to sell to reach the target (FR-003) |
 
-Otherwise approved as a market sell. Nothing else can reject an exit: not the pause, the halt, the
+Otherwise approved as a market sell. Apart from `decision_stale`, nothing else can reject an exit: not the pause, the halt, the
 order cap, a missing baseline, or the universe.
 
 ## Recording the halt (not a rejection)

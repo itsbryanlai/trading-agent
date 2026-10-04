@@ -10,8 +10,8 @@
 # least 5 minutes.
 #
 # Each agent's feature enables its own entry and lists its variables, which must
-# start with its prefix (ADR 0015). Research is enabled (feature 007); the
-# Opportunistic Identifier and the PM don't exist yet and stay disabled.
+# start with its prefix (ADR 0015). Research is enabled (feature 007) and so is the
+# PM (feature 008); the Opportunistic Identifier doesn't exist yet and stays disabled.
 
 research:
   enabled: true                # specs/007-research-agent
@@ -36,9 +36,14 @@ opportunistic_identifier:
   interval_minutes: 60
 
 portfolio_manager:
-  enabled: false
+  enabled: true                # specs/008-portfolio-manager
   module: trading_agent.portfolio_manager
-  env: []                      # PORTFOLIO_MANAGER_* names only
+  env:                         # PORTFOLIO_MANAGER_* names only; unset ones aren't passed
+    - PORTFOLIO_MANAGER_DATABASE_URL
+    - PORTFOLIO_MANAGER_FINNHUB_API_KEY
+    - PORTFOLIO_MANAGER_DASHSCOPE_API_KEY     # model.provider: qwen (config/portfolio_manager.yaml)
+    - PORTFOLIO_MANAGER_QWEN_BASE_URL         # model.provider: qwen
+    - PORTFOLIO_MANAGER_ANTHROPIC_API_KEY     # model.provider: anthropic
   timeout_minutes: 10
   morning_session: "10:00"     # at or after the open, before the cutoff
   min_spacing_minutes: 30      # >= 30 (ADR 0011)

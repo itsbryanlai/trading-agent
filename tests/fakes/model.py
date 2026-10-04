@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 
-from trading_agent.research.ports import ModelReply
+from trading_agent.llm.ports import ModelReply
 
 
 class FakeModel:

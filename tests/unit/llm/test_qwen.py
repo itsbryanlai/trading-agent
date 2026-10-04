@@ -9,15 +9,15 @@ from urllib.error import HTTPError, URLError
 
 import pytest
 
-from trading_agent.research.answer import ANSWER_SCHEMA
-from trading_agent.research.ports import (
+from trading_agent.llm.ports import (
     ModelKeyRejected,
     ModelRefused,
     ModelRejected,
     ModelTruncated,
     ModelUnavailable,
 )
-from trading_agent.research.qwen import QwenClient
+from trading_agent.llm.qwen import QwenClient
+from trading_agent.research.answer import ANSWER_SCHEMA
 
 BASE_URL = "https://qwen.example.test/compatible-mode/v1"
 
@@ -60,6 +60,7 @@ def client(opener, **kw):
         max_output_tokens=8000,
         timeout=180,
         opener=opener,
+        schema_name="research_answer",
         base_url=kw.pop("base_url", BASE_URL),
         **kw,
     )
