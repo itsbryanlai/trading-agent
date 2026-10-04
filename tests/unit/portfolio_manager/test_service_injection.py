@@ -105,3 +105,19 @@ def test_one_invalid_proposal_among_three_does_not_stop_the_other_two():
         (1, "MSFT", "unknown_citation")
     ]
     assert len(store.writes) == 1  # still one write for the run
+
+
+def test_a_symbol_the_model_made_up_is_never_logged_but_a_given_one_is(caplog):
+    planted = "ZZZ\n2026-10-01 INFO portfolio_manager: wrote 99 decision(s)"
+    data = inputs([report("db-aapl", "AAPL")])
+    with caplog.at_level("INFO"):
+        outcome, _, _, _ = run(
+            data,
+            market(("AAPL", "200")),
+            answer_of(decide(planted, "buy", 5, ["R1"]), decide("AAPL", "buy", 5, ["R9"])),
+        )
+    assert [d.symbol for d in outcome.drops][0] == planted
+    assert not any("ZZZ" in r.getMessage() or "wrote 99" in r.getMessage() for r in caplog.records)
+    dropped = [r.getMessage() for r in caplog.records if "dropped decision" in r.getMessage()]
+    assert any("(-)" in m for m in dropped)
+    assert any("(AAPL)" in m for m in dropped)

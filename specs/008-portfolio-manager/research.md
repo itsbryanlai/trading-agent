@@ -248,7 +248,7 @@ The same discipline as Research: never a variable's value, a prompt, an answer, 
 | INFO | quotes | `portfolio_manager: <f> fresh quotes; skipped: <symbol (reason), …> or none` |
 | INFO | model | `portfolio_manager: model used <in> input and <out> output tokens` |
 | INFO | check | `portfolio_manager: <n> decisions received, <a> accepted, <d> dropped` |
-| INFO | per drop | `portfolio_manager: dropped decision <i> (<symbol or ->): <reason>` |
+| INFO | per drop | `portfolio_manager: dropped decision <i> (<symbol given to the model in this run, or ->): <reason>` |
 | INFO | end | `portfolio_manager: wrote <n> decision(s)` or `portfolio_manager: nothing to decide (<why>)` |
 | INFO | outside window | `portfolio_manager: market closed; nothing to do` |
 | ERROR | failure | `portfolio_manager: <category>: <exception type>` (plus ` (HTTP <status>)` for a model failure that had one) |

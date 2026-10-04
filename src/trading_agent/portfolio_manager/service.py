@@ -205,11 +205,13 @@ def _run(
         len(checked.decisions),
         len(checked.drops),
     )
+    given_symbols = set(outcome.candidates)
     for drop in checked.drops:
+        # A symbol the model made up is its text, not ours: it is never logged.
         log.info(
             "portfolio_manager: dropped decision %d (%s): %s",
             drop.index,
-            drop.symbol or "-",
+            drop.symbol if drop.symbol in given_symbols else "-",
             drop.reason,
         )
 

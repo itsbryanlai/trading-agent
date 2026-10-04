@@ -206,7 +206,7 @@ def test_the_logs_say_what_the_run_considered_skipped_used_dropped_and_wrote(env
         "1 fresh quotes; skipped: MSFT (quote_stale)",
         "model used 1200 input and 300 output tokens",
         "2 decisions received, 1 accepted, 1 dropped",
-        "dropped decision 1 (XYZ): unknown_symbol",
+        "dropped decision 1 (-): unknown_symbol",
         "wrote 1 decision(s)",
     ):
         assert f"portfolio_manager: {line}" in text
