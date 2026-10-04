@@ -31,14 +31,18 @@ def pytest_collection_modifyitems(items: list[pytest.Item]) -> None:
 
 @pytest.fixture(scope="session")
 def server_url() -> str:
+    # Locally, no database means the integration suite is skipped. In CI,
+    # TEST_DATABASE_REQUIRED=1 turns that skip into a failure, so a broken
+    # database service can't pass as a green run.
+    give_up = pytest.fail if os.environ.get("TEST_DATABASE_REQUIRED") == "1" else pytest.skip
     url = os.environ.get("TEST_DATABASE_URL")
     if not url:
-        pytest.skip("TEST_DATABASE_URL is not set; integration suite skipped")
+        give_up("TEST_DATABASE_URL is not set; integration suite skipped")
     try:
         with psycopg.connect(url, connect_timeout=5):
             pass
     except psycopg.OperationalError as exc:
-        pytest.skip(f"TEST_DATABASE_URL unreachable: {exc}")
+        give_up(f"TEST_DATABASE_URL unreachable: {exc}")
     return url
 
 
