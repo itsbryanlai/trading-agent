@@ -57,6 +57,13 @@ class Context:
     # The lowest equity among today's snapshots since the open, so a crossing between
     # two evaluations still records the halt (ADR 0014 §3, second review F7).
     lowest_equity_today: Decimal | None = None
+    # Today's approvals still working, from the in_flight_orders view (ADR 0020,
+    # specs/009-pending-orders research I3). The first three are this symbol's;
+    # the cost of buys is each one's unsettled quantity at its own price ceiling.
+    in_flight_buy_qty: Decimal = Decimal(0)
+    in_flight_buy_cost_symbol: Decimal = Decimal(0)
+    in_flight_sell_qty: Decimal = Decimal(0)
+    in_flight_buy_cost_all: Decimal = Decimal(0)  # every symbol (FR-001a)
 
 
 @dataclass(frozen=True)
