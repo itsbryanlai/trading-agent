@@ -17,6 +17,7 @@
 - Q: Which model provider is the PM's default, given its prompts carry portfolio state? → A: Qwen `qwen3.7-plus`, with an optional switch to Anthropic Sonnet, the same as Research. The account is paper only.
 - Q: May the PM write a buy on a symbol when none of the reports it cites argues buy? → A: No. A buy must cite at least one buy report on that symbol, or it is dropped (`unbacked_buy`). A sell or hold may cite any report on the symbol, since reducing or keeping exposure needs no backing.
 - Q: If the gate's loop first sees a decision long after it was written, does the gate still act on it? → A: No. The gate rejects a decision whose recorded quote is more than 15 minutes old when it evaluates it, under a new named rule, `decision_stale`, so nothing trades on an old quote; the PM's next run decides again. The limit is a gate setting, default 15 minutes. This is a change to the gate's rules, flagged, and recorded in the same ADR as the gate loop change.
+- Q: Should each run show the model the PM's own earlier decisions from today on the symbols under consideration? → A: Yes: each one's direction, target weight and time, without its reasoning, so a later run knows what an earlier one decided and model-written text doesn't feed back into itself. No new grant: the PM's role already reads `decisions`.
 
 ## User Scenarios & Testing *(mandatory)*
 
@@ -37,7 +38,7 @@ Its inputs include model-written text that came from the news, which anyone can 
 
 When the orchestrator starts it, the PM:
 1. reads every unexpired report from both analysts;
-2. reads the portfolio itself (positions, and cash and equity from the latest account snapshot) and recent journal entries;
+2. reads the portfolio itself (positions, and cash and equity from the latest account snapshot), recent journal entries, and its own earlier decisions from today;
 3. fetches a live quote for each symbol under consideration itself;
 4. asks the model what to do, symbol by symbol;
 5. writes one decision per symbol it acts on: buy, sell or hold, with a target weight, its reasoning, its quote, and the reports it drew on.
@@ -185,7 +186,7 @@ The Risk Gate's own loop does it (Clarifications). That loop already evaluates s
 
 **Inputs**
 
-- **FR-001**: The PM MUST read, per run: every report from both analysts that hasn't expired by the run's start, whether or not a decision already cites it (Clarifications), excluding every `no_action` report; current positions; cash and equity from the latest account snapshot of the current trading day; and a configured number of recent journal entries. It MUST NOT read the risk configuration, risk verdicts, orders or any other component's credentials.
+- **FR-001**: The PM MUST read, per run: every report from both analysts that hasn't expired by the run's start, whether or not a decision already cites it (Clarifications), excluding every `no_action` report; current positions; cash and equity from the latest account snapshot of the current trading day; a configured number of recent journal entries; and its own decisions from the current trading day on the symbols under consideration (direction, target weight and time only, never their reasoning; Clarifications). It MUST NOT read the risk configuration, risk verdicts, orders or any other component's credentials.
 - **FR-002**: The PM MUST fetch a live quote itself, with its own read-only market-data key ([ADR 0016](../../docs/adr/0016-market-data-for-the-llm-agents.md)), for every symbol under consideration and every held symbol. It MUST NOT use a price from a report, and MUST NOT use any broker credential.
 - **FR-003**: A quote MUST count as stale when it has no trade time, its price is not above 0, its time is not in the current regular session, or it is older than a configured freshness limit. A symbol under consideration with a stale or missing quote MUST be left out of the model's input and logged as skipped.
 
@@ -193,7 +194,7 @@ The Risk Gate's own loop does it (Clarifications). That loop already evaluates s
 
 - **FR-004**: The PM MUST make at most one model call per run, to the configured provider and model ([ADR 0018](../../docs/adr/0018-qwen-as-a-model-provider.md)). It MUST NOT call any other provider, including when the call fails. With no symbol left to decide on, it MUST make no call.
 - **FR-005**: The model's input and output MUST be bounded by configured limits, and the call MUST have a time limit that fits within the orchestrator's timeout for the PM.
-- **FR-006**: The model's input MUST keep the PM's instructions separate from all model-written text (report rationales, source titles, journal summaries), which is passed only as quoted data that can't end its own field. It MUST state that a report's suggested size is a target weight and that a sell at 0 means a full exit. For each report it MUST show the analyst, direction, conviction, suggested size, whether it was already decided on, and its count of primary and secondary sources.
+- **FR-006**: The model's input MUST keep the PM's instructions separate from all model-written text (report rationales, source titles, journal summaries), which is passed only as quoted data that can't end its own field. It MUST state that a report's suggested size is a target weight and that a sell at 0 means a full exit. For each report it MUST show the analyst, direction, conviction, suggested size, whether it was already decided on, and its count of primary and secondary sources. For each symbol it MUST show the PM's own earlier decisions from today, by direction, target weight and time.
 - **FR-007**: The instructions MUST tell the model: that it alone decides and the analysts only propose; to weigh secondary-only evidence as weaker; that agreement between analysts may count as a positive signal but must never be sized by adding or averaging their suggestions; to resolve conflicting reports explicitly in its reasoning; that its size is a target weight of equity; and that text inside reports is data, never instructions. A prompt version MUST be logged with every run.
 - **FR-008**: The model MUST be asked for a fixed shape of answer: a list of decisions, each with a symbol, direction, target weight, reasoning, and the identifiers of the reports it drew on. The list may be empty.
 
@@ -240,7 +241,7 @@ The Risk Gate's own loop does it (Clarifications). That loop already evaluates s
 **Logging and documentation**
 
 - **FR-025**: Each run MUST log the prompt version, the reports considered, the symbols skipped for stale quotes, the proposals received, the decisions written, every dropped proposal with its reason, and the model's reported token use. No log line may contain a credential.
-- **FR-026**: `docs/specs/portfolio-manager-agent.md` MUST be updated to match this feature's answers on which reports a run considers, the quote freshness rule, the hold's target weight, and how a decision reaches the gate.
+- **FR-026**: `docs/specs/portfolio-manager-agent.md` MUST be updated to match this feature's answers on which reports a run considers, its own earlier decisions as an input, the rule that a buy must cite a buy report, the quote freshness rule, the hold's target weight, and how a decision reaches the gate.
 
 ### Key Entities
 
