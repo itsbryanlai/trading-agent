@@ -74,7 +74,7 @@ description: "Task list for the Risk Gate counting orders in flight (feature 009
   - `specs/001-data-model/contracts/role-grants.md`: the three `SELECT`s on `in_flight_orders`;
   - `docs/specs/risk-gate.md`: sizing from settled holdings, the cash reserve counting in-flight buys, ADR 0020;
   - `docs/specs/data-model.md`: a section for the `in_flight_orders` view.
-- [ ] T010 Run quickstart steps 1–3, each unpiped. Fix anything in its own commit.
+- [x] T010 Run quickstart steps 1–3, each unpiped. Fix anything in its own commit.
 - [ ] T011 `/speckit-converge` (Sonnet subagent) and an adversarial review (subagent on the session's model), in parallel; act on findings in their own commits.
 
 ---
