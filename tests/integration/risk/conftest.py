@@ -61,8 +61,8 @@ def make_decision(conn, direction="buy", target="5", quote="200", symbol="AAPL")
         (symbol, SOURCES),
     ).fetchone()["id"]
     decision_id = conn.execute(
-        "INSERT INTO decisions (symbol, direction, size_pct, reasoning_md, quote_at_decision) "
-        "VALUES (%s, %s, %s, 'r', %s) RETURNING id",
+        "INSERT INTO decisions (symbol, direction, size_pct, reasoning_md, quote_at_decision, "
+        "quote_time) VALUES (%s, %s, %s, 'r', %s, now()) RETURNING id",
         (symbol, direction, target, quote),
     ).fetchone()["id"]
     conn.execute(

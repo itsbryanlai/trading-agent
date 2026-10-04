@@ -44,8 +44,9 @@ def insert_report(
 def insert_decision(conn: psycopg.Connection, report_ids: list[str], symbol: str = "AAPL") -> str:
     decision_id = conn.execute(
         """
-        INSERT INTO decisions (symbol, direction, size_pct, reasoning_md, quote_at_decision)
-        VALUES (%s, 'buy', 5, 'both analysts converged', 187.25)
+        INSERT INTO decisions (symbol, direction, size_pct, reasoning_md, quote_at_decision,
+                               quote_time)
+        VALUES (%s, 'buy', 5, 'both analysts converged', 187.25, now())
         RETURNING id
         """,
         (symbol,),

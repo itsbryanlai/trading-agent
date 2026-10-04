@@ -171,19 +171,19 @@ def test_decision_reports_cannot_cite_a_missing_report(conn):
         ),
         pytest.param(
             "INSERT INTO decisions (symbol, direction, size_pct, reasoning_md, "
-            "quote_at_decision) VALUES ('AAPL', 'no_action', 5, 'r', 1)",
+            "quote_at_decision, quote_time) VALUES ('AAPL', 'no_action', 5, 'r', 1, now())",
             {},
             id="decision-no_action",
         ),
         pytest.param(
             "INSERT INTO decisions (symbol, direction, size_pct, reasoning_md, "
-            "quote_at_decision) VALUES ('AAPL', 'buy', 101, 'r', 1)",
+            "quote_at_decision, quote_time) VALUES ('AAPL', 'buy', 101, 'r', 1, now())",
             {},
             id="decision-size-101",
         ),
         pytest.param(
             "INSERT INTO decisions (symbol, direction, size_pct, reasoning_md, "
-            "quote_at_decision) VALUES ('AAPL', 'buy', 5, 'r', 0)",
+            "quote_at_decision, quote_time) VALUES ('AAPL', 'buy', 5, 'r', 0, now())",
             {},
             id="decision-quote-0",
         ),
