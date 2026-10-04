@@ -68,12 +68,12 @@ def reference(**overrides) -> Reference:
     )
 
 
-def buy(symbol="AAPL", target=5, quote=200) -> DecisionRequest:
-    return DecisionRequest(symbol, "buy", D(target), D(quote))
+def buy(symbol="AAPL", target=5, quote=200, quote_time: datetime = NOW) -> DecisionRequest:
+    return DecisionRequest(symbol, "buy", D(target), D(quote), quote_time)
 
 
-def sell(symbol="AAPL", target=0, quote=200) -> DecisionRequest:
-    return DecisionRequest(symbol, "sell", D(target), D(quote))
+def sell(symbol="AAPL", target=0, quote=200, quote_time: datetime = NOW) -> DecisionRequest:
+    return DecisionRequest(symbol, "sell", D(target), D(quote), quote_time)
 
 
 def trigger(symbol="AAPL", observed=160, observed_at: datetime = NOW) -> StopLossRequest:

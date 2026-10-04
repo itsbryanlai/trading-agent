@@ -50,7 +50,8 @@ def evaluate_decision(
             return existing
 
         cur.execute(
-            "SELECT symbol, direction, size_pct, quote_at_decision FROM decisions WHERE id = %s",
+            "SELECT symbol, direction, size_pct, quote_at_decision, quote_time "
+            "FROM decisions WHERE id = %s",
             (decision_id,),
         )
         decision = cur.fetchone()
@@ -64,6 +65,7 @@ def evaluate_decision(
             direction=decision["direction"],
             target_weight_pct=decision["size_pct"],
             quote=decision["quote_at_decision"],
+            quote_time=decision["quote_time"],
         )
         return _judge_and_record(cur, request, now, config, decision_id=decision_id)
 

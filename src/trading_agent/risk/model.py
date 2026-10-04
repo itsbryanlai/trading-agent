@@ -18,6 +18,7 @@ class DecisionRequest:
     direction: Literal["buy", "sell"]
     target_weight_pct: Decimal
     quote: Decimal
+    quote_time: datetime  # a quote older than MAX_DECISION_QUOTE_AGE is stale (ADR 0019)
 
 
 @dataclass(frozen=True)

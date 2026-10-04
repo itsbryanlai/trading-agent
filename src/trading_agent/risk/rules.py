@@ -6,6 +6,7 @@ module and that document in lockstep.
 """
 
 MARKET_CLOSED = "market_closed"
+DECISION_STALE = "decision_stale"
 
 STOP_LOSS_TRIGGER_STALE = "stop_loss_trigger_stale"
 NO_POSITION = "no_position"
