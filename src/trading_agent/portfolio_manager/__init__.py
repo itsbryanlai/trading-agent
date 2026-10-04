@@ -2,5 +2,5 @@
 
 Turns the analysts' unexpired reports, fresh quotes and the account's state into
 decisions. It writes only its own decisions and their report links; it never reads
-config/risk.yaml, verdicts or orders, and it has no broker.
+the gate's limits, verdicts or orders, and it has no broker.
 """
