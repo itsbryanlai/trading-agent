@@ -13,9 +13,29 @@ from trading_agent.research.config import (
     load_config,
 )
 
+# The tests below check the loader's rules and arithmetic, so they start from this fixed
+# config (an empty watchlist and the default settings) and not from config/research.yaml:
+# the owner edits that file's watchlist, and no test but the shipped-file ones may care.
+BASE = {
+    "watchlist": [],
+    "general_news_max_articles": 20,
+    "articles_per_symbol": 5,
+    "article_summary_max_chars": 1000,
+    "max_input_chars": 300000,
+    "rationale_max_chars": 2000,
+    "finnhub_calls_per_minute": 30,
+    "model": {
+        "provider": "qwen",
+        "name": "qwen3.7-plus",
+        "max_output_tokens": 8000,
+        "timeout_seconds": 180,
+        "anthropic_effort": "medium",
+    },
+}
 
-def shipped() -> dict:
-    return yaml.safe_load(DEFAULT_CONFIG_PATH.read_text())
+
+def base() -> dict:
+    return copy.deepcopy(BASE)
 
 
 def write(tmp_path, data) -> object:
@@ -29,7 +49,7 @@ def load(tmp_path, data):
 
 
 def changed(path: tuple, value) -> dict:
-    data = copy.deepcopy(shipped())
+    data = base()
     target = data
     for key in path[:-1]:
         target = target[key]
@@ -39,7 +59,7 @@ def changed(path: tuple, value) -> dict:
 
 def test_shipped_file_loads():
     cfg = load_config(DEFAULT_CONFIG_PATH)
-    assert cfg.watchlist == ()
+    assert isinstance(cfg.watchlist, tuple)  # its contents are the owner's to change
     assert cfg.general_news_max_articles == 20
     assert cfg.articles_per_symbol == 5
     assert cfg.model.provider == "qwen"
@@ -65,7 +85,7 @@ def test_unreadable_or_not_a_mapping(tmp_path):
 
 @pytest.mark.parametrize("key", ["watchlist", "max_input_chars", "model"])
 def test_missing_top_level_key(tmp_path, key):
-    data = shipped()
+    data = base()
     del data[key]
     with pytest.raises(ResearchConfigError, match=key):
         load(tmp_path, data)
@@ -73,7 +93,7 @@ def test_missing_top_level_key(tmp_path, key):
 
 @pytest.mark.parametrize("key", ["provider", "name", "timeout_seconds", "anthropic_effort"])
 def test_missing_model_key(tmp_path, key):
-    data = shipped()
+    data = base()
     del data["model"][key]
     with pytest.raises(ResearchConfigError, match=key):
         load(tmp_path, data)
@@ -81,8 +101,8 @@ def test_missing_model_key(tmp_path, key):
 
 def test_unknown_keys_at_both_levels(tmp_path):
     with pytest.raises(ResearchConfigError, match="surprise"):
-        load(tmp_path, {**shipped(), "surprise": 1})
-    data = shipped()
+        load(tmp_path, {**base(), "surprise": 1})
+    data = base()
     data["model"]["qwen_enable_thinking"] = True
     with pytest.raises(ResearchConfigError, match="qwen_enable_thinking"):
         load(tmp_path, data)
