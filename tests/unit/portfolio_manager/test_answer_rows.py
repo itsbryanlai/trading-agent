@@ -159,7 +159,7 @@ def test_a_malformed_item_is_dropped_and_the_rest_survive():
         item(target="4"),
         item(target=True),
         item(reasoning=7),
-        item(ids="R1"),
+        {**item(), "report_ids": "R1"},
         item(ids=[1]),
     ]
     checked = run(*bad, item("AAPL", "buy", 4))
@@ -221,6 +221,7 @@ def test_values_that_would_not_be_valid_rows_are_never_written():
 
 def test_the_shape_rule_alone_rejects_wrong_types():
     """The shape check is its own rule; later rules (User Story 2) rely on it."""
-    for bad in (item(target=True), item(target="4"), item(ids=[1]), item(ids="R1")):
+    wrong_ids = {**item(), "report_ids": "R1"}
+    for bad in (item(target=True), item(target="4"), item(ids=[1]), wrong_ids):
         assert answer._malformed(bad, GIVEN) == "malformed_decision"
     assert answer._malformed(item(), GIVEN) is None
