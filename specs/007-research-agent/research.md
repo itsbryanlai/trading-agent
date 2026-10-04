@@ -37,9 +37,9 @@ It makes three calls:
 |---|---|---|
 | General news | `GET /news?category=general` | `id`, `headline`, `summary`, `source`, `url`, `datetime`, `related` |
 | Company news | `GET /company-news?symbol=&from=&to=` (dates as `YYYY-MM-DD`, ET) | the same |
-| US symbol list | `GET /stock/symbol?exchange=US` | `symbol` |
+| US symbol list | `GET /stock/symbol?exchange=US&mic=<MIC>`, once each for `XASE`, `XNAS` and `XNYS`, merged (amended 2026-10-03: Finnhub redirects `exchange=US` alone to its home page); one failing request fails the whole list; a test keeps the three equal to the gate's `US_LISTED_MICS` | `symbol` |
 
-**Pacing**: calls are spaced at `60 / finnhub_calls_per_minute` seconds, with a default of 30 a minute, as in feature 004. A watchlist of N symbols costs N + 2 calls. At 30 a minute, 20 symbols take about 45 seconds.
+**Pacing**: calls are spaced at `60 / finnhub_calls_per_minute` seconds, with a default of 30 a minute, as in feature 004. A watchlist of N symbols costs N + 4 calls (the general feed, the symbol list's three requests, one per exchange, and one per symbol). The service paces the symbol list as one step, so its three requests go out back to back, well under Finnhub's 60 a minute; the budget still counts each. At 30 a minute, 20 symbols take about 50 seconds.
 
 **Failures**:
 - **A rejected key** (401, or a 403 on a call that isn't per symbol, wherever it happens, including the symbol list): the run stops fetching and fails as `news_unavailable` (spec US3-1, analyze I1).
@@ -47,7 +47,7 @@ It makes three calls:
 - **429:** that fetch is missing. No retry: the run is once a day, and retrying inside a 15-minute timeout risks the whole run.
 - **The symbol list unavailable for any other reason** (timeout, 5xx, 429): `symbol_list_unavailable`.
 - **Unsafe URLs**: an article whose URL isn't `http://` or `https://` is skipped at the adapter, as if it had no URL, so a `javascript:` or `data:` link can't reach a report (analyze S3).
-- **The news deadline**: the service gives the fetch phase a deadline, `(len(watchlist) + 2) × (60 / finnhub_calls_per_minute + 10)` seconds from the start. Once past it, it fetches nothing more, and the unfetched feeds count as missing (FR-017a). Socket timeouts bound each call, and the deadline bounds the whole phase.
+- **The news deadline**: the service gives the fetch phase a deadline, `(len(watchlist) + 4) × (60 / finnhub_calls_per_minute + 10)` seconds from the start. Once past it, it fetches nothing more, and the unfetched feeds count as missing (FR-017a). Socket timeouts bound each call, and the deadline bounds the whole phase.
 
 **Why not reuse `reference/finnhub.py`**: that adapter's port is the reference job's (profiles, quotes, metrics). Widening it would change a merged component for another's needs. The HTTP mapping is about 30 lines, so it's duplicated on purpose, and a test pins that both adapters map status codes the same way. `reference.symbols.is_plausible_ticker` is reused, since it is a pure function.
 
@@ -218,10 +218,10 @@ These match the reference job's 2 and 3. The orchestrator records any non-zero c
 **The timeout bound ties to the orchestrator.** Individual bounds can't guarantee the fit: 360 s × 2, 50 symbols and 1 call a minute would take almost an hour. So the loader also checks the combination:
 
 ```text
-2 × timeout_seconds + (len(watchlist) + 2) × (60 / finnhub_calls_per_minute + 10) + 60 ≤ RUN_BUDGET_SECONDS (900) − RUN_MARGIN_SECONDS (60) = 840
+2 × timeout_seconds + (len(watchlist) + 4) × (60 / finnhub_calls_per_minute + 10) + 60 ≤ RUN_BUDGET_SECONDS (900) − RUN_MARGIN_SECONDS (60) = 840
 ```
 
-The `+ 10` is Finnhub's per-call timeout (analyze T1), and the 60 s slack covers selection, the write and start-up. The further 60 s margin (review M3) is for what can't be bounded exactly: per-read socket timeouts that a slow response stretches, the Anthropic SDK's wait before its retry, and the database connect (10 s timeout). A config failing this is refused (exit 2). A test asserts that `RUN_BUDGET_SECONDS` equals `config/schedule.yaml`'s `research.timeout_minutes × 60`. The shipped defaults (180 s, an empty watchlist, 30 a minute) take 444 s. At 180 s and 30 a minute the watchlist can hold up to 33 symbols; at 300 s, 13. The same news term is the news deadline in R3.
+The `+ 4` counts the general feed and the symbol list's three requests (one per exchange; it was `+ 2` while the list was one request), and the `+ 10` is Finnhub's per-call timeout (analyze T1), and the 60 s slack covers selection, the write and start-up. The further 60 s margin (review M3) is for what can't be bounded exactly: per-read socket timeouts that a slow response stretches, the Anthropic SDK's wait before its retry, and the database connect (10 s timeout). A config failing this is refused (exit 2). A test asserts that `RUN_BUDGET_SECONDS` equals `config/schedule.yaml`'s `research.timeout_minutes × 60`. The shipped defaults (180 s, an empty watchlist, 30 a minute) take 468 s. At 180 s and 30 a minute the watchlist can hold up to 31 symbols; at 300 s, 11. The same news term is the news deadline in R3.
 
 **Switching to Sonnet** means setting `provider: anthropic` and `name: claude-sonnet-5-5`, plus setting `RESEARCH_ANTHROPIC_API_KEY`.
 

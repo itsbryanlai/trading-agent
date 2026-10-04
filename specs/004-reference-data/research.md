@@ -22,7 +22,7 @@ Decisions behind [plan.md](plan.md), numbered D1–D14 so tasks, code comments a
 
 | Field | Endpoint | Conversion |
 |---|---|---|
-| Security type, exchange MIC | `GET /stock/symbol?exchange=US` (the whole US list in one call, cached for the trading day) | `type` is mapped per D3; `mic` per D4 |
+| Security type, exchange MIC | `GET /stock/symbol?exchange=US&mic=<MIC>`, once for each of `XASE`, `XNAS` and `XNYS` and merged (cached for the trading day). Finnhub redirects `exchange=US` alone to its home page, so the all-US call can't be used (amended 2026-10-03). One failing request fails the whole list: a partial list would make real symbols `not_listed`. The three are the exchanges the gate allows (`US_LISTED_MICS`), and a test keeps them equal | `type` is mapped per D3; `mic` per D4 |
 | Market cap | `GET /stock/profile2?symbol=` → `marketCapitalization` | × 1,000,000 (millions of USD, per the sample: AAPL 1415993) |
 | Previous close | `GET /quote?symbol=` → `pc`, `c` and `t` (see below) | USD as is |
 | 10-day average volume | `GET /stock/metric?symbol=&metric=all` → `metric.10DayAverageTradingVolume` | × 1,000,000 shares (per the sample: AAPL 32.50147) |

@@ -21,6 +21,9 @@ DEFAULT_CONFIG_PATH = Path(__file__).resolve().parents[3] / "config" / "research
 RUN_BUDGET_SECONDS = 900
 # Finnhub's per-call socket timeout (research/finnhub.py), counted in the budget.
 NEWS_CALL_TIMEOUT_SECONDS = 10
+# The symbol list is one Finnhub request per exchange (research/finnhub.py
+# SYMBOL_LIST_MICS); a test keeps the two equal.
+SYMBOL_LIST_CALLS = 3
 # Selection, the write and start-up.
 RUN_SLACK_SECONDS = 60
 # Headroom under the orchestrator's timeout for what can't be bounded exactly: per-read
@@ -81,9 +84,11 @@ class ResearchConfig:
 
     @property
     def news_budget_seconds(self) -> float:
-        """The fetch phase's deadline: every call paced, each allowed its timeout (R3)."""
+        """The fetch phase's deadline: every call paced, each allowed its timeout (R3).
+
+        The calls are the symbol list, the general feed and one per watchlist symbol."""
         per_call = 60 / self.finnhub_calls_per_minute + NEWS_CALL_TIMEOUT_SECONDS
-        return (len(self.watchlist) + 2) * per_call
+        return (len(self.watchlist) + 1 + SYMBOL_LIST_CALLS) * per_call
 
     @property
     def worst_case_seconds(self) -> float:

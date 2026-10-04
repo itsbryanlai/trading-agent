@@ -30,6 +30,10 @@ from trading_agent.reference.provider import (
 )
 
 BASE_URL = "https://finnhub.io/api/v1"
+# The exchanges the Risk Gate lets a buy through (risk/rules.py US_LISTED_MICS). This job may
+# not import the gate's modules, so a test keeps this equal to it. One request each: Finnhub
+# redirects the all-US request (exchange=US alone) to its home page.
+SYMBOL_LIST_MICS = ("XASE", "XNAS", "XNYS")
 TIMEOUT_SECONDS = 10
 
 
@@ -53,19 +57,22 @@ class FinnhubProvider:
     # --- the port ----------------------------------------------------------------
 
     def list_us_symbols(self) -> dict[str, Listing]:
-        body = self._get("/stock/symbol", {"exchange": "US"}, per_symbol=False)
-        if not isinstance(body, list):
-            raise ProviderUnavailable("/stock/symbol: unexpected response shape")
+        """One request per exchange, merged. One failure fails the whole list: a partial
+        list would make real symbols `not_listed`."""
         listings: dict[str, Listing] = {}
-        for item in body:
-            if isinstance(item, dict) and isinstance(item.get("symbol"), str):
-                symbol = item["symbol"]
-                listing = Listing(symbol, _text(item.get("type")), _text(item.get("mic")))
-                seen = listings.get(symbol)
-                if seen is not None and (seen.type, seen.mic) != (listing.type, listing.mic):
-                    # Which entry is right is unknowable: fail closed (review LOW).
-                    listing = Listing(symbol, None, None, conflicting=True)
-                listings[symbol] = listing
+        for mic in SYMBOL_LIST_MICS:
+            body = self._get("/stock/symbol", {"exchange": "US", "mic": mic}, per_symbol=False)
+            if not isinstance(body, list):
+                raise ProviderUnavailable("/stock/symbol: unexpected response shape")
+            for item in body:
+                if isinstance(item, dict) and isinstance(item.get("symbol"), str):
+                    symbol = item["symbol"]
+                    listing = Listing(symbol, _text(item.get("type")), _text(item.get("mic")))
+                    seen = listings.get(symbol)
+                    if seen is not None and (seen.type, seen.mic) != (listing.type, listing.mic):
+                        # Which entry is right is unknowable: fail closed (review LOW).
+                        listing = Listing(symbol, None, None, conflicting=True)
+                    listings[symbol] = listing
         return listings
 
     def get_profile(self, symbol: str) -> Profile:

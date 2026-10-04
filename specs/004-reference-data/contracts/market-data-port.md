@@ -17,7 +17,7 @@ Frozen dataclasses. Numbers are `Decimal` exactly as the provider sent them (no 
 
 | Call | Returns | Raises |
 |---|---|---|
-| `list_us_symbols()` | `dict[str, Listing]` keyed by symbol | `KeyRejected`, `RateLimited`, `ProviderUnavailable` |
+| `list_us_symbols()` | `dict[str, Listing]` keyed by symbol; one request per exchange in `XASE`, `XNAS`, `XNYS`, merged, and any one failing fails the call (amended 2026-10-03: `exchange=US` alone is redirected) | `KeyRejected`, `RateLimited`, `ProviderUnavailable` |
 | `get_profile(symbol)` | `Profile` (fields `None` if the provider returned `{}`) | `KeyRejected` (401), `NotPermitted` (403), `RateLimited`, `ProviderUnavailable` |
 | `get_quote(symbol)` | `Quote` | as `get_profile` |
 | `get_metrics(symbol)` | `Metrics` | as `get_profile` |
