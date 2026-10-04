@@ -57,7 +57,7 @@ The Risk Gate's own loop then evaluates each buy or sell decision within a minut
 | II. Analysts propose, PM decides | The PM fetches its own quote (P3) and portfolio state (P6), never reads `config/risk.yaml` (import guard), cites every report it draws on (`decision_reports`), and convergence never sizes mechanically: the prompt forbids it and the PM's size is its own (P7, P8). | Pass |
 | III. Least privilege at the database | No new grant for the PM: its existing grants cover every read and write (data-model.md). The gate's loop uses `ta_risk_gate`'s existing `SELECT` on `decisions`. The gate's login never enters the PM's process (ADR 0019). An integration test asserts the PM still can't write anything else. | Pass |
 | IV. Autonomous, one hard stop | No approval gate is added. `decision_stale` is a data-validity rule like `stop_loss_trigger_stale`, not an approval step, and the PM re-decides on its next run. | Pass |
-| V. Spec and ADR first | ADR 0019 (proposed in this plan) is accepted before the gate's code or migration 0012 changes. `docs/specs/portfolio-manager-agent.md`, `docs/specs/data-model.md`, the gate's contracts and the architecture overview are updated after it (FR-026). No change to `config/risk.yaml`. | Pass, pending the owner's acceptance of ADR 0019 |
+| V. Spec and ADR first | ADR 0019 (accepted 2026-10-04) is in place before the gate's code or migration 0012 changes. `docs/specs/portfolio-manager-agent.md`, `docs/specs/data-model.md`, the gate's contracts and the architecture overview are updated after it (FR-026). No change to `config/risk.yaml`. | Pass |
 | VI. Paper only, US equities | Not affected. The gate re-checks universe eligibility for every buy. | Pass |
 | VII. Assistant and dashboard read-only | Not affected. They already read `decisions`; the new column and rule name are more to display. | Pass |
 | Technology section (v1.1.0) | Qwen through QwenCloud's OpenAI-compatible API and Anthropic through the `anthropic` SDK, chosen in config. | Pass |
@@ -82,7 +82,7 @@ specs/008-portfolio-manager/
 ├── checklists/requirements.md
 └── tasks.md                   # /speckit-tasks
 
-docs/adr/0019-the-gate-evaluates-pm-decisions-in-its-own-loop.md   # proposed
+docs/adr/0019-the-gate-evaluates-pm-decisions-in-its-own-loop.md   # accepted 2026-10-04
 ```
 
 ### Source Code (repository root)
@@ -150,7 +150,7 @@ specs/002-risk-gate/contracts/{gate-interface,rejection-rules}.md      # FR-026,
    - the gate's loop starts evaluating PM decisions; without it, decisions are inert;
    - a new rejection rule, `decision_stale`, at 15 minutes, as a code constant like the trigger's 10-minute limit rather than a `config/risk.yaml` key. It means a PM sell, including a full exit, can be rejected when its quote is old. Stop-loss exits are unaffected.
 
-   **ADR 0019 is written as `proposed`.** I'll treat your go-ahead on this plan as accepting it, and no gate code changes before that.
+   **ADR 0019 accepted** by the owner on 2026-10-04, with the recommendations on items 1–4.
 3. **Two spec refinements found while planning**, made in the spec alongside this plan:
    - **Quote freshness is 5 minutes, not 15** (P4): the gate's 15-minute rule counts from the quote's time, and the PM's run takes up to 8 minutes, so the PM must fetch fresher quotes for its decisions to arrive in time. The config loader enforces the arithmetic.
    - **A run where no symbol gets a fresh quote fails** (exit 1, `no_fresh_quotes`) instead of passing as quiet (P3). A rejected market-data key fails too. The spec's User Story 4 said such a run "succeeds"; that would hide a broken key or feed.
