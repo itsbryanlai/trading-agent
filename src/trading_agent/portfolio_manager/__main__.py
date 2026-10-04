@@ -5,10 +5,12 @@ Reads its environment (names only are ever logged), loads config, connects as
 `ta_portfolio_manager`, builds the quote source (the reference job's Finnhub adapter) and
 the model client, runs once, and maps the outcome to an exit code.
 
-Seams for later stories: the dry run and its arguments (User Story 5), and the full exit
-mapping with the crash handler (User Story 4, tasks T032). For now: 0 for a completed run,
-1 for a failure the service reported, 2 when it refuses to start, 3 when the database is
-unreachable or a read or the write fails.
+Exit codes (research P9): 0 for a completed run, including one with nothing to decide and
+one outside the session; 1 for a failure the service reported (nothing written); 2 when it
+refuses to start; 3 when the database is unreachable or a read or the write fails; 4 for a
+crash, so an escaped exception is never Python's own exit 1.
+
+Seam for User Story 5 (tasks T043): the dry run and its argument.
 """
 
 from __future__ import annotations
@@ -49,6 +51,7 @@ EXIT_OK = 0
 EXIT_FAILURE = 1
 EXIT_REFUSED = 2
 EXIT_DATABASE = 3
+EXIT_CRASHED = 4
 
 
 def build_model(provider: str, key: str, model: ModelSettings, *, base_url: str | None = None):
@@ -78,6 +81,18 @@ def main(
     config_path: Path = DEFAULT_CONFIG_PATH,
     clock: Callable[[], datetime] = lambda: datetime.now(UTC),
     sleep: Callable[[float], None] = time.sleep,
+) -> int:
+    try:
+        return _main(
+            argv, quotes_factory, model_factory, connect, store_factory, config_path, clock, sleep
+        )
+    except Exception as exc:  # a crash: never Python's default exit 1 (research P9)
+        log.critical("portfolio_manager: crashed: %s", type(exc).__name__)
+        return EXIT_CRASHED
+
+
+def _main(
+    argv, quotes_factory, model_factory, connect, store_factory, config_path, clock, sleep
 ) -> int:
     args = list(sys.argv[1:] if argv is None else argv)
     if args:
