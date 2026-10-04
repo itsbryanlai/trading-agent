@@ -28,3 +28,10 @@ def test_full_exit_needs_no_snapshot_with_a_sell_in_flight():
     )
     result = evaluate(sell(target=0), ctx, CONFIG)
     assert result.verdict.order.qty == 20
+
+
+def test_partial_sell_with_every_share_already_being_sold_is_target_already_met():
+    # Not direction_contradicts_target, though settled holdings are 0 (research I5, I5a).
+    ctx = context(shares_held=50, avg_entry_price=190, in_flight_sell_qty=60)
+    result = evaluate(sell(target=2), ctx, CONFIG)
+    assert result.verdict.rejection_rule == rules.TARGET_ALREADY_MET

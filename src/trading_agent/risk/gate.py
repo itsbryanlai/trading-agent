@@ -121,6 +121,8 @@ def _sell(request: DecisionRequest, ctx: Context) -> Verdict:
         return Verdict.approve(_market_sell(request.symbol, qty, ctx, source="decision"))
     if ctx.equity is None:
         return Verdict.reject(rules.NO_ACCOUNT_SNAPSHOT_TODAY)
+    if available < 1:  # every held share is already being sold (research I5, I5a)
+        return Verdict.reject(rules.TARGET_ALREADY_MET)
 
     quote, equity = request.quote, ctx.equity
     # What the position will be once everything in flight settles. An in-flight buy
