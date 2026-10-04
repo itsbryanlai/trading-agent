@@ -1,6 +1,6 @@
 """answer.check, the happy path (specs/008-portfolio-manager research P8; pm-interface.md).
 
-The drop rules beyond malformed_decision and unknown_symbol are User Story 2's."""
+The drop rules are in test_answer_drops.py and test_answer_property.py."""
 
 from __future__ import annotations
 
@@ -200,28 +200,9 @@ def test_the_schema_matches_the_checkers_fields():
     assert answer.ANSWER_SCHEMA["additionalProperties"] is False
 
 
-def test_values_that_would_not_be_valid_rows_are_never_written():
-    """Until User Story 2 names each reason, they are all malformed_decision."""
-    bad = [
-        item(direction="short"),
-        item(ids=()),
-        item(ids=("R9",)),
-        item(ids=("R3",)),  # R3 was given for MSFT
-        item(target=-1),
-        item(target=100.001),
-        item(target=float("nan")),
-        item(target=0),  # a buy at 0
-        item(target=0.0004),
-        item("MSFT", "sell", 0.0004, ids=("R3",)),
-    ]
-    checked = run(*bad)
-    assert checked.decisions == ()
-    assert [d.reason for d in checked.drops] == ["malformed_decision"] * len(bad)
-
-
 def test_the_shape_rule_alone_rejects_wrong_types():
-    """The shape check is its own rule; later rules (User Story 2) rely on it."""
+    """The shape check is its own rule; later rules rely on it."""
     wrong_ids = {**item(), "report_ids": "R1"}
     for bad in (item(target=True), item(target="4"), item(ids=[1]), wrong_ids):
-        assert answer._malformed(bad, GIVEN) == "malformed_decision"
-    assert answer._malformed(item(), GIVEN) is None
+        assert answer._malformed(bad, GIVEN, set()) == "malformed_decision"
+    assert answer._malformed(item(), GIVEN, set()) is None
