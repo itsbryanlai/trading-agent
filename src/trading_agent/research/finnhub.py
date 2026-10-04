@@ -27,6 +27,9 @@ from trading_agent.research.ports import (
 )
 
 BASE_URL = "https://finnhub.io/api/v1"
+# The exchanges the Risk Gate lets a buy through (risk/rules.py US_LISTED_MICS). Research may
+# not import the gate's modules, so a test keeps this equal to it. One request each.
+SYMBOL_LIST_MICS = ("XASE", "XNAS", "XNYS")
 TIMEOUT_SECONDS = 10  # counted in the run budget (config.NEWS_CALL_TIMEOUT_SECONDS)
 
 
@@ -53,15 +56,20 @@ class FinnhubNews:
         return _articles(self._get("/company-news", params, per_symbol=True))
 
     def us_symbols(self) -> dict[str, str]:
-        """Symbol → company name (Finnhub's `description`), used by the relevance rule."""
-        body = self._get("/stock/symbol", {"exchange": "US"}, per_symbol=False)
-        if not isinstance(body, list):
-            raise ProviderUnavailable("/stock/symbol: unexpected response shape")
-        return {
-            item["symbol"]: _text(item.get("description"))
-            for item in body
-            if isinstance(item, dict) and isinstance(item.get("symbol"), str)
-        }
+        """Symbol → company name (Finnhub's `description`), used by the relevance rule.
+
+        One request per exchange the Risk Gate allows, merged: Finnhub redirects the
+        all-US request (`exchange=US` alone) to its home page. One failure fails the
+        whole list, since a partial list would call real symbols unlisted."""
+        names: dict[str, str] = {}
+        for mic in SYMBOL_LIST_MICS:
+            body = self._get("/stock/symbol", {"exchange": "US", "mic": mic}, per_symbol=False)
+            if not isinstance(body, list):
+                raise ProviderUnavailable("/stock/symbol: unexpected response shape")
+            for item in body:
+                if isinstance(item, dict) and isinstance(item.get("symbol"), str):
+                    names[item["symbol"]] = _text(item.get("description"))
+        return names
 
     # --- HTTP --------------------------------------------------------------------
 

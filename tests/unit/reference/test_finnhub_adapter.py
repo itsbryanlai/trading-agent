@@ -15,13 +15,14 @@ from urllib.parse import parse_qs, urlsplit
 
 import pytest
 
-from trading_agent.reference.finnhub import BASE_URL, FinnhubProvider
+from trading_agent.reference.finnhub import BASE_URL, SYMBOL_LIST_MICS, FinnhubProvider
 from trading_agent.reference.provider import (
     KeyRejected,
     NotPermitted,
     ProviderUnavailable,
     RateLimited,
 )
+from trading_agent.risk.rules import US_LISTED_MICS
 
 # 2026-09-28 11:00 UTC as Unix seconds.
 MONDAY_0700_ET = int(datetime(2026, 9, 28, 11, 0, tzinfo=UTC).timestamp())
@@ -64,20 +65,74 @@ def _url(opener):
     return urlsplit(request.full_url)
 
 
-def test_symbol_list():
-    opener = Opener(
-        [
-            {"symbol": "AAPL", "type": "Common Stock", "mic": "XNGS", "currency": "USD"},
-            {"symbol": "SPY", "type": "ETP", "mic": "ARCX"},
-            {"type": "Common Stock"},  # no symbol: skipped
-        ]
+class ByMic(Opener):
+    """Answers each /stock/symbol request from its `mic`; a mic mapped to an exception raises it."""
+
+    def __init__(self, by_mic):
+        super().__init__()
+        self.by_mic = by_mic
+
+    def __call__(self, request, timeout):
+        self.requests.append((request, timeout))
+        answer = self.by_mic[parse_qs(urlsplit(request.full_url).query)["mic"][0]]
+        if isinstance(answer, Exception):
+            raise answer
+        return Response(json.dumps(answer).encode())
+
+
+def test_symbol_list_is_one_request_per_exchange_the_gate_allows():
+    # Finnhub redirects the all-US request (exchange=US alone) to its home page, so the
+    # list is asked for per exchange and merged.
+    opener = ByMic(
+        {
+            "XNAS": [
+                {"symbol": "AAPL", "type": "Common Stock", "mic": "XNGS", "currency": "USD"},
+                {"type": "Common Stock"},  # no symbol: skipped
+            ],
+            "XNYS": [{"symbol": "SPY", "type": "ETP", "mic": "ARCX"}],
+            "XASE": [],
+        }
     )
     listings = provider(opener).list_us_symbols()
     assert set(listings) == {"AAPL", "SPY"}
     assert listings["AAPL"].type == "Common Stock" and listings["AAPL"].mic == "XNGS"
-    url = _url(opener)
-    assert f"{url.scheme}://{url.netloc}{url.path}" == f"{BASE_URL}/stock/symbol"
-    assert parse_qs(url.query) == {"exchange": ["US"]}
+    queries = [parse_qs(urlsplit(r.full_url).query) for r, _ in opener.requests]
+    assert queries == [{"exchange": ["US"], "mic": [mic]} for mic in SYMBOL_LIST_MICS]
+    urls = {urlsplit(r.full_url) for r, _ in opener.requests}
+    assert {f"{u.scheme}://{u.netloc}{u.path}" for u in urls} == {f"{BASE_URL}/stock/symbol"}
+
+
+def test_the_exchanges_asked_for_are_the_ones_the_gate_allows():
+    # The adapter can't import the gate's list (test_import_guard), so this keeps them equal.
+    assert set(SYMBOL_LIST_MICS) == US_LISTED_MICS and len(SYMBOL_LIST_MICS) == 3
+
+
+@pytest.mark.parametrize("failing", SYMBOL_LIST_MICS)
+def test_one_exchange_failing_fails_the_whole_list(failing):
+    # A partial list would make real symbols `not_listed`, so none is returned.
+    answers = {
+        mic: [{"symbol": f"S{mic}", "type": "Common Stock", "mic": mic}] for mic in SYMBOL_LIST_MICS
+    }
+    answers[failing] = _http_error(500)
+    with pytest.raises(ProviderUnavailable):
+        provider(ByMic(answers)).list_us_symbols()
+
+
+def test_a_symbol_on_two_exchanges_fails_closed():
+    opener = ByMic(
+        {
+            "XNAS": [{"symbol": "DUAL", "type": "Common Stock", "mic": "XNAS"}],
+            "XNYS": [{"symbol": "DUAL", "type": "Common Stock", "mic": "XNYS"}],
+            "XASE": [],
+        }
+    )
+    assert provider(opener).list_us_symbols()["DUAL"].conflicting
+
+
+def test_a_redirect_is_unavailable_not_followed():
+    # What Finnhub did to the all-US request: HTTP 302 to "/".
+    with pytest.raises(ProviderUnavailable):
+        provider(Opener(error=_http_error(302))).list_us_symbols()
 
 
 def test_profile_quote_metrics_paths_and_values():
