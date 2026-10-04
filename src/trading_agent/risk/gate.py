@@ -112,7 +112,8 @@ def _sell(request: DecisionRequest, ctx: Context) -> Verdict:
     if held <= 0:
         return Verdict.reject(rules.NO_POSITION)
     target = request.target_weight_pct / _HUNDRED
-    # Shares already being sold can't be sold again (ADR 0020, research I5, I5a).
+    # Only shares being sold are counted: a buy that might not fill never makes more
+    # to sell, so in-flight orders only ever tighten a verdict (ADR 0020, research I4, I5).
     available = held - ctx.in_flight_sell_qty
     if target == 0:
         if available < 1:
@@ -125,13 +126,10 @@ def _sell(request: DecisionRequest, ctx: Context) -> Verdict:
         return Verdict.reject(rules.TARGET_ALREADY_MET)
 
     quote, equity = request.quote, ctx.equity
-    # What the position will be once everything in flight settles. An in-flight buy
-    # raises it, but its shares can't be sold before they arrive: `available` caps.
-    settled = max(held + ctx.in_flight_buy_qty - ctx.in_flight_sell_qty, Decimal(0))
-    if target * equity > settled * quote + quote:
+    if target * equity > available * quote + quote:
         return Verdict.reject(rules.DIRECTION_CONTRADICTS_TARGET)
     keep = _ceil(target * equity / quote)
-    qty = _floor(min(settled - keep, available))
+    qty = _floor(available - keep)
     if qty < 1:
         return Verdict.reject(rules.TARGET_ALREADY_MET)
     return Verdict.approve(_market_sell(request.symbol, qty, ctx, source="decision"))
@@ -146,15 +144,13 @@ def _buy(request: DecisionRequest, ctx: Context, config: RiskConfig, crossed: bo
     target = request.target_weight_pct / _HUNDRED
     ceiling = price_ceiling(quote, config.max_buy_price_tolerance_pct)
 
-    # Settled holdings (ADR 0020, research I4): held shares and in-flight sells at the
-    # quote, in-flight buys at the ceiling they were sized at.
-    settled_value = max(
-        held * quote + ctx.in_flight_buy_cost_symbol - ctx.in_flight_sell_qty * quote,
-        Decimal(0),
-    )
-    if target * equity < settled_value - quote:
+    # Value already committed (ADR 0020, research I4a): held shares at the quote,
+    # in-flight buys at the ceiling they were sized at. In-flight sells are not
+    # subtracted: a sell that might not fill can't make room for a buy.
+    committed = held * quote + ctx.in_flight_buy_cost_symbol
+    if target * equity < committed - quote:
         return Verdict.reject(rules.DIRECTION_CONTRADICTS_TARGET)
-    wanted = _floor((target * equity - settled_value) / ceiling)
+    wanted = _floor((target * equity - committed) / ceiling)
     if wanted < 1:
         return Verdict.reject(rules.TARGET_ALREADY_MET)
 

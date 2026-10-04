@@ -30,11 +30,11 @@ def test_us2_1_a_raised_target_buys_only_the_difference():
     assert order.qty == 10 and order.trims == ()
 
 
-def test_a_buy_is_sized_from_holdings_less_the_sells_in_flight():
-    # 20 held, 10 being sold: settled $2,000, so $3,000 to the 5% target = 14 shares
-    # at $202. The position room (39 - 20 held = 19) ignores the sell.
+def test_a_buy_ignores_the_sells_in_flight():
+    # Review finding 4 (research I4a): 20 held, 10 being sold. A sell that might not
+    # fill makes no room, so $1,000 to the 5% target = 4 shares at $202, not 14.
     ctx = context(shares_held=20, avg_entry_price=190, in_flight_sell_qty=10)
-    assert evaluate(buy(target=5, quote=200), ctx, CONFIG).verdict.order.qty == 14
+    assert evaluate(buy(target=5, quote=200), ctx, CONFIG).verdict.order.qty == 4
 
 
 def test_us2_2_nothing_held_yet_so_a_sell_has_no_position():
@@ -54,16 +54,40 @@ def test_an_in_flight_buy_does_not_let_a_full_exit_sell_unarrived_shares():
     assert evaluate(sell(target=0), ctx, CONFIG).verdict.order.qty == 50
 
 
-def test_an_in_flight_buy_does_not_let_a_partial_sell_exceed_what_is_held():
-    # settled = 74, keep = ceil(1000 / 200) = 5, so 69 by the target, capped at the 50 held.
+def test_an_in_flight_buy_does_not_enlarge_a_partial_sell():
+    # Review finding 2 (research I5): keep = ceil(1000 / 200) = 5 of the 50 held, so 45,
+    # not the 50 an unarrived buy would have let it sell.
     ctx = context(shares_held=50, avg_entry_price=190, in_flight_buy_qty=24)
-    assert evaluate(sell(target=1), ctx, CONFIG).verdict.order.qty == 50
+    assert evaluate(sell(target=1), ctx, CONFIG).verdict.order.qty == 45
 
 
-def test_a_partial_sell_counts_both_in_flight_sides():
-    # settled = 50 + 24 - 10 = 64, keep = 10, available = 40: sell min(54, 40) = 40.
+def test_a_partial_sell_counts_only_the_sells_in_flight():
+    # Review finding 2 (research I5): available = 50 - 10 = 40, keep = 10, so 30. The
+    # 24 being bought are ignored.
     ctx = context(shares_held=50, avg_entry_price=190, in_flight_buy_qty=24, in_flight_sell_qty=10)
-    assert evaluate(sell(target=2), ctx, CONFIG).verdict.order.qty == 40
+    assert evaluate(sell(target=2), ctx, CONFIG).verdict.order.qty == 30
+
+
+def test_a_raised_target_with_a_sell_in_flight_contradicts_it():
+    # Research I5: 50 held at $200, a sell to 2% in flight (40), a decision for 5%.
+    # available = 10 ($2,000) is below the $5,000 target by more than a share, and the
+    # 24 shares being bought don't count.
+    ctx = context(shares_held=50, avg_entry_price=190, in_flight_sell_qty=40, in_flight_buy_qty=24)
+    result = evaluate(sell(target=5), ctx, CONFIG)
+    assert result.verdict.rejection_rule == rules.DIRECTION_CONTRADICTS_TARGET
+
+
+def test_review_case_100_held_50_being_bought_a_sell_to_10_percent_sells_50():
+    # Finding 2: 10% of $100,000 at $200 keeps 50 of the 100 held; the 50 being bought
+    # don't raise it to the 100 an unarrived buy would have let it sell.
+    ctx = context(shares_held=100, avg_entry_price=190, in_flight_buy_qty=50)
+    assert evaluate(sell(target=10), ctx, CONFIG).verdict.order.qty == 50
+
+
+def test_review_case_20_held_20_being_sold_a_buy_to_5_percent_buys_4():
+    # Finding 4: committed $4,000, so $1,000 / $202 = 4 shares (not 19).
+    ctx = context(shares_held=20, avg_entry_price=190, in_flight_sell_qty=20)
+    assert evaluate(buy(target=5, quote=200), ctx, CONFIG).verdict.order.qty == 4
 
 
 @st.composite

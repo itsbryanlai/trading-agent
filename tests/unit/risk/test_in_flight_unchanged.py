@@ -204,8 +204,8 @@ def test_us3_4_an_in_flight_buy_on_another_symbol_reduces_the_cash_available():
 
 
 def test_f1_a_sell_in_flight_never_makes_room_under_the_position_ceiling():
-    # 50 held at $200 (10%), 40 being sold, a buy to 5%. Today's gate, blind to the sell,
-    # says direction_contradicts_target; with the sell counted, the ceiling still bites.
+    # 50 held at $200 (10%), 40 being sold, a buy to 5%. Review finding 4 (research I4a):
+    # the sell is ignored, so the verdict is today's, direction_contradicts_target.
     ctx = context(shares_held=50, avg_entry_price=190, in_flight_sell_qty=40)
     request = buy(target=5)
     assert (
@@ -213,7 +213,7 @@ def test_f1_a_sell_in_flight_never_makes_room_under_the_position_ceiling():
     )
     result = evaluate(request, ctx, CONFIG)
     assert not result.verdict.approved
-    assert result.verdict.rejection_rule == rules.MAX_POSITION_PCT
+    assert result.verdict.rejection_rule == rules.DIRECTION_CONTRADICTS_TARGET
 
 
 def test_i5a_an_in_flight_sell_larger_than_the_holding_sells_nothing_more():
@@ -231,3 +231,20 @@ def test_i5a_an_in_flight_sell_larger_than_the_holding_buys_no_more_than_today()
     now = evaluate(request, over_sold, CONFIG).verdict.order
     assert now.qty == today.qty == 9  # floor(8000 / 202) - 30
     assert now.trims == (rules.MAX_POSITION_PCT,)
+
+
+# ---- Research I4, I9: in-flight orders only ever make a verdict stricter. ----
+
+
+@PROPERTY
+@given(ctx=any_context, request=decisions, in_flight=in_flight_values)
+def test_no_verdict_is_looser_than_the_old_gates_whatever_is_in_flight(ctx, request, in_flight):
+    loaded = dataclasses.replace(ctx, **in_flight)
+    result = evaluate(request, loaded, CONFIG)
+    verdict = result.verdict
+    if not verdict.approved or _gated_before_sizing(request, loaded):
+        return
+    old = _old_decision_verdict(request, ctx, CONFIG)
+    assert old.approved
+    assert old.order.side == verdict.order.side
+    assert verdict.order.qty <= old.order.qty
