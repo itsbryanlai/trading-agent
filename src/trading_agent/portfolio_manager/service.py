@@ -8,10 +8,9 @@ reach the store. Database errors are not caught here: they reach `__main__` as e
 `clock` is read for the run's start, for each quote's arrival (its freshness is judged at
 that time, analyze F1) and before the write. Nothing here reads the system clock.
 
-Seams for User Story 4 (tasks T032), the failure paths not yet built: a rejected quote key
-(`KeyRejected` propagates), a model error (propagates), `no_fresh_quotes` (a run where no
-candidate has a fresh quote ends quietly, with a note), and `internal_error`. Only the
-three failures below, which the flow can't continue without, are handled here.
+Failures (research P9): every failure is one category on `RunOutcome.failure` and writes
+nothing. A database error is not a category: `StoreError` escapes, to be exit 3. Any other
+unexpected exception is `internal_error`; only its type is logged, never its message.
 """
 
 from __future__ import annotations
@@ -22,18 +21,42 @@ from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from typing import Protocol
 
-from trading_agent.llm.ports import ModelClient
+from trading_agent.llm.ports import (
+    ModelClient,
+    ModelError,
+    ModelKeyRejected,
+    ModelRefused,
+    ModelRejected,
+    ModelTruncated,
+    ModelUnavailable,
+)
 from trading_agent.llm.settings import ModelSettings
 from trading_agent.portfolio_manager import answer, inputs, prompt
-from trading_agent.portfolio_manager.store import Store
+from trading_agent.portfolio_manager.store import Store, StoreError
 from trading_agent.reference.provider import KeyRejected, ProviderError, Quote
 from trading_agent.risk import calendar
 
 log = logging.getLogger("trading_agent.portfolio_manager")
 
 NO_ACCOUNT_SNAPSHOT = "no_account_snapshot"
+QUOTE_KEY_REJECTED = "quote_key_rejected"
+NO_FRESH_QUOTES = "no_fresh_quotes"
+MODEL_KEY_REJECTED = "model_key_rejected"
+MODEL_REJECTED_REQUEST = "model_rejected_request"
+MODEL_UNAVAILABLE = "model_unavailable"
+MODEL_REFUSED = "model_refused"
+MODEL_TRUNCATED = "model_truncated"
 UNUSABLE_ANSWER = "unusable_answer"
 WINDOW_CLOSED = "window_closed"
+INTERNAL_ERROR = "internal_error"
+
+_MODEL_CATEGORIES = (
+    (ModelKeyRejected, MODEL_KEY_REJECTED),
+    (ModelRejected, MODEL_REJECTED_REQUEST),
+    (ModelUnavailable, MODEL_UNAVAILABLE),
+    (ModelRefused, MODEL_REFUSED),
+    (ModelTruncated, MODEL_TRUNCATED),
+)
 
 
 class QuoteSource(Protocol):
@@ -58,7 +81,7 @@ class Settings(Protocol):
 class RunOutcome:
     decisions: tuple[answer.CheckedDecision, ...] = ()
     drops: tuple[answer.Drop, ...] = ()
-    skipped: tuple[tuple[str, str], ...] = ()  # (symbol, quote_missing | quote_stale)
+    skipped: tuple[tuple[str, str], ...] = ()  # (symbol, quote_missing | quote_stale | input_limit)
     failure: str | None = None
     market_closed: bool = False  # outside the regular session: nothing was done
     note: str = ""  # why a run that wrote nothing was not a failure
@@ -99,6 +122,12 @@ def run(
     except _Failed as failed:
         outcome.failure = failed.category
         outcome.decisions = ()
+    except StoreError:
+        raise  # exit 3, not a category
+    except Exception as exc:  # anything unanticipated is still a recorded failure
+        log.error("portfolio_manager: %s: %s", INTERNAL_ERROR, type(exc).__name__)
+        outcome.failure = INTERNAL_ERROR
+        outcome.decisions = ()
     return outcome
 
 
@@ -132,24 +161,24 @@ def _run(run_start, clock, config, store, quotes, model, sleep, outcome: RunOutc
         rationale_max_chars=config.rationale_max_chars,
         journal_summary_max_chars=config.journal_summary_max_chars,
     )
+    if not built.candidates:
+        _log_quotes(built)
+        outcome.skipped = built.skipped
+        log.error("portfolio_manager: %s: no candidate has a usable quote", NO_FRESH_QUOTES)
+        raise _Failed(NO_FRESH_QUOTES)
     # The size limit comes before anything is logged or given to the model: a symbol dropped
     # for size is skipped like any other, and its report ids are withdrawn.
     user, built = prompt.fit_user_document(run_start, built, config.max_input_chars)
     outcome.skipped = built.skipped
     outcome.candidates = [c.symbol for c in built.candidates]
-    log.info(
-        "portfolio_manager: %d fresh quotes; skipped: %s",
-        len(built.candidates),
-        ", ".join(f"{s} ({why})" for s, why in built.skipped) or "none",
-    )
+    _log_quotes(built)
     if not built.candidates:
-        # User Story 4 turns this into the failure `no_fresh_quotes`.
-        outcome.note = "no candidate has a fresh quote"
-        log.info("portfolio_manager: nothing to decide (%s)", outcome.note)
-        return
+        # Only the account and positions fit, which max_input_chars is meant to rule out.
+        log.error("portfolio_manager: %s: no candidate fits max_input_chars", INTERNAL_ERROR)
+        raise _Failed(INTERNAL_ERROR)
 
     outcome.input_chars = len(user)
-    reply = model.complete(prompt.SYSTEM_PROMPT, user, answer.ANSWER_SCHEMA)
+    reply = _ask(model, user)
     outcome.input_tokens, outcome.output_tokens = reply.input_tokens, reply.output_tokens
     log.info(
         "portfolio_manager: model used %s input and %s output tokens",
@@ -190,6 +219,28 @@ def _run(run_start, clock, config, store, quotes, model, sleep, outcome: RunOutc
     log.info("portfolio_manager: wrote %d decision(s)", len(checked.decisions))
 
 
+def _log_quotes(built: inputs.Built) -> None:
+    log.info(
+        "portfolio_manager: %d fresh quotes; skipped: %s",
+        len(built.candidates),
+        ", ".join(f"{s} ({why})" for s, why in built.skipped) or "none",
+    )
+
+
+def _ask(model: ModelClient, user: str):
+    """One call, no retry and no second provider. A provider's error text is never logged:
+    its type and HTTP status are enough."""
+    try:
+        return model.complete(prompt.SYSTEM_PROMPT, user, answer.ANSWER_SCHEMA)
+    except ModelError as exc:
+        category = next((c for cls, c in _MODEL_CATEGORIES if isinstance(exc, cls)), None)
+        if category is None:
+            raise  # a ModelError of no known kind: internal_error
+        status = f" (HTTP {exc.status})" if exc.status is not None else ""
+        log.error("portfolio_manager: %s: %s%s", category, type(exc).__name__, status)
+        raise _Failed(category) from None
+
+
 def _quote_phase(symbols, clock, config, quotes, sleep) -> dict[str, inputs.FetchedQuote]:
     """One quote per symbol, paced, until the phase deadline. A symbol whose fetch failed,
     or that was not reached, has no entry: `build_candidates` reports it as missing."""
@@ -204,8 +255,9 @@ def _quote_phase(symbols, clock, config, quotes, sleep) -> dict[str, inputs.Fetc
             break  # the rest count as missing
         try:
             quote = quotes.get_quote(symbol)
-        except KeyRejected:
-            raise  # User Story 4: quote_key_rejected
+        except KeyRejected as exc:
+            log.error("portfolio_manager: %s: %s", QUOTE_KEY_REJECTED, type(exc).__name__)
+            raise _Failed(QUOTE_KEY_REJECTED) from None
         except ProviderError as exc:
             log.warning("portfolio_manager: quote for %s missing: %s", symbol, type(exc).__name__)
             continue

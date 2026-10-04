@@ -279,13 +279,12 @@ def test_logs_follow_research_p14_and_never_carry_text_from_the_model(caplog):
 
 
 def test_when_no_candidate_has_a_fresh_quote_the_model_is_not_called():
-    """User Story 4 makes this a failure; until then it is a quiet, noted run."""
     quotes = FakeMarketData()
     quotes.add("AAPL", current="200", quote_time=NOW - timedelta(hours=1))
     outcome, store, model, _ = run(inputs([report("a", "AAPL")]), quotes)
     assert (model.calls, store.writes) == ([], [])
     assert outcome.skipped == (("AAPL", "quote_stale"),)
-    assert outcome.note == "no candidate has a fresh quote"
+    assert outcome.failure == "no_fresh_quotes"  # the cases are in test_service_failures.py
 
 
 def test_the_model_gets_the_fixed_prompt_the_schema_and_the_document():
