@@ -11,6 +11,7 @@ from trading_agent.orchestrator.config import DEFAULT_CONFIG_PATH as SCHEDULE_PA
 from trading_agent.research.config import (
     DEFAULT_CONFIG_PATH,
     RUN_BUDGET_SECONDS,
+    RUN_MARGIN_SECONDS,
     SYMBOL_LIST_CALLS,
     ResearchConfigError,
     load_config,
@@ -25,10 +26,17 @@ def test_the_budget_matches_the_orchestrators_timeout():
     assert RUN_BUDGET_SECONDS == schedule["research"]["timeout_minutes"] * 60 == 900
 
 
-def test_the_shipped_config_fits():
-    cfg = load_config(DEFAULT_CONFIG_PATH)
+def test_the_default_settings_with_no_watchlist_take_468_seconds(tmp_path):
+    cfg = load(tmp_path, changed(("watchlist",), []))
     assert cfg.worst_case_seconds == 2 * 180 + 4 * (2 + 10) + 60 == 468
     assert cfg.worst_case_seconds <= RUN_BUDGET_SECONDS
+
+
+def test_the_shipped_config_fits():
+    # Whatever the owner's watchlist is, the shipped file must load, and the loader refuses
+    # a file over the budget; this checks the same bound from outside.
+    cfg = load_config(DEFAULT_CONFIG_PATH)
+    assert cfg.worst_case_seconds <= RUN_BUDGET_SECONDS - RUN_MARGIN_SECONDS
 
 
 def test_over_budget_is_refused(tmp_path):
@@ -56,8 +64,8 @@ def test_the_default_timeout_allows_a_watchlist_of_31(tmp_path):
         load(tmp_path, data)
 
 
-def test_the_news_deadline_is_the_fetch_phase_term():
-    cfg = load_config(DEFAULT_CONFIG_PATH)
+def test_the_news_deadline_is_the_fetch_phase_term(tmp_path):
+    cfg = load(tmp_path, changed(("watchlist",), []))
     # the general feed, the symbol list (one call per exchange) and the watchlist
     assert cfg.news_budget_seconds == (0 + 1 + 3) * (60 / 30 + 10)
 
