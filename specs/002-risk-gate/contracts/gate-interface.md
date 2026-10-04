@@ -55,10 +55,18 @@ Guarantees:
 - An approved buy never takes the position above `max_position_pct` of equity, nor cash below
   `cash_reserve_pct` of equity, when filled at any price up to its `limit_price` (FR-001a, SC-001).
 - An approved sell or exit never sells more shares than `shares_held` (FR-006).
-- Amended by 009 (ADR 0020): an approved buy, together with every in-flight buy, keeps the position
-  under `max_position_pct` and cash above `cash_reserve_pct` at the price ceilings; an approved
-  decision sell never exceeds `shares_held − in_flight_sell_qty`; in-flight sells never loosen the
-  position ceiling; and with all four in-flight values at 0, every verdict is exactly as before.
+- Amended by 009 (ADR 0020), one rule: in-flight orders only ever make a verdict stricter. A buy
+  counts in-flight buys and ignores in-flight sells; a sell counts in-flight sells and ignores
+  in-flight buys. So no verdict is looser than the gate gave before 009, whatever is in flight.
+  An approved buy, together with every in-flight buy, keeps the position under `max_position_pct`
+  at the price ceilings, whatever is in flight to sell. An approved decision sell never exceeds
+  `shares_held − in_flight_sell_qty`. With all four in-flight values at 0, every verdict is exactly
+  as before.
+- Cash, as the guarantee is worded after 009: the buy plus every in-flight buy keeps the latest
+  account snapshot's cash above `cash_reserve_pct` of equity at the ceilings. An in-flight buy
+  leaves the count when it fills, and the next snapshot can be up to its interval (about 30
+  minutes) later, so in that window the gate's cash check is as loose as before 009, never looser.
+  Execution re-checks live cash before every buy.
 - Exits are rejected only for `market_closed`, `no_position`, `stop_loss_not_breached`,
   `no_account_snapshot_today` (partial sells only), `direction_contradicts_target`, or
   `target_already_met`. They are never rejected by a halt, the pause, the order cap, a missing

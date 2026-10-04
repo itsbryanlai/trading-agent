@@ -30,13 +30,14 @@ order cap, a missing baseline, or the universe.
 
 ## Orders in flight (amended by `specs/009-pending-orders`, ADR 0020)
 
-No rule is added or renamed, and precedence is unchanged. What changes is what some rules measure against:
+No rule is added or renamed, and precedence is unchanged. One rule: in-flight orders only ever make a verdict stricter. What changes is what some rules measure against:
 
 | Rule | Measured against |
 |---|---|
-| `direction_contradicts_target`, `target_already_met` (buys and sells) | settled holdings: shares held, plus in-flight buys (at their price ceiling when sizing a buy), less in-flight sells |
+| `direction_contradicts_target`, `target_already_met` (buys) | value already committed: shares held at the quote plus in-flight buys at their price ceiling; in-flight sells are never subtracted |
+| `direction_contradicts_target`, `target_already_met` (sells) | shares available: shares held less in-flight sells; in-flight buys are never added. A target raised while a sell is in flight is `direction_contradicts_target` |
 | `max_position_pct` | shares held plus in-flight buys; in-flight sells are never subtracted |
-| `cash_reserve_pct` | cash less the cost of every in-flight buy, on any symbol |
+| `cash_reserve_pct` | the latest snapshot's cash less the cost of every in-flight buy, on any symbol; the snapshot can predate a fill, so up to its interval the check is as loose as before 009, never looser |
 | `target_already_met` (sells) | also when every held share is already being sold |
 | `no_position`, `stop_loss_not_breached`, every account and universe rule | unchanged |
 

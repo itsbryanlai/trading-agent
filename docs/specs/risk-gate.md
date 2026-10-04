@@ -75,15 +75,19 @@ rule that fired.
 
 - **Market closed at evaluation time**: reject outright, regardless of any
   other rule — no order should ever be approved outside market hours.
-- **Orders still in flight** (ADR 0020): a decision is sized from settled
-  holdings, meaning shares held plus in-flight buys (valued at their own price
-  ceiling) less in-flight sells. Deciding a target again while its order works
-  is `target_already_met`; a changed target orders only the difference. The
-  position ceiling counts shares held plus in-flight buys and never subtracts
-  in-flight sells, and the cash reserve subtracts the cost of every in-flight
-  buy. A sell is capped at the shares held less those already being sold.
-  Stop-loss exits, the halt, the pause, the order cap and the universe checks
-  read none of this.
+- **Orders still in flight** (ADR 0020): one rule, an order that might not
+  fill never loosens a verdict. A buy is sized from the value already
+  committed, shares held at the quote plus in-flight buys at their own price
+  ceiling; in-flight sells are not subtracted. A sell is sized from the shares
+  held less those already being sold; in-flight buys are not added. Deciding a
+  target again while its order works is `target_already_met`; a changed target
+  orders only the difference. The position ceiling counts shares held plus
+  in-flight buys, and the cash reserve subtracts the cost of every in-flight
+  buy. The reserve is checked against the latest account snapshot, which can
+  predate a fill, so for up to the snapshot interval that check is as loose as
+  before this feature, never looser. Execution re-checks live cash. Stop-loss
+  exits, the halt, the pause, the order cap and the universe checks read none
+  of this.
 - **Daily-loss halt already active**: reject every new-exposure decision
   outright; exits (sells, stop-loss triggers) are exempt, same as the
   per-day order cap.
