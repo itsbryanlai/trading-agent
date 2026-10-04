@@ -190,7 +190,7 @@ description: "Task list for the Portfolio Manager agent (feature 008)"
   - `docs/specs/data-model.md`: `decisions.quote_time`; `risk_verdicts.rejection_rule` may be `decision_stale`;
   - `docs/architecture/overview.md`: the Risk Gate's row reads decisions in its own loop; the PM's model per ADR 0018 (Qwen default);
   - `docs/policy/versioning.md`: a row for the PM's `PROMPT_VERSION` (`0.1`);
-  - `CLAUDE.md`'s layering line, to match `pyproject.toml` (`execution | orchestrator | research | portfolio_manager` → `reference` → `risk` → `llm | storage`), **only with the owner's OK**, as its own commit (analyze D1).
+  - `CLAUDE.md`'s layering line, to match `pyproject.toml` (`execution | orchestrator | research | portfolio_manager` → `reference` → `risk` → `llm | storage`), approved by the owner on 2026-10-04, as its own commit (analyze D1).
 - [ ] T047 Run the whole quickstart steps 1–3: offline suite, integration suite, `scripts/lint.sh`, ruff, each unpiped. Fix anything that fails in its own commit. Tick the checklist in plan.md's Constitution Check re-check if anything changed.
 - [ ] T048 `/speckit-converge` (subagent) and an adversarial review (separate subagent), in parallel, per CLAUDE.local.md; act on findings in their own commits.
 
