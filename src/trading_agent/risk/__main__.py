@@ -53,9 +53,10 @@ def main(
         while max_passes is None or passes < max_passes:
             if conn.closed:
                 raise psycopg.OperationalError("connection closed")
-            now = clock()
-            evaluate(conn, now)
-            evaluate_decisions(conn, now)
+            evaluate(conn, clock())
+            # Read again: a slow trigger pass must not make a decision's quote look younger
+            # than it is (ADR 0019).
+            evaluate_decisions(conn, clock())
             passes += 1
             if max_passes is None or passes < max_passes:
                 sleep(PASS_SECONDS)

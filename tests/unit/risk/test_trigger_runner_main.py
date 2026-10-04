@@ -69,7 +69,7 @@ def test_a_lost_connection_during_the_decisions_step_exits_for_a_restart(env):
     assert code == runner.EXIT_DATABASE_LOST
 
 
-def test_each_pass_evaluates_triggers_then_decisions_on_the_same_clock_reading(env):
+def test_each_pass_evaluates_triggers_then_decisions_on_a_fresh_clock_reading(env):
     calls, times = [], iter(range(100))
 
     code = runner.main(
@@ -84,11 +84,11 @@ def test_each_pass_evaluates_triggers_then_decisions_on_the_same_clock_reading(e
     assert code == runner.EXIT_OK
     assert calls == [
         ("triggers", 0),
-        ("decisions", 0),
-        ("triggers", 1),
-        ("decisions", 1),
+        ("decisions", 1),  # read after the trigger pass, so a slow pass cannot understate ages
         ("triggers", 2),
-        ("decisions", 2),
+        ("decisions", 3),
+        ("triggers", 4),
+        ("decisions", 5),
     ]
 
 
