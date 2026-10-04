@@ -5,8 +5,9 @@ Strict, like research.yaml: every key required, no unknown keys, exact types and
 A bad file means the PM refuses to start (exit 2). The model section is parsed by
 `trading_agent.llm.settings`, shared with Research.
 
-Seam for User Story 5: the two cross-checks on worst-case run time (against
-the orchestrator's timeout and the gate's staleness limit) are added here.
+Two cross-checks bound a run's worst-case time against the orchestrator's timeout and the
+gate's staleness limit (research P11). The limits are copied here as plain numbers, never
+imported from `risk` or the schedule; a test pins each to its source.
 """
 
 from __future__ import annotations
@@ -26,6 +27,13 @@ from trading_agent.llm.settings import (
 DEFAULT_CONFIG_PATH = Path(__file__).resolve().parents[3] / "config" / "portfolio_manager.yaml"
 VARIABLE_PREFIX = "PORTFOLIO_MANAGER_"
 MODEL_TIMEOUT_BOUNDS = (30, 240)
+
+# Copies of other components' limits; tests/unit/portfolio_manager/test_config.py pins each.
+RUN_BUDGET_SECONDS = 600  # config/schedule.yaml: portfolio_manager.timeout_minutes * 60
+RUN_MARGIN_SECONDS = 60  # kept clear of the orchestrator's timeout
+SLACK_SECONDS = 60  # reading, checking and writing around the two phases
+GATE_STALENESS_SECONDS = 900  # risk.gate.MAX_DECISION_QUOTE_AGE (ADR 0019)
+GATE_WAIT_SECONDS = 120  # two gate passes: 2 * risk.__main__.PASS_SECONDS
 
 _INTS = {
     "quote_max_age_minutes": (1, 10),
@@ -79,7 +87,31 @@ def load_config(path: Path = DEFAULT_CONFIG_PATH) -> PortfolioManagerConfig:
         model = parse_model_settings(data["model"], timeout_bounds=MODEL_TIMEOUT_BOUNDS)
     except ModelSettingsError as exc:
         raise PortfolioManagerConfigError(str(exc)) from exc
-    return PortfolioManagerConfig(model=model, **ints)
+    config = PortfolioManagerConfig(model=model, **ints)
+    _check_run_time(config)
+    return config
+
+
+def worst_case_seconds(quote_phase_seconds: int, timeout_seconds: int) -> int:
+    """The quote phase, two model calls (one retry), and slack."""
+    return quote_phase_seconds + 2 * timeout_seconds + SLACK_SECONDS
+
+
+def _check_run_time(config: PortfolioManagerConfig) -> None:
+    worst = worst_case_seconds(config.quote_phase_seconds, config.model.timeout_seconds)
+    allowed = RUN_BUDGET_SECONDS - RUN_MARGIN_SECONDS
+    if worst > allowed:
+        raise PortfolioManagerConfigError(
+            f"quote_phase_seconds and model.timeout_seconds: a run could take {worst} s, "
+            f"over the orchestrator's {allowed} s"
+        )
+    stale = config.quote_max_age_minutes * 60 + worst + GATE_WAIT_SECONDS
+    if stale > GATE_STALENESS_SECONDS:
+        raise PortfolioManagerConfigError(
+            f"quote_max_age_minutes, quote_phase_seconds and model.timeout_seconds: "
+            f"a decision's quote could be {stale} s old at the gate, "
+            f"over its {GATE_STALENESS_SECONDS} s limit"
+        )
 
 
 def _int(value, name: str, low: int, high: int) -> int:
