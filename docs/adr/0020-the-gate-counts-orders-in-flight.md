@@ -1,6 +1,8 @@
 # 0020. The Risk Gate counts orders still in flight when sizing a decision
 
-Status: proposed
+Status: accepted
+
+Accepted by the owner on 2026-10-05, with the plan for `specs/009-pending-orders`.
 
 ## Context
 
