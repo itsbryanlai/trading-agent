@@ -161,7 +161,7 @@ An answer that isn't a JSON object with exactly one key, `decisions`, holding a 
 | Code | Meaning |
 |---|---|
 | 0 | Wrote decisions, or nothing to decide (no unexpired report, or an empty answer, or everything dropped); or outside the regular session, so nothing was done |
-| 1 | A failed run, nothing written: `no_account_snapshot`, `quote_key_rejected`, `no_fresh_quotes`, `model_key_rejected`, `model_rejected_request`, `model_unavailable`, `model_refused`, `model_truncated`, `unusable_answer`, `internal_error`; or the session closed during the run (`window_closed`) |
+| 1 | A failed run, nothing written: `no_account_snapshot`, `quote_key_rejected`, `no_fresh_quotes`, `model_key_rejected`, `model_rejected_request`, `model_unavailable`, `model_refused`, `model_truncated`, `unusable_answer`, `internal_error`; or the session closed during the run (`window_closed`); or the oldest decision's quote would be over the gate's limit by the time it evaluates it (`quotes_aged`) |
 | 2 | Refused to start: config, a missing variable, an unknown argument |
 | 3 | The database was unreachable, or a read or the write failed |
 | 4 | Crashed: an exception escaped everything else |
@@ -172,7 +172,7 @@ These match Research's codes (007 R9). The PM writes no failure row: it has no t
 
 **Decision**: `Store` is a protocol with `read_inputs(run_start) -> Inputs` and `write(decisions) -> None`, plus a Postgres implementation connecting as `ta_portfolio_manager`.
 
-- **Window**: before anything else, `calendar.market_open(now)`; outside it, log and exit 0 (FR-016). Rechecked just before the write; if the market has closed since, nothing is written and the run exits 1 as `window_closed` (as 007 review M1).
+- **Window**: before anything else, `calendar.market_open(now)`; outside it, log and exit 0 (FR-016). Rechecked just before the write; if the market has closed since, nothing is written and the run exits 1 as `window_closed` (as 007 review M1). Then one more check, also just before the write: if `clock() − (the oldest `quote_time` among the checked decisions) + 120 s` is over 900 s (the gate's limit plus two gate passes, pinned to `risk.gate.MAX_DECISION_QUOTE_AGE` and `2 × risk.__main__.PASS_SECONDS` by a test), the gate would reject every such decision as stale, so nothing is written and the run exits 1 as `quotes_aged` (review finding 4; ADR 0019 point 5). Config's cross-check bounds a normal run; this catches a run that overran it.
 - **Write**: one transaction inserts every `decisions` row (`generated_at` = the database's `now()`) and its `decision_reports` rows. Killed mid-run, nothing remains (FR-014, SC-004).
 - **Dry run**: the same reads, in the same read-only transaction; no write.
 

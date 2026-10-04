@@ -1,7 +1,7 @@
 """One Portfolio Manager run (specs/008-portfolio-manager research P1, P3, P10, P14).
 
 Market-open check -> read the state -> quote phase (paced, with a deadline) -> candidates
--> one model call -> check -> market-open recheck -> one write. The service decides
+-> one model call -> check -> market-open and quote-age rechecks -> one write. The service decides
 nothing itself: the model proposes, `answer.check` disposes, and only checked decisions
 reach the store. Database errors are not caught here: they reach `__main__` as exit 3.
 
@@ -35,6 +35,7 @@ from trading_agent.llm.ports import (
 )
 from trading_agent.llm.settings import ModelSettings
 from trading_agent.portfolio_manager import answer, inputs, prompt
+from trading_agent.portfolio_manager.config import GATE_STALENESS_SECONDS, GATE_WAIT_SECONDS
 from trading_agent.portfolio_manager.store import Store, StoreError
 from trading_agent.reference.provider import KeyRejected, ProviderError, Quote
 from trading_agent.risk import calendar
@@ -51,6 +52,7 @@ MODEL_REFUSED = "model_refused"
 MODEL_TRUNCATED = "model_truncated"
 UNUSABLE_ANSWER = "unusable_answer"
 WINDOW_CLOSED = "window_closed"
+QUOTES_AGED = "quotes_aged"
 INTERNAL_ERROR = "internal_error"
 
 _MODEL_CATEGORIES = (
@@ -227,14 +229,26 @@ def _run(
         outcome.decisions = checked.decisions
         log.info("portfolio_manager: dry run; %d decision(s) not written", len(checked.decisions))
         return
-    if not calendar.market_open(clock()):
-        # The run can outlast the session: a decision written after the close would be
-        # evaluated against a closed market (research P10).
-        log.error("portfolio_manager: %s: the market closed before the write", WINDOW_CLOSED)
-        raise _Failed(WINDOW_CLOSED)
+    _recheck_before_write(clock, checked.decisions)
     store.write(checked.decisions)  # not caught: a database error is exit 3
     outcome.decisions = checked.decisions
     log.info("portfolio_manager: wrote %d decision(s)", len(checked.decisions))
+
+
+def _recheck_before_write(clock, decisions) -> None:
+    """The run can outlast the session, or its quotes: refuse a write that could only be
+    refused later."""
+    if not calendar.market_open(clock()):
+        # A decision written after the close would be evaluated against a closed market
+        # (research P10).
+        log.error("portfolio_manager: %s: the market closed before the write", WINDOW_CLOSED)
+        raise _Failed(WINDOW_CLOSED)
+    oldest = min(d.quote_time for d in decisions)
+    if (clock() - oldest).total_seconds() + GATE_WAIT_SECONDS > GATE_STALENESS_SECONDS:
+        # The gate would reject these as stale (ADR 0019 point 5): don't write what it
+        # can only refuse.
+        log.error("portfolio_manager: %s: a quote would be too old at the gate", QUOTES_AGED)
+        raise _Failed(QUOTES_AGED)
 
 
 def _log_quotes(built: inputs.Built) -> None:

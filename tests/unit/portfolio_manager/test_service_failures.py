@@ -221,6 +221,40 @@ def test_the_market_closing_during_the_run_writes_nothing_and_fails():
     assert len(model.calls) == 1
 
 
+def _run_slowed_by(seconds, quotes):
+    clock = Clock()
+
+    class SlowModel(FakeModel):
+        def complete(self, system, user, schema):
+            clock.advance(seconds)
+            return super().complete(system, user, schema)
+
+    model = SlowModel(answer_of(decide("AAPL"), decide("MSFT", ids=("R2",))))
+    data = inputs([report("a", "AAPL"), report("m", "MSFT")])
+    return run(data, quotes, clock=clock, model=model)
+
+
+def test_a_write_the_gate_would_reject_as_stale_is_refused_on_the_oldest_quote(caplog):
+    # AAPL traded 4 minutes before NOW (fresh enough to be asked about), MSFT 1: AAPL decides.
+    quotes = FakeMarketData()
+    quotes.add("AAPL", current="200", quote_time=NOW - timedelta(minutes=4))
+    quotes.add("MSFT", current="300", quote_time=NOW - timedelta(minutes=1))
+    # 240 s old + 541 s later + the gate's 120 s = 901 s > 900 s.
+    with caplog.at_level(logging.INFO, logger=LOG):
+        outcome, store, _, _ = _run_slowed_by(541, quotes)
+    failed(outcome, store, "quotes_aged")
+    assert "quotes_aged" in caplog.text
+
+
+def test_a_write_exactly_at_the_gates_limit_is_still_made():
+    quotes = FakeMarketData()
+    quotes.add("AAPL", current="200", quote_time=NOW - timedelta(minutes=4))
+    quotes.add("MSFT", current="300", quote_time=NOW - timedelta(minutes=1))
+    outcome, store, _, _ = _run_slowed_by(538, quotes)  # 240 + 2 (quote pacing) + 538 + 120 = 900 s
+    assert outcome.failure is None
+    assert [d.symbol for d in store.written] == ["AAPL", "MSFT"]
+
+
 def test_a_run_that_starts_after_the_close_does_nothing_and_succeeds():
     clock = Clock(NOW + timedelta(hours=7))
     quotes = market(("AAPL", "200"))

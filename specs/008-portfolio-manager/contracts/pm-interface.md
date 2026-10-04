@@ -14,7 +14,7 @@ Any other argument means exit 2.
 | Code | Meaning |
 |---|---|
 | 0 | Wrote decisions; or nothing to decide (no unexpired report, an empty answer, or every proposal dropped); or the market is closed, so nothing was done |
-| 1 | A failed run, nothing written. Categories: `no_account_snapshot`, `quote_key_rejected`, `no_fresh_quotes`, `model_key_rejected`, `model_rejected_request`, `model_unavailable`, `model_refused`, `model_truncated`, `unusable_answer`, `window_closed`, `internal_error` |
+| 1 | A failed run, nothing written. Categories: `no_account_snapshot`, `quote_key_rejected`, `no_fresh_quotes`, `model_key_rejected`, `model_rejected_request`, `model_unavailable`, `model_refused`, `model_truncated`, `unusable_answer`, `window_closed`, `quotes_aged`, `internal_error` |
 | 2 | Refused to start: config, a missing variable, or an unknown argument |
 | 3 | The database was unreachable, or a read or the write failed |
 | 4 | Crashed: an exception escaped everything else |
