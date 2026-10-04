@@ -16,7 +16,7 @@
 - Q: The database counts a report as `consumed` once a decision cites it, while the PM's behaviour spec says such a report is re-evaluated in later runs. Which reports does a run consider? → A: Every unexpired report, whether already decided on or not, marked as such, so a new report is weighed against earlier ones on the same name.
 - Q: Which model provider is the PM's default, given its prompts carry portfolio state? → A: Qwen `qwen3.7-plus`, with an optional switch to Anthropic Sonnet, the same as Research. The account is paper only.
 - Q: May the PM write a buy on a symbol when none of the reports it cites argues buy? → A: No. A buy must cite at least one buy report on that symbol, or it is dropped (`unbacked_buy`). A sell or hold may cite any report on the symbol, since reducing or keeping exposure needs no backing.
-- Q: If the gate's loop first sees a decision long after it was written, does the gate still act on it? → A: No. The gate rejects a decision whose recorded quote is more than 15 minutes old when it evaluates it, under a new named rule, `decision_stale`, so nothing trades on an old quote; the PM's next run decides again. The limit is a gate setting, default 15 minutes. This is a change to the gate's rules, flagged, and recorded in the same ADR as the gate loop change.
+- Q: If the gate's loop first sees a decision long after it was written, does the gate still act on it? → A: No. The gate rejects a decision whose recorded quote is more than 15 minutes old when it evaluates it, under a new named rule, `decision_stale`, so nothing trades on an old quote; the PM's next run decides again. The limit is a fixed 15 minutes, a code constant like the stop-loss trigger's 10-minute limit (plan research P12). This is a change to the gate's rules, flagged, and recorded in the same ADR as the gate loop change.
 - Q: Should each run show the model the PM's own earlier decisions from today on the symbols under consideration? → A: Yes: each one's direction, target weight and time, without its reasoning, so a later run knows what an earlier one decided and model-written text doesn't feed back into itself. No new grant: the PM's role already reads `decisions`.
 
 ## User Scenarios & Testing *(mandatory)*
@@ -109,10 +109,11 @@ A run with nothing to decide succeeds and writes nothing. A run that couldn't de
 
 A run fails when:
 - the portfolio state can't be read, or there is no account snapshot from the current trading day;
+- the market-data key is rejected, or no symbol under consideration gets a fresh quote;
 - the model call fails, is refused, is cut off, or times out;
 - the answer is unusable as a whole.
 
-A quote that can't be fetched or is stale only removes that symbol from the run, and the run continues with the rest. If no symbol is left, the run makes no model call and succeeds.
+A quote that can't be fetched or is stale only removes that symbol from the run, and the run continues with the rest. If reports exist but no symbol gets a fresh quote, or the market-data key is rejected, the run fails without a model call: it couldn't look, so it must not pass as a quiet run (plan, flagged item 3).
 
 **Why this priority**: the orchestrator's run record and the logs are the only places a failed PM run shows. A silent failure would look like a day with nothing to do.
 
@@ -223,7 +224,7 @@ The Risk Gate's own loop does it (Clarifications). That loop already evaluates s
 
 **Reaching the gate**
 
-- **FR-017**: Every buy or sell decision MUST be evaluated by the Risk Gate on the day it was written, without any human step and without the PM seeing the result. A hold MUST produce no verdict. The gate's own loop does this, in its own process with only its own login; a decision from an earlier trading day MUST NOT be evaluated. The gate MUST reject, as `decision_stale`, a decision whose recorded quote is older than a gate setting (default 15 minutes) when it is evaluated; this is a new gate rule, applied to sells as well as buys (Clarifications). A new ADR superseding [ADR 0013](../../docs/adr/0013-deterministic-services-run-their-own-loops.md)'s point 3 MUST be accepted first, and the gate's contract (`specs/002-risk-gate/contracts/gate-interface.md`) updated to match.
+- **FR-017**: Every buy or sell decision MUST be evaluated by the Risk Gate on the day it was written, without any human step and without the PM seeing the result. A hold MUST produce no verdict. The gate's own loop does this, in its own process with only its own login; a decision from an earlier trading day MUST NOT be evaluated. The gate MUST reject, as `decision_stale`, a decision whose recorded quote is more than 15 minutes old when it is evaluated; this is a new gate rule, applied to sells as well as buys (Clarifications). A new ADR superseding [ADR 0013](../../docs/adr/0013-deterministic-services-run-their-own-loops.md)'s point 3 MUST be accepted first, and the gate's contract (`specs/002-risk-gate/contracts/gate-interface.md`) updated to match.
 
 **Running**
 
@@ -269,7 +270,7 @@ The Risk Gate's own loop does it (Clarifications). That loop already evaluates s
 ## Assumptions
 
 - **Default limits**, to be confirmed at plan time against real token counts: a model input of at most about 100,000 tokens and an output of at most about 8,000; each report rationale cut to about 2,000 characters before it reaches the model; the PM's reasoning capped at about 2,000 characters; the last 5 journal entries.
-- **Quote freshness**: a quote older than 15 minutes, or from before today's open, is stale. The universe's liquidity floor (`config/risk.yaml`, applied by the gate) means an eligible symbol trades far more often than that.
+- **Quote freshness**: a quote older than 5 minutes when fetched, or from before today's open, is stale. Five, not fifteen, so the quote is still under the gate's 15-minute limit when the gate sees the decision, after the rest of the run (plan research P4, P11). The universe's liquidity floor (`config/risk.yaml`, applied by the gate) means an eligible symbol trades far more often than that.
 - **The quote's time** is recorded on the decision. The `decisions` table has no column for it today, so a migration adds one ([ADR 0016](../../docs/adr/0016-market-data-for-the-llm-agents.md) Consequences). The PM's existing insert grant on `decisions` covers it.
 - **No new read or write grants** for the PM: `ta_portfolio_manager` can already read reports, positions, account snapshots and the journal, and write only decisions and their links (`specs/001-data-model`).
 - **Market-data key sharing**: the PM's key may share a provider account with other components' keys, and so their rate limit. Its call pacing leaves room, as the reference-data job's and Research's do.
