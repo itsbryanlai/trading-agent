@@ -47,7 +47,6 @@ DROP_REASONS = (
 )
 
 DIRECTIONS = ("buy", "sell", "hold")
-ELLIPSIS = "…"
 _THOUSANDTH = Decimal("0.001")
 _HUNDRED = Decimal(100)
 
@@ -250,7 +249,7 @@ def _build(item: dict, given: Given) -> CheckedDecision:
         symbol=symbol,
         direction=direction,
         size_pct=size,
-        reasoning=_cap(reasoning, given.reasoning_max_chars),
+        reasoning=text.cap(reasoning, given.reasoning_max_chars),
         quote=facts.quote,
         quote_time=facts.quote_time,
         report_ids=tuple(given.refs[i].report_id for i in ids),
@@ -272,9 +271,3 @@ def _target(value, direction: str) -> Decimal | None:
     if size == 0 and (exact != 0 or direction == "buy"):
         return None
     return size
-
-
-def _cap(value: str, limit: int) -> str:
-    if len(value) <= limit:
-        return value
-    return value[: limit - len(ELLIPSIS)] + ELLIPSIS
