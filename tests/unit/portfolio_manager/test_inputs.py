@@ -9,6 +9,7 @@ from tests.unit.portfolio_manager.builders import (
     earlier_decision,
     fetched,
     inputs,
+    journal_row,
     position,
     report,
 )
@@ -193,3 +194,87 @@ def test_no_snapshot_is_refused_here():
 
     with pytest.raises(ValueError, match="account"):
         build(inputs([report("a", "AAPL")], account=False), all_quotes("AAPL"))
+
+
+# --- User Story 3: evidence counts, the cuts, and keeping a prefix of the candidates -------
+
+
+def src(relevance, title="t"):
+    s = {"title": title, "publisher": "p", "published_at": "2026-10-01T12:00:00+00:00"}
+    if relevance is not None:
+        s["relevance"] = relevance
+    return s
+
+
+def only_report(data, **kw):
+    (candidate,) = build(data, all_quotes("AAPL"), **kw).candidates
+    (r,) = candidate.reports
+    return r
+
+
+def test_evidence_counts_primary_and_secondary_and_leaves_an_unmarked_source_out_of_both():
+    sources = [src("primary"), src("primary"), src("secondary"), src(None), src("headline")]
+    r = only_report(inputs([report("a", "AAPL", sources=sources)]))
+    assert (r.primary_sources, r.secondary_sources) == (2, 1)
+    assert [s.relevance for s in r.sources] == [
+        "primary",
+        "primary",
+        "secondary",
+        "unmarked",
+        "unmarked",
+    ]
+
+
+def test_a_report_with_only_secondary_sources_is_included_and_shows_no_primary_source():
+    r = only_report(inputs([report("a", "AAPL", sources=[src("secondary"), src("secondary")])]))
+    assert (r.primary_sources, r.secondary_sources) == (0, 2)
+
+
+def test_a_report_with_no_sources_has_no_evidence():
+    r = only_report(inputs([report("a", "AAPL", sources=[])]))
+    assert (r.primary_sources, r.secondary_sources, r.sources) == (0, 0, ())
+
+
+def test_rationales_are_cut_to_the_limit_with_an_ellipsis():
+    data = inputs([report("a", "AAPL", rationale="x" * 50), report("b", "MSFT", rationale="short")])
+    built = build(data, all_quotes("AAPL", "MSFT"), rationale_max_chars=20)
+    by_symbol = {c.symbol: c.reports[0].rationale for c in built.candidates}
+    assert by_symbol["AAPL"] == "x" * 19 + "…"
+    assert by_symbol["MSFT"] == "short"
+
+
+def test_a_rationale_at_exactly_the_limit_is_not_cut():
+    r = only_report(inputs([report("a", "AAPL", rationale="y" * 20)]), rationale_max_chars=20)
+    assert r.rationale == "y" * 20
+
+
+def test_journal_summaries_are_cut_to_the_limit():
+    data = inputs(
+        [report("a", "AAPL")],
+        journal=[journal_row("2026-09-30", "z" * 40), journal_row("2026-09-29", "ok")],
+    )
+    built = build(data, all_quotes("AAPL"), journal_summary_max_chars=10)
+    assert [j.summary for j in built.journal] == ["z" * 9 + "…", "ok"]
+
+
+def test_keeping_a_prefix_drops_the_rest_with_input_limit_and_their_report_ids():
+    data = inputs(
+        [
+            report("a", "AAPL", generated_at=NOW - timedelta(hours=3)),
+            report("m", "MSFT", generated_at=NOW - timedelta(minutes=10)),
+            report("n", "NVDA", generated_at=NOW - timedelta(hours=1)),
+        ],
+        [position("AAPL", "10")],
+    )
+    built = build(data, all_quotes("AAPL", "MSFT", "NVDA"))
+    assert [c.symbol for c in built.candidates] == ["MSFT", "NVDA", "AAPL"]
+    kept = built.keeping(2)
+    assert [c.symbol for c in kept.candidates] == ["MSFT", "NVDA"]
+    assert kept.skipped == (("AAPL", "input_limit"),)
+    assert {r.symbol for r in kept.refs.values()} == {"MSFT", "NVDA"}
+    assert len(kept.refs) == 2
+    assert set(kept.given(reasoning_max_chars=5).symbols) == {"MSFT", "NVDA"}
+    assert kept.positions == built.positions  # positions and the account are never dropped
+    assert kept.account is built.account
+    assert built.keeping(3) == built
+    assert built.keeping(1).skipped == (("AAPL", "input_limit"), ("NVDA", "input_limit"))

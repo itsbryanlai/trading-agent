@@ -7,18 +7,19 @@ and returns the symbols the model may decide, each with its reports, current wei
 earlier decisions today, plus the identifier map (`R1` -> database report id) that the
 answer checker holds the model to.
 
-Seam for the size limit (spec User Story 3, tasks T028): rationales and journal
-summaries are carried whole here; the cuts and `max_input_chars` land in this module.
+Size (spec User Story 3): `build_candidates` cuts each rationale and journal summary to
+its limit; if the rendered document is still over `max_input_chars`, `Built.keeping`
+drops whole candidates from the end (prompt.fit_user_document drives it).
 """
 
 from __future__ import annotations
 
 from collections.abc import Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import date, datetime, timedelta
 from decimal import Decimal
 
-from trading_agent.portfolio_manager import freshness
+from trading_agent.portfolio_manager import freshness, text
 from trading_agent.reference.provider import Quote
 
 FULL_EXIT = "full exit"
@@ -26,6 +27,7 @@ TARGET_WEIGHT = "target weight"
 PRIMARY = "primary"
 SECONDARY = "secondary"
 UNMARKED = "unmarked"
+INPUT_LIMIT = "input_limit"  # a skip reason, with freshness.QUOTE_MISSING and QUOTE_STALE
 
 # --- what the store reads ---------------------------------------------------------
 
@@ -187,10 +189,26 @@ class Given:
 class Built:
     candidates: tuple[Candidate, ...]
     positions: tuple[PositionView, ...]
-    skipped: tuple[tuple[str, str], ...]  # (symbol, quote_missing | quote_stale)
+    skipped: tuple[tuple[str, str], ...]  # (symbol, quote_missing | quote_stale | input_limit)
     refs: Mapping[str, ReportRef]
     account: AccountRecord
     journal: tuple[JournalView, ...]
+
+    def keeping(self, count: int) -> Built:
+        """The first `count` candidates only. The rest are skipped as `input_limit` and
+        their report ids are withdrawn, so the model can't cite what it was never shown.
+        Positions and the account stay."""
+        if count >= len(self.candidates):
+            return self
+        kept = self.candidates[:count]
+        symbols = {c.symbol for c in kept}
+        dropped = [(c.symbol, INPUT_LIMIT) for c in reversed(self.candidates[count:])]
+        return replace(
+            self,
+            candidates=kept,
+            skipped=(*self.skipped, *dropped),
+            refs={k: v for k, v in self.refs.items() if v.symbol in symbols},
+        )
 
     def given(self, *, reasoning_max_chars: int) -> Given:
         return Given(
@@ -241,6 +259,8 @@ def build_candidates(
     *,
     run_start: datetime,
     max_age: timedelta,
+    rationale_max_chars: int | None = None,
+    journal_summary_max_chars: int | None = None,
 ) -> Built:
     if data.account is None:
         raise ValueError("an account snapshot is required")
@@ -276,7 +296,11 @@ def build_candidates(
                 quote=quote,
                 quote_time=fresh[symbol].timestamp,
                 current_weight_pct=weight,
-                reports=tuple(_view(r, run_ids[r.id]) for r in ordered if r.symbol == symbol),
+                reports=tuple(
+                    _view(r, run_ids[r.id], rationale_max_chars)
+                    for r in ordered
+                    if r.symbol == symbol
+                ),
                 earlier_decisions=tuple(
                     EarlierDecision(d.direction, d.size_pct, d.generated_at)
                     for d in sorted(data.earlier_decisions, key=lambda d: d.generated_at)
@@ -292,7 +316,12 @@ def build_candidates(
         refs=refs,
         account=data.account,
         journal=tuple(
-            JournalView(j.trading_day, j.equity_open, j.equity_close, j.summary_md)
+            JournalView(
+                j.trading_day,
+                j.equity_open,
+                j.equity_close,
+                _cut(j.summary_md, journal_summary_max_chars),
+            )
             for j in data.journal
         ),
     )
@@ -302,7 +331,11 @@ def _report_order(r: ReportRecord):
     return (r.symbol, r.generated_at, r.id)
 
 
-def _view(r: ReportRecord, run_id: str) -> ReportView:
+def _cut(value: str, limit: int | None) -> str:
+    return value if limit is None else text.cap(value, limit)
+
+
+def _view(r: ReportRecord, run_id: str, rationale_max_chars: int | None) -> ReportView:
     sources = tuple(_source(s) for s in r.sources)
     full_exit = r.direction == "sell" and r.suggested_size_pct == 0
     return ReportView(
@@ -317,7 +350,7 @@ def _view(r: ReportRecord, run_id: str) -> ReportView:
         primary_sources=sum(s.relevance == PRIMARY for s in sources),
         secondary_sources=sum(s.relevance == SECONDARY for s in sources),
         sources=sources,
-        rationale=r.rationale_md,
+        rationale=_cut(r.rationale_md, rationale_max_chars),
         generated_at=r.generated_at,
     )
 

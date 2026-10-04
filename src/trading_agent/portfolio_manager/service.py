@@ -47,7 +47,10 @@ class Settings(Protocol):
     finnhub_calls_per_minute: int
     quote_phase_seconds: int
     journal_entries: int
+    journal_summary_max_chars: int
+    rationale_max_chars: int
     reasoning_max_chars: int
+    max_input_chars: int
     model: ModelSettings
 
 
@@ -121,7 +124,17 @@ def _run(run_start, clock, config, store, quotes, model, sleep, outcome: RunOutc
 
     fetched = _quote_phase(inputs.symbols_to_quote(data, run_start), clock, config, quotes, sleep)
     max_age = timedelta(minutes=config.quote_max_age_minutes)
-    built = inputs.build_candidates(data, fetched, run_start=run_start, max_age=max_age)
+    built = inputs.build_candidates(
+        data,
+        fetched,
+        run_start=run_start,
+        max_age=max_age,
+        rationale_max_chars=config.rationale_max_chars,
+        journal_summary_max_chars=config.journal_summary_max_chars,
+    )
+    # The size limit comes before anything is logged or given to the model: a symbol dropped
+    # for size is skipped like any other, and its report ids are withdrawn.
+    user, built = prompt.fit_user_document(run_start, built, config.max_input_chars)
     outcome.skipped = built.skipped
     outcome.candidates = [c.symbol for c in built.candidates]
     log.info(
@@ -135,9 +148,6 @@ def _run(run_start, clock, config, store, quotes, model, sleep, outcome: RunOutc
         log.info("portfolio_manager: nothing to decide (%s)", outcome.note)
         return
 
-    user = prompt.build_user_document(
-        run_start, built.account, built.positions, built.candidates, built.journal
-    )
     outcome.input_chars = len(user)
     reply = model.complete(prompt.SYSTEM_PROMPT, user, answer.ANSWER_SCHEMA)
     outcome.input_tokens, outcome.output_tokens = reply.input_tokens, reply.output_tokens

@@ -38,7 +38,10 @@ class Settings:
     finnhub_calls_per_minute: int = 30
     quote_phase_seconds: int = 90
     journal_entries: int = 5
+    journal_summary_max_chars: int = 2000
+    rationale_max_chars: int = 2000
     reasoning_max_chars: int = 2000
+    max_input_chars: int = 300_000
     model: ModelSettings = field(
         default_factory=lambda: ModelSettings("qwen", "qwen3.7-plus", 8000, 150, "medium")
     )

@@ -5,8 +5,8 @@ or by the news can end its own quoting or start a new section. The prompt only l
 how often the checks in answer.py fire; those checks are the enforcement.
 PROMPT_VERSION is logged with every run (docs/policy/versioning.md).
 
-Seam for User Story 3 (tasks T028): the document is built from the views as they are;
-the per-field cuts and the `max_input_chars` limit are applied in inputs.py.
+The per-field cuts are applied in inputs.py; `fit_user_document` enforces
+`max_input_chars` on the finished document.
 """
 
 from __future__ import annotations
@@ -18,6 +18,7 @@ from decimal import Decimal
 from trading_agent.portfolio_manager.answer import ANSWER_SCHEMA
 from trading_agent.portfolio_manager.inputs import (
     AccountRecord,
+    Built,
     Candidate,
     EarlierDecision,
     JournalView,
@@ -94,6 +95,19 @@ def build_user_document(
             "journal": [_journal(j) for j in journal],
         }
     )
+
+
+def fit_user_document(now: datetime, built: Built, max_input_chars: int) -> tuple[str, Built]:
+    """The user document, with whole candidates dropped from the end (oldest newest-report
+    first) until it fits. Positions and the account are never dropped. Returns the
+    document and the `Built` it was made from: the model may cite only what it was shown."""
+    while True:
+        document = build_user_document(
+            now, built.account, built.positions, built.candidates, built.journal
+        )
+        if len(document) <= max_input_chars or not built.candidates:
+            return document, built
+        built = built.keeping(len(built.candidates) - 1)
 
 
 def _weight(value: Decimal | None) -> str | None:
