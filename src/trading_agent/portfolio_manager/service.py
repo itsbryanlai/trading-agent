@@ -11,6 +11,9 @@ that time, analyze F1) and before the write. Nothing here reads the system clock
 Failures (research P9): every failure is one category on `RunOutcome.failure` and writes
 nothing. A database error is not a category: `StoreError` escapes, to be exit 3. Any other
 unexpected exception is `internal_error`; only its type is logged, never its message.
+
+A dry run (`dry_run=True`, research P2) does everything but the write, and neither checks
+that the market is open: it reports the would-be decisions on the outcome instead.
 """
 
 from __future__ import annotations
@@ -89,6 +92,7 @@ class RunOutcome:
     output_tokens: int | None = None
     input_chars: int = 0
     candidates: list[str] = field(default_factory=list)
+    built: inputs.Built | None = None  # what the model was given; the dry run prints it
 
 
 class _Failed(Exception):
@@ -105,9 +109,10 @@ def run(
     quotes: QuoteSource,
     model: ModelClient,
     sleep: Callable[[float], None],
+    dry_run: bool = False,
 ) -> RunOutcome:
     run_start = clock()
-    if not calendar.market_open(run_start):
+    if not dry_run and not calendar.market_open(run_start):
         log.info("portfolio_manager: market closed; nothing to do")
         return RunOutcome(market_closed=True)
     log.info(
@@ -118,7 +123,7 @@ def run(
     )
     outcome = RunOutcome()
     try:
-        _run(run_start, clock, config, store, quotes, model, sleep, outcome)
+        _run(run_start, clock, config, store, quotes, model, sleep, outcome, dry_run)
     except _Failed as failed:
         outcome.failure = failed.category
         outcome.decisions = ()
@@ -131,7 +136,9 @@ def run(
     return outcome
 
 
-def _run(run_start, clock, config, store, quotes, model, sleep, outcome: RunOutcome) -> None:
+def _run(
+    run_start, clock, config, store, quotes, model, sleep, outcome: RunOutcome, dry_run: bool
+) -> None:
     data = store.read_inputs(run_start, journal_entries=config.journal_entries)
     if data.account is None or data.account.equity <= 0:
         log.error("portfolio_manager: %s", NO_ACCOUNT_SNAPSHOT)
@@ -171,6 +178,7 @@ def _run(run_start, clock, config, store, quotes, model, sleep, outcome: RunOutc
     user, built = prompt.fit_user_document(run_start, built, config.max_input_chars)
     outcome.skipped = built.skipped
     outcome.candidates = [c.symbol for c in built.candidates]
+    outcome.built = built
     _log_quotes(built)
     if not built.candidates:
         # Only the account and positions fit, which max_input_chars is meant to rule out.
@@ -208,6 +216,10 @@ def _run(run_start, clock, config, store, quotes, model, sleep, outcome: RunOutc
     if not checked.decisions:
         outcome.note = "no decision survived" if checked.drops else "the model proposed none"
         log.info("portfolio_manager: nothing to decide (%s)", outcome.note)
+        return
+    if dry_run:
+        outcome.decisions = checked.decisions
+        log.info("portfolio_manager: dry run; %d decision(s) not written", len(checked.decisions))
         return
     if not calendar.market_open(clock()):
         # The run can outlast the session: a decision written after the close would be

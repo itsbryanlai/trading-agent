@@ -10,7 +10,8 @@ one outside the session; 1 for a failure the service reported (nothing written);
 refuses to start; 3 when the database is unreachable or a read or the write fails; 4 for a
 crash, so an escaped exception is never Python's own exit 1.
 
-Seam for User Story 5 (tasks T043): the dry run and its argument.
+`--dry-run` (research P2) does everything but the write, without the market-hours check, and
+prints its report as JSON lines (dry_run.py). It needs the same variables and the database.
 """
 
 from __future__ import annotations
@@ -30,7 +31,7 @@ from trading_agent.llm.settings import (
     ModelSettingsError,
     require_https_base_url,
 )
-from trading_agent.portfolio_manager import service
+from trading_agent.portfolio_manager import dry_run, service
 from trading_agent.portfolio_manager.config import (
     DEFAULT_CONFIG_PATH,
     PortfolioManagerConfigError,
@@ -46,6 +47,7 @@ DATABASE_VARIABLE = "PORTFOLIO_MANAGER_DATABASE_URL"
 QUOTE_KEY_VARIABLE = "PORTFOLIO_MANAGER_FINNHUB_API_KEY"
 SCHEMA_NAME = "pm_answer"
 CONNECT_TIMEOUT_SECONDS = 10
+DRY_RUN_FLAG = "--dry-run"
 
 EXIT_OK = 0
 EXIT_FAILURE = 1
@@ -95,9 +97,10 @@ def _main(
     argv, quotes_factory, model_factory, connect, store_factory, config_path, clock, sleep
 ) -> int:
     args = list(sys.argv[1:] if argv is None else argv)
-    if args:
+    if args not in ([], [DRY_RUN_FLAG]):
         log.critical("portfolio_manager: unknown arguments %s", args)
         return EXIT_REFUSED
+    is_dry_run = bool(args)
 
     try:
         cfg = load_config(config_path)
@@ -129,12 +132,16 @@ def _main(
             quotes=quotes_factory(quote_key),
             model=model_factory(cfg.model.provider, model_key, cfg.model, base_url=base_url),
             sleep=sleep,
+            dry_run=is_dry_run,
         )
     except (StoreError, psycopg.Error) as exc:
         log.critical("portfolio_manager: database error: %s", type(exc).__name__)
         return EXIT_DATABASE
     finally:
         conn.close()
+    if is_dry_run:
+        for line in dry_run.lines(outcome):
+            print(line)
     return EXIT_FAILURE if outcome.failure is not None else EXIT_OK
 
 
