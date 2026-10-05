@@ -173,6 +173,7 @@ description: "Task list for feature 010, observe-only deployment (revised after 
 **Independent Test**: each service refuses to start, naming its missing variable, and every observation and post-deploy query runs as the read-only role.
 
 - [X] T021 [P] [US3] Audit the existing entry-point tests for `orchestrator`, `risk`, `reference` and `execution` (`tests/unit/<component>/`). Each must have a case where an unset required variable exits 2 with the name in the log and no value printed. Add any missing case to that component's existing test file. Also confirm a test covers Execution's `NotPaperTrading` refusal (exit 2) (analyze C9). Record the audit result in the commit.
+  - *Mutation check (2026-10-05, run by the owner; auto mode refused it to the agents):* Execution's refusal logging `ALPACA_API_SECRET_KEY`'s value failed 2 of the 3 parametrised cases (the third has no secret set to leak, as expected); the gate runner logging only the exception type failed `test_a_missing_credential_is_refused_by_name_before_connecting`. Both restored.
 - [X] T022 [P] [US3] Write `docs/operations/observe-queries.sql`, read-only, for `ta_owner_read_login`:
   - today's reports;
   - decisions with their cited reports;
@@ -199,6 +200,7 @@ description: "Task list for feature 010, observe-only deployment (revised after 
   - (b) an approved buy whose trading day has closed is refused `approval_expired`, with no broker submit;
   - (c) an approved sell while paused is still placed;
   - (d) in the Risk Gate tests (`tests/unit/risk/`), a buy decision while paused (fresh quote, market open) is rejected `trading_paused` before any sizing, universe or cash rule, and a sell decision while paused is still evaluated.
+  - *Mutation check (2026-10-05, main session):* removing the gate's `trading_paused` check failed 3 tests, including the new precedence test. Restored.
 
   Add any missing case to the existing test files, with a fake broker and a fixed clock. Don't change Execution code.
 - [X] T025 [US4] Write `docs/operations/deployment.md`, the owner runbook, using variable names only (never a value):
