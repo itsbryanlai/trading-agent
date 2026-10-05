@@ -172,7 +172,7 @@ description: "Task list for feature 010, observe-only deployment (revised after 
 
 **Independent Test**: each service refuses to start, naming its missing variable, and every observation and post-deploy query runs as the read-only role.
 
-- [ ] T021 [P] [US3] Audit the existing entry-point tests for `orchestrator`, `risk`, `reference` and `execution` (`tests/unit/<component>/`). Each must have a case where an unset required variable exits 2 with the name in the log and no value printed. Add any missing case to that component's existing test file. Also confirm a test covers Execution's `NotPaperTrading` refusal (exit 2) (analyze C9). Record the audit result in the commit.
+- [X] T021 [P] [US3] Audit the existing entry-point tests for `orchestrator`, `risk`, `reference` and `execution` (`tests/unit/<component>/`). Each must have a case where an unset required variable exits 2 with the name in the log and no value printed. Add any missing case to that component's existing test file. Also confirm a test covers Execution's `NotPaperTrading` refusal (exit 2) (analyze C9). Record the audit result in the commit.
 - [ ] T022 [P] [US3] Write `docs/operations/observe-queries.sql`, read-only, for `ta_owner_read_login`:
   - today's reports;
   - decisions with their cited reports;
