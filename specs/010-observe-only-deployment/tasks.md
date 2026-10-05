@@ -115,7 +115,7 @@ description: "Task list for feature 010, observe-only deployment (revised after 
   - `ADMIN_DATABASE_URL` read with `require_env`, and exit codes 0, 2 and 3.
 
   Mirror `storage/migrate.py`'s style. Stay under 600 lines and inside `storage`. Make T011 and T012 pass.
-- [ ] T014 [US2] Mutation-check T011 and T012:
+- [X] T014 [US2] Mutation-check T011 and T012:
   - drop `INHERIT`;
   - swap two groups;
   - re-password an existing login;
