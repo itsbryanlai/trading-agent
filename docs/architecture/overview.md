@@ -108,8 +108,10 @@ default, write access is scoped to the table(s) that component owns
 
 ## Deployment shape (borrowed pattern, not shared code, from `trading-bot`)
 
-- Railway worker service running the orchestrator + agents, Nixpacks build
+- Described as infrastructure as code in `.railway/railway.ts`, applied by the owner; built with Railpack (Python 3.12); services deploy only from the `release/prod` branch ([ADR 0021](../adr/0021-railway-deployment-as-code-observe-only-first.md))
+- One Railway worker service per process, each holding only its own variables: `orchestrator` (with Research and the Portfolio Manager), `risk-gate`, `reference-data` and `execution`
 - Railway Postgres service for the shared knowledge base
+- The first deployment is observe-only: Execution is deployed, trading is paused before any service starts, and the paper account is flat before Execution first starts. The Portfolio Manager runs while paused (`portfolio_manager.run_while_paused`), and the gate approves no buy while paused. Trading is switched on only after the close ([ADR 0021](../adr/0021-railway-deployment-as-code-observe-only-first.md))
 - A separate Railway web service for the dashboard UI (FastAPI + Jinja2,
   matching `trading-bot`'s own status-view deployment —
   [ADR 0008](../adr/0008-dashboard-stack-and-research-provider.md)), granted
