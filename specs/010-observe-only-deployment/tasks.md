@@ -134,7 +134,7 @@ description: "Task list for feature 010, observe-only deployment (revised after 
 
 **Independent Test**: the guard test passes, and `railway config plan` lists exactly `postgres`, `orchestrator`, `risk-gate`, `reference-data` and `execution`, with hidden values.
 
-- [ ] T015 [US1] Guard test in `tests/unit/deploy/test_deployed_shape.py` (with `tests/unit/deploy/__init__.py`), reading `.railway/railway.ts` as text (research R11). It fails if:
+- [X] T015 [US1] Guard test in `tests/unit/deploy/test_deployed_shape.py` (with `tests/unit/deploy/__init__.py`), reading `.railway/railway.ts` as text (research R11). It fails if:
   - any `ALPACA_` or `EXECUTION_` name appears outside the `execution` service's block;
   - `ADMIN_DATABASE_URL` appears;
   - `.env.DATABASE_URL`, `.env.DATABASE_PUBLIC_URL` or `.env.PG` appears;
@@ -145,7 +145,7 @@ description: "Task list for feature 010, observe-only deployment (revised after 
 
   It also checks that every declared name appears in `.env.example`, that the orchestrator's agent names equal `config/schedule.yaml`'s `env` lists for the enabled agents, and that `config/schedule.yaml` has `run_while_paused: true`.
 - [X] T016 [US1] **Main session, not a subagent (network).** Write `.railway/package.json`: `"private": true`, with the `railway` npm package as its only dependency, pinned to the exact version from `npm view railway version`. Run `npm install` in `.railway/` and commit `package-lock.json`. Don't commit `node_modules`.
-- [ ] T017 [US1] Write `.railway/railway.ts` per the contract:
+- [X] T017 [US1] Write `.railway/railway.ts` per the contract:
   - `postgres("postgres")` and the four services;
   - each with `source: github("itsbryanlai/trading-agent", { branch: "release/prod" })`, its start command, and every variable `preserve()`;
   - one replica each;
