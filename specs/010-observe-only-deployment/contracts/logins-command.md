@@ -13,9 +13,9 @@ Run by the owner on their own machine, with `ADMIN_DATABASE_URL` exported in the
 | `ta_portfolio_manager_login` | `ta_portfolio_manager` | orchestrator service (passed to the PM) |
 | `ta_risk_gate_login` | `ta_risk_gate` | risk-gate service |
 | `ta_reference_data_login` | `ta_reference_data` | reference-data service |
-| `ta_execution_login` | `ta_execution` | no service until switch-on |
+| `ta_execution_login` | `ta_execution` | execution service |
 | `ta_owner_read_login` | `ta_dashboard` (read-only) | the owner, for observation queries |
-| `ta_owner_control_login` | `ta_dashboard_control` (`trading_paused` only) | the owner, for the switch-off pause |
+| `ta_owner_control_login` | `ta_dashboard_control` (`trading_paused` only) | the owner: sets the pause during setup, clears it at switch-on |
 
 Each login is `LOGIN`, `INHERIT` and `NOSUPERUSER NOCREATEDB NOCREATEROLE`, and a member of exactly one group role.
 
