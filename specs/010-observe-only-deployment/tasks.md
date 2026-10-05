@@ -33,7 +33,7 @@ description: "Task list for feature 010, observe-only deployment (revised after 
 
 **Purpose**: Constitution V. ADR first.
 
-- [ ] T001 Write `docs/adr/0021-railway-deployment-as-code-observe-only-first.md` (status Accepted, using the template in `docs/adr/README.md`). It records:
+- [X] T001 Write `docs/adr/0021-railway-deployment-as-code-observe-only-first.md` (status Accepted, using the template in `docs/adr/README.md`). It records:
   - Railway infrastructure as code in TypeScript `.railway/railway.ts`, replacing the deprecated `railway.json` (research R1);
   - one service per process, the orchestrator also carrying its agents' variables (R3);
   - the setup and login commands run from the owner's machine, with the public proxy closed between uses (R5, R6);
