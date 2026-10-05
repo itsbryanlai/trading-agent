@@ -70,7 +70,7 @@ description: "Task list for feature 010, observe-only deployment (revised after 
   - add `run_while_paused: true` to `config/schedule.yaml` under `portfolio_manager`, with a comment citing ADR 0021 and "set false at switch-on".
 
   Make T008 pass. Analysts must stay unaffected.
-- [ ] T010 Mutation-check T008 and T009:
+- [X] T010 Mutation-check T008 and T009:
   - make `None` unblock;
   - ignore the setting at the event-driven call site only (analyze N5);
   - default the key instead of requiring it;
