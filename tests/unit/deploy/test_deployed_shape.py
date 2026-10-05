@@ -120,12 +120,37 @@ def service_blocks(text: str) -> dict[str, str]:
     return blocks
 
 
+def top_level_keys(block: str) -> list[str]:
+    """Keys of a `{ ... }` object literal at its own depth, in order, repeats kept."""
+    depth, quote, flat, i = 0, "", [], 0
+    while i < len(block):
+        ch = block[i]
+        if quote:
+            if ch == "\\":
+                i += 1
+            elif ch == quote:
+                quote = ""
+        elif ch in _QUOTES:
+            quote = ch
+        elif ch in "{[(":
+            depth += 1
+        elif ch in "}])":
+            depth -= 1
+        elif depth == 1:
+            flat.append(ch)
+        i += 1
+    return re.findall(r"(?:^|[,\s])([A-Za-z_]\w*)\s*:", "".join(flat))
+
+
+def env_body(block: str) -> str:
+    """The first env block's `{ ... }`, or an empty object when there is none."""
+    match = re.search(r"\benv\s*:\s*\{", block)
+    return "{}" if match is None else balanced(block, match.end() - 1)
+
+
 def env_entries(block: str) -> tuple[dict[str, str], list[str]]:
     """Variable name -> value text, plus any env line that isn't `NAME: value,`."""
-    match = re.search(r"\benv\s*:\s*\{", block)
-    if match is None:
-        return {}, []
-    body = balanced(block, match.end() - 1)[1:-1]
+    body = env_body(block)[1:-1]
     entries: dict[str, str] = {}
     odd: list[str] = []
     for line in (ln.strip() for ln in body.splitlines()):
@@ -164,10 +189,32 @@ def _whole_file(text: str, blocks: dict[str, str]) -> list[str]:
     return found
 
 
+def _shape_rules(text: str) -> list[str]:
+    """Rules that stop the scanner above from being slipped past."""
+    found: list[str] = []
+    calls = len(re.findall(r"\bservice\(", text))
+    literal = len(re.findall(r'\bservice\(\s*"[^"]+"\s*,\s*\{', text))
+    if calls != literal:
+        found.append("every service( call must take a double-quoted name and an object literal")
+    projects = list(re.finditer(r"\bproject\(\s*\"[^\"]+\"\s*,\s*\{", text))
+    if len(projects) != 1 or len(re.findall(r"\bproject\(", text)) != 1:
+        found.append("exactly one project(name, { ... }) call is required")
+    else:
+        keys = top_level_keys(balanced(text, projects[0].end() - 1))
+        if keys != ["resources"]:
+            found.append(f"project() may hold only resources, found {keys}")
+    return found
+
+
 def _one_service(name: str, block: str) -> tuple[list[str], set[str]]:
     start, names = CONTRACT[name]
     entries, odd = env_entries(block)
-    found = [f"{name}: env line not `NAME: value,`: {line}" for line in odd]
+    found = [f"{name}: key {k} appears twice" for k in _repeats(top_level_keys(block))]
+    if len(re.findall(r"\benv\s*:\s*\{", block)) != 1:
+        found.append(f"{name}: exactly one env block is required")
+    body = env_body(block)
+    found += [f"{name}: variable {k} is set twice" for k in _repeats(top_level_keys(body))]
+    found += [f"{name}: env line not `NAME: value,`: {line}" for line in odd]
     found += [
         f"{name}: {var} is {value}, not preserve()"
         for var, value in entries.items()
@@ -182,6 +229,10 @@ def _one_service(name: str, block: str) -> tuple[list[str], set[str]]:
     if not re.search(r"\breplicas\s*:\s*1\b", block):
         found.append(f"{name}: must run one replica")
     return found, set(entries)
+
+
+def _repeats(keys: list[str]) -> list[str]:
+    return sorted({k for k in keys if keys.count(k) > 1})
 
 
 def _against_the_repo(
@@ -204,7 +255,7 @@ def _against_the_repo(
 def violations(raw: str, env_example: str, schedule: dict) -> list[str]:
     text = strip_comments(raw)
     blocks = service_blocks(text)
-    found = _whole_file(text, blocks)
+    found = _whole_file(text, blocks) + _shape_rules(text)
     declared: set[str] = set()
     for name, block in blocks.items():
         if name in CONTRACT:
@@ -289,3 +340,60 @@ def test_comments_may_mention_forbidden_names(shipped):
     assert not violations(
         "// ADMIN_DATABASE_URL, ALPACA_ db.env.DATABASE_URL\n" + raw, env_example, schedule
     )
+
+
+def test_a_service_name_that_is_not_a_double_quoted_literal_is_caught(shipped):
+    # Single quotes, a template literal and a variable all hide a service from the
+    # block scanner, so each must be refused outright.
+    for name in ("'extra'", "`extra`", "some_name"):
+        assert _broken(
+            shipped,
+            "export default",
+            f'const extra = service({name}, {{ start: "x" }});\nexport default',
+        ), name
+
+
+@pytest.mark.parametrize(
+    ("old", "new"),
+    [
+        ("replicas: 1,", "replicas: 1,\n    replicas: 1,"),
+        (
+            'start: "python -m trading_agent.risk",',
+            'start: "python -m trading_agent.risk",\n    start: "python -m trading_agent.risk",',
+        ),
+        (
+            "RISK_GATE_DATABASE_URL: preserve(),",
+            "RISK_GATE_DATABASE_URL: preserve(),\n      RISK_GATE_DATABASE_URL: preserve(),",
+        ),
+        (
+            "RISK_GATE_DATABASE_URL: preserve(),\n    },",
+            "RISK_GATE_DATABASE_URL: preserve(),\n    },\n    source: " + SOURCE + ",",
+        ),
+    ],
+    ids=["replicas", "start", "env variable", "source"],
+)
+def test_a_repeated_key_in_a_service_block_is_caught(shipped, old, new):
+    assert _broken(shipped, old, new)
+
+
+def test_a_second_env_block_is_caught(shipped):
+    # Nested after the real one, so it is not a repeated top-level key and the first
+    # block still matches the contract: only the env count catches it.
+    assert _broken(
+        shipped,
+        "RISK_GATE_DATABASE_URL: preserve(),\n    },",
+        "RISK_GATE_DATABASE_URL: preserve(),\n    },\n    other: { env: {} },",
+    )
+
+
+@pytest.mark.parametrize(
+    ("old", "new"),
+    [
+        ("resources: [", 'description: "x",\n    resources: ['),
+        ("resources: [", "env: { X: preserve() },\n    resources: ["),
+        ("export default", 'const p2 = project("other", { resources: [] });\nexport default'),
+    ],
+    ids=["extra key", "project env", "second project"],
+)
+def test_project_may_hold_only_resources(shipped, old, new):
+    assert _broken(shipped, old, new)
