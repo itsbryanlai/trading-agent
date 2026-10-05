@@ -152,7 +152,7 @@ description: "Task list for feature 010, observe-only deployment (revised after 
   - the project name from the owner. If it's unknown, leave a `TODO(owner)` comment and don't invent one.
 
   Add a header comment citing ADR 0021 and the guard test. Make T015 pass.
-- [ ] T018 [P] [US1] Write `.railway/README.md`: what the file is, that values are never written into it, `plan` before `apply`, and a link to `docs/operations/deployment.md`.
+- [X] T018 [P] [US1] Write `.railway/README.md`: what the file is, that values are never written into it, `plan` before `apply`, and a link to `docs/operations/deployment.md`.
 - [ ] T019 [US1] Regroup `.env.example` by service (`orchestrator`, `risk-gate`, `reference-data`, `execution`, then "owner's shell only": `ADMIN_DATABASE_URL`, `TEST_DATABASE_URL`). Keep every existing name and comment. Note that each `*_DATABASE_URL` comes from the login command and uses the private host. Keep T015 passing.
 - [ ] T020 [US1] Mutation-check T015:
   - put `ALPACA_API_KEY_ID` on `risk-gate`;
