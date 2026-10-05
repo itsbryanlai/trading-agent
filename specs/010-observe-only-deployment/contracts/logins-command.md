@@ -24,10 +24,10 @@ Each login is `LOGIN`, `INHERIT` and `NOSUPERUSER NOCREATEDB NOCREATEROLE`, and 
 - Before doing anything, it checks that every group role exists. If one is missing, it refuses with "run migrate first" and exits 2, creating nothing.
 - For each login that doesn't exist: it creates the login with a fresh 32-byte random password and prints `NAME  postgresql://NAME:PASSWORD@HOST:PORT/DBNAME` once. `DBNAME` comes from the admin URL, and `HOST:PORT` from `--service-host` (port 5432 if omitted).
 - For each login that already exists: it prints `NAME  exists, unchanged`. It doesn't touch the password or memberships.
-- `--reset NAME`: it sets a new password for that existing login only, and prints its new string. An unknown name exits 2 with no change.
+- `--reset NAME`: it sets a new password for that existing login only, and prints its new string. An unknown name exits 2 with no change, and so does a name that doesn't exist in the database yet. Repeating a name is the same as giving it once.
 - It never prints the admin URL or its password, and writes nothing to disk.
 - All creations run in one transaction. On any error, nothing is created.
-- Exit codes: 0 on success, 2 on a refusal (missing variable, missing group role, unknown `--reset` name, missing `--service-host`), and 3 if the database is unreachable.
+- Exit codes: 0 on success, 2 on a refusal (missing variable, missing group role, unknown `--reset` name, missing `--service-host`), 3 if the database is unreachable, and 1 for any other error (it prints only the exception type and "nothing was created").
 
 ## Tests
 
