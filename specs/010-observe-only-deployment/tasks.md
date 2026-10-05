@@ -201,7 +201,7 @@ description: "Task list for feature 010, observe-only deployment (revised after 
   - (d) in the Risk Gate tests (`tests/unit/risk/`), a buy decision while paused (fresh quote, market open) is rejected `trading_paused` before any sizing, universe or cash rule, and a sell decision while paused is still evaluated.
 
   Add any missing case to the existing test files, with a fake broker and a fixed clock. Don't change Execution code.
-- [ ] T025 [US4] Write `docs/operations/deployment.md`, the owner runbook, using variable names only (never a value):
+- [X] T025 [US4] Write `docs/operations/deployment.md`, the owner runbook, using variable names only (never a value):
   1. **What you need**: accounts and keys by name; the Railway CLI and Node for plan and apply.
   2. **First deploy, in this exact order**:
      1. create the Railway project and its Postgres;
