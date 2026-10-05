@@ -173,7 +173,7 @@ description: "Task list for feature 010, observe-only deployment (revised after 
 **Independent Test**: each service refuses to start, naming its missing variable, and every observation and post-deploy query runs as the read-only role.
 
 - [X] T021 [P] [US3] Audit the existing entry-point tests for `orchestrator`, `risk`, `reference` and `execution` (`tests/unit/<component>/`). Each must have a case where an unset required variable exits 2 with the name in the log and no value printed. Add any missing case to that component's existing test file. Also confirm a test covers Execution's `NotPaperTrading` refusal (exit 2) (analyze C9). Record the audit result in the commit.
-- [ ] T022 [P] [US3] Write `docs/operations/observe-queries.sql`, read-only, for `ta_owner_read_login`:
+- [X] T022 [P] [US3] Write `docs/operations/observe-queries.sql`, read-only, for `ta_owner_read_login`:
   - today's reports;
   - decisions with their cited reports;
   - each decision's verdict and reasons;
@@ -186,7 +186,7 @@ description: "Task list for feature 010, observe-only deployment (revised after 
   Add two blocks from research R12:
   - **"pre-open"**: paused is true, `positions` is empty;
   - **"first trading day"**: paused is true, `positions` is empty, a snapshot exists from today, at least one decision exists, every decision has a verdict, no buy verdict is approved, and every buy rejection reads `trading_paused`, `market_closed` or `decision_stale`, and `orders` is empty. Use only objects `ta_dashboard` may read.
-- [ ] T023 [US3] Integration test in `tests/integration/storage/test_observe_queries.py`: run every statement in that file as `ta_dashboard` against a migrated database, and assert that none raises. Mutation-check it by adding a query on an object `ta_dashboard` can't read.
+- [X] T023 [US3] Integration test in `tests/integration/storage/test_observe_queries.py`: run every statement in that file as `ta_dashboard` against a migrated database, and assert that none raises. Mutation-check it by adding a query on an object `ta_dashboard` can't read.
 
 ---
 
