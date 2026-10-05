@@ -148,7 +148,8 @@ def _existing_logins(conn: psycopg.Connection, names: Sequence[str]) -> dict[str
         " FROM pg_roles r"
         " LEFT JOIN pg_auth_members m ON m.member = r.oid"
         " LEFT JOIN pg_roles g ON g.oid = m.roleid"
-        " WHERE r.rolname = ANY(%s) GROUP BY r.oid, r.rolname, r.rolsuper, r.rolcreatedb, r.rolcreaterole",
+        " WHERE r.rolname = ANY(%s)"
+        " GROUP BY r.oid, r.rolname, r.rolsuper, r.rolcreatedb, r.rolcreaterole",
         (list(names),),
     )
     return {row["rolname"]: row for row in rows.fetchall()}
