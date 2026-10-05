@@ -16,7 +16,18 @@ from trading_agent.storage import logins
 from trading_agent.storage.logins import LOGINS
 
 NAMES = [login.name for login in LOGINS]
-GROUP_OF = {login.name: login.group for login in LOGINS}
+# A literal copy of the contract's rows (contracts/logins-command.md), not derived from
+# LOGINS, so a swapped group in the command shows up here.
+GROUP_OF = {
+    "ta_orchestrator_login": "ta_orchestrator",
+    "ta_research_login": "ta_research",
+    "ta_portfolio_manager_login": "ta_portfolio_manager",
+    "ta_risk_gate_login": "ta_risk_gate",
+    "ta_reference_data_login": "ta_reference_data",
+    "ta_execution_login": "ta_execution",
+    "ta_owner_read_login": "ta_dashboard",
+    "ta_owner_control_login": "ta_dashboard_control",
+}
 
 
 def _drop_all(server_url: str) -> None:
