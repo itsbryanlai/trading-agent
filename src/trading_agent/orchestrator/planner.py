@@ -237,10 +237,10 @@ def plan(now: datetime, cfg: ScheduleConfig, state: State) -> list:  # noqa: PLR
     return actions
 
 
-def _pause_block(paused: bool | None) -> str | None:
+def _pause_block(paused: bool | None, run_while_paused: bool = False) -> str | None:
     if paused is None:
-        return PAUSE_UNREADABLE
-    return PAUSED if paused else None
+        return PAUSE_UNREADABLE  # fail closed, whatever the setting says
+    return PAUSED if paused and not run_while_paused else None
 
 
 def _portfolio_manager(now, cfg, state, day, end, claimed, running, research_due_now, starting):
@@ -254,7 +254,7 @@ def _portfolio_manager(now, cfg, state, day, end, claimed, running, research_due
             return []
         if research_busy and cfg.research.enabled:
             return []  # wait for Research; still the morning session when it starts
-        blocked = _pause_block(state.paused)
+        blocked = _pause_block(state.paused, pm.run_while_paused)
         reason = _morning_reason(now, morning_at, state)
         if blocked is not None:
             return [Skip(PORTFOLIO_MANAGER, reason, MORNING_KEY, morning_at, blocked)]
@@ -275,7 +275,7 @@ def _portfolio_manager(now, cfg, state, day, end, claimed, running, research_due
         return []
     if state.last_pm_start is not None and now < state.last_pm_start + pm.min_spacing:
         return []
-    blocked = _pause_block(state.paused)
+    blocked = _pause_block(state.paused, pm.run_while_paused)
     if blocked is not None:
         return [Hold(PORTFOLIO_MANAGER, blocked)]
     return [Start(PORTFOLIO_MANAGER, EVENT_DRIVEN, None, None)]

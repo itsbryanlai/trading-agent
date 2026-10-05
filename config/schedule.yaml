@@ -50,3 +50,6 @@ portfolio_manager:
   report_wait_minutes: 5       # 5-60
   last_start: "15:30"          # <= 15:30 (ADR 0011)
   before_close_minutes: 30     # >= 30; the cutoff is the earlier of this and last_start
+  # ADR 0021: observe-only. true = a known trading pause doesn't stop PM runs (an
+  # unreadable flag still does). Set false at switch-on, before unpausing.
+  run_while_paused: true

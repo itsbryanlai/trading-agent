@@ -48,3 +48,4 @@ What this makes easier, harder, or locks in going forward.
 | [0018](0018-qwen-as-a-model-provider.md) | Qwen is an approved model provider alongside Anthropic |
 | [0019](0019-the-gate-evaluates-pm-decisions-in-its-own-loop.md) | The Risk Gate evaluates Portfolio Manager decisions in its own loop, and rejects decisions on stale quotes |
 | [0020](0020-the-gate-counts-orders-in-flight.md) | The Risk Gate counts orders still in flight when sizing a decision |
+| [0021](0021-railway-deployment-as-code-observe-only-first.md) | Railway deployment as code, observe-only first |

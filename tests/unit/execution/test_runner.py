@@ -89,6 +89,27 @@ def test_a_missing_key_is_refused_by_name_never_by_value(env, monkeypatch, caplo
     assert "ALPACA_API_SECRET_KEY" in caplog.text
 
 
+@pytest.mark.parametrize(
+    "missing", ["ALPACA_API_KEY_ID", "ALPACA_API_SECRET_KEY", "EXECUTION_DATABASE_URL"]
+)
+def test_each_required_variable_is_refused_by_name_and_no_value_is_logged(
+    env, monkeypatch, caplog, missing
+):
+    # Distinctive values, so a leak of any variable that is set would show.
+    monkeypatch.setenv("ALPACA_API_KEY_ID", "leakcheck-key-id")
+    monkeypatch.setenv("ALPACA_API_SECRET_KEY", "leakcheck-secret")
+    monkeypatch.setenv("EXECUTION_DATABASE_URL", "postgresql://leakcheck-login@localhost/x")
+    monkeypatch.delenv(missing)
+    connected = []
+    code = runner.main(
+        broker_factory=lambda *a: FakeBroker(),
+        connect=lambda *a, **k: connected.append(1),
+        max_ticks=1,
+    )
+    assert code == runner.EXIT_REFUSED and connected == []
+    assert missing in caplog.text and "leakcheck" not in caplog.text
+
+
 def test_the_runner_connects_with_autocommit(env):
     seen = {}
 

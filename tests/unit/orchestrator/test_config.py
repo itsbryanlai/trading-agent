@@ -130,6 +130,10 @@ def test_another_agents_prefix_is_rejected(tmp_path):
         ("opportunistic_identifier", "interval_minutes", 10),  # not longer than its timeout
         ("research", "interval_minutes", 15),  # not longer than its timeout
         ("portfolio_manager", "enabled", _DELETE),
+        ("portfolio_manager", "run_while_paused", _DELETE),  # required, never defaulted
+        ("portfolio_manager", "run_while_paused", "true"),
+        ("portfolio_manager", "run_while_paused", 1),
+        ("portfolio_manager", "run_while_paused", None),
         ("portfolio_manager", "surprise", 1),
     ],
 )
@@ -182,3 +186,19 @@ def test_unreadable_files_are_rejected(tmp_path):
     bad.write_text("- a list\n")
     with pytest.raises(ScheduleConfigError):
         load_config(bad)
+
+
+def test_the_shipped_file_observes_while_paused():
+    assert load_config(DEFAULT_CONFIG_PATH).portfolio_manager.run_while_paused is True
+
+
+@pytest.mark.parametrize("value", [True, False])
+def test_run_while_paused_accepts_a_boolean(tmp_path, value):
+    config = _with(tmp_path, "portfolio_manager", "run_while_paused", value)
+    assert config.portfolio_manager.run_while_paused is value
+
+
+@pytest.mark.parametrize("value", [_DELETE, 1, "true"])
+def test_run_while_paused_errors_name_the_key(tmp_path, value):
+    with pytest.raises(ScheduleConfigError, match=r"portfolio_manager\.run_while_paused"):
+        _with(tmp_path, "portfolio_manager", "run_while_paused", value)

@@ -58,6 +58,7 @@ _KEYS = {
         "report_wait_minutes",
         "last_start",
         "before_close_minutes",
+        "run_while_paused",
     },
 }
 
@@ -95,6 +96,9 @@ class PortfolioManagerConfig(AgentConfig):
     report_wait: timedelta
     last_start: time
     before_close: timedelta
+    # ADR 0021: observe-only. A known pause doesn't block PM runs; an unreadable
+    # flag still does.
+    run_while_paused: bool
 
 
 @dataclass(frozen=True)
@@ -230,6 +234,9 @@ def _portfolio_manager(data) -> PortfolioManagerConfig:
     # at most `before_close` left (ADR 0011: never buying into the close; M2).
     if common["timeout"] > timedelta(minutes=before_close):
         raise ScheduleConfigError(f"{name}.timeout_minutes: no longer than before_close_minutes")
+    run_while_paused = data["run_while_paused"]
+    if not isinstance(run_while_paused, bool):
+        raise ScheduleConfigError(f"{name}.run_while_paused: must be true or false")
     early_cutoff = _minus(EARLY_CLOSE, before_close)
     if morning >= early_cutoff:
         raise ScheduleConfigError(
@@ -243,6 +250,7 @@ def _portfolio_manager(data) -> PortfolioManagerConfig:
         report_wait=timedelta(minutes=wait),
         last_start=last_start,
         before_close=timedelta(minutes=before_close),
+        run_while_paused=run_while_paused,
     )
 
 

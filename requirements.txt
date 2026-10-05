@@ -1,0 +1,3 @@
+# Editable, so the config loaders that resolve config/ from Path(__file__).parents[3]
+# find the repository root (feature 010, research R2).
+-e .

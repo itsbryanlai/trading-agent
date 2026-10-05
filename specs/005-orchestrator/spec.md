@@ -99,6 +99,8 @@ When the owner pauses trading, the orchestrator skips PM runs for as long as the
 
 **Independent Test**: With trading paused on a test clock, the morning session and event-driven PM runs are skipped and logged, while analyst runs continue. After the pause is lifted, one PM run starts if a report is newer than the last PM run.
 
+> **Note (feature 010, ADR 0021):** the pause stops PM runs, unless `portfolio_manager.run_while_paused` is true (ADR 0021); an unreadable flag still blocks.
+
 **Acceptance Scenarios**:
 
 1. **Given** trading is paused at 10:00, **When** the morning session is due, **Then** the PM is not started, the skip is logged, and Research and the Opportunistic Identifier run as scheduled.
@@ -186,7 +188,7 @@ Every start, finish, skip and failure is recorded with the agent, the reason and
   - (b) at least 5 minutes have passed since the newest report;
   - (c) at least 30 minutes have passed since the start of the last PM run of any outcome;
   - (d) the time is before the PM cutoff: 15:30 ET, or 30 minutes before the close on early-close days;
-  - (e) trading is not paused.
+  - (e) trading is not paused (unless `portfolio_manager.run_while_paused` is true (ADR 0021); an unreadable flag still blocks).
 - **FR-014**: A report written before that day's morning session MUST NOT trigger a separate event-driven run; the morning session covers it.
 - **FR-015**: The schedule values (times, intervals, window, timeouts, the 5-minute wait, the 30-minute spacing, the cutoff) MUST come from version-controlled configuration, changed only through code review. They MUST NOT be configurable to values looser than [ADR 0011](../../docs/adr/0011-event-driven-portfolio-manager-runs.md) or this spec: spacing at least 30 minutes, cutoff no later than 15:30 ET and at least 30 minutes before the close, and the report wait at least 5 minutes. The morning session must be at or after the open and before the early-close cutoff (12:30 ET by default). Research's daily time must be before the open. The PM's timeout must be no longer than the time between the cutoff and the close, and each interval must be longer than that agent's timeout.
 
@@ -234,7 +236,7 @@ Every start, finish, skip and failure is recorded with the agent, the reason and
 - **SC-001**: On a simulated trading day, every enabled agent starts at each of its scheduled times, within one minute of the scheduled time, and at no other time.
 - **SC-002**: On simulated weekends and holidays, zero agents are started.
 - **SC-003**: Event-driven PM runs are never less than 30 minutes apart, never start within 5 minutes of the newest report, and never start after the cutoff, across every simulated report pattern tested, including randomised ones.
-- **SC-004**: While trading is paused, zero PM runs start, and analyst runs continue unchanged.
+- **SC-004**: While trading is paused, zero PM runs start, and analyst runs continue unchanged. (Unless `portfolio_manager.run_while_paused` is true (ADR 0021); an unreadable flag still blocks.)
 - **SC-005**: A hung agent is stopped within one minute of its timeout, and the other agents' scheduled runs in that period all start on time.
 - **SC-006**: Restarting the orchestrator at any point in a simulated day produces zero duplicate runs, and misses no morning session or daily Research run that was still due.
 - **SC-007**: The orchestrator's database role can do nothing beyond FR-025, verified by the grants-matrix test against the database's own permission records.

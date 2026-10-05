@@ -16,3 +16,4 @@ build/
 .pytest_cache/
 .ruff_cache/
 .hypothesis/
+.railway/node_modules/

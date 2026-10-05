@@ -113,6 +113,14 @@ def test_a_missing_credential_refuses_to_start(monkeypatch):
     assert runner.main(connect=lambda *a, **k: Conn(), max_passes=1) == runner.EXIT_REFUSED
 
 
+def test_a_missing_credential_is_refused_by_name_before_connecting(monkeypatch, caplog):
+    monkeypatch.delenv("RISK_GATE_DATABASE_URL", raising=False)
+    connected = []
+    code = runner.main(connect=lambda *a, **k: connected.append(1), max_passes=1)
+    assert code == runner.EXIT_REFUSED and connected == []
+    assert "RISK_GATE_DATABASE_URL" in caplog.text
+
+
 def test_the_gate_runner_never_touches_broker_credentials():
     source = (
         Path(runner.__file__).read_text() + Path(runner.__file__).with_name("runner.py").read_text()

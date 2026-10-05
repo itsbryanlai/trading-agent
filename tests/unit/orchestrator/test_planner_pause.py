@@ -94,3 +94,74 @@ def test_no_pm_start_while_paused(pause_start, pause_length, reports):
         assert not (start <= run.started_at < end)
     # The analysts are unaffected: every Identifier slot still ran.
     assert len(sim.starts("opportunistic_identifier")) == 6
+
+
+# --- portfolio_manager.run_while_paused (ADR 0021) ---------------------------------
+
+
+def _pm_starts(actions):
+    return [a for a in actions if isinstance(a, p.Start) and a.agent == PM]
+
+
+def _observing():
+    return config(portfolio_manager={"run_while_paused": True})
+
+
+def test_the_setting_false_still_blocks_the_pm_while_paused():
+    cfg = config(portfolio_manager={"run_while_paused": False})
+    actions = p.plan(et("10:00"), cfg, state([_research_done()], paused=True))
+    assert not _pm_starts(actions)
+    assert (
+        p.Skip(PM, "morning_session", "morning_session", et("10:00"), "trading paused") in actions
+    )
+
+
+def test_the_setting_true_starts_the_morning_session_while_paused():
+    actions = p.plan(et("10:00"), _observing(), state([_research_done()], paused=True))
+    assert _pm_starts(actions) == [p.Start(PM, "morning_session", "morning_session", et("10:00"))]
+
+
+def test_the_setting_true_starts_event_driven_runs_while_paused():
+    morning = record(
+        PM,
+        reason="morning_session",
+        slot_key="morning_session",
+        slot_at=et("10:00"),
+        started=et("10:00"),
+        finished=et("10:05"),
+    )
+    actions = p.plan(
+        et("12:00"),
+        _observing(),
+        state([_research_done(), morning], latest_report=et("11:00"), paused=True),
+    )
+    assert p.Start(PM, "event_driven", None, None) in actions
+
+
+def test_the_setting_true_still_blocks_on_an_unknown_flag():
+    cfg = _observing()
+    actions = p.plan(et("10:00"), cfg, state([_research_done()], paused=None))
+    assert not _pm_starts(actions)
+    assert (
+        p.Skip(PM, "morning_session", "morning_session", et("10:00"), "pause flag unreadable")
+        in actions
+    )
+    morning = record(
+        PM,
+        reason="morning_session",
+        slot_key="morning_session",
+        slot_at=et("10:00"),
+        started=et("10:00"),
+        finished=et("10:05"),
+    )
+    later = p.plan(
+        et("12:00"), cfg, state([_research_done(), morning], latest_report=et("11:00"), paused=None)
+    )
+    assert not _pm_starts(later)
+    assert p.Hold(PM, "pause flag unreadable") in later
+
+
+def test_the_setting_true_leaves_the_analysts_alone():
+    assert p.plan(et("08:30"), _observing(), state(paused=True)) == [
+        p.Start("research", "scheduled", "research_daily", et("08:30"))
+    ]
