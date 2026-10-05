@@ -13,7 +13,7 @@
 ### Session 2026-10-05
 
 - Q: Should the first deployment leave Execution undeployed, or deploy it with trading paused? → A (revised after analysis): Deploy Execution with trading paused, and let the Portfolio Manager run while paused through a reviewed orchestrator setting. Execution is the only writer of account snapshots, and without one the Portfolio Manager and the Risk Gate refuse to work. Leaving Execution undeployed (the first answer) would have produced no decisions and no verdicts. While paused, Execution keeps recording account snapshots.
-- Q: While paused, the Risk Gate rejects every buy as "trading paused" before any other rule. Is that acceptable for observation? → A: Yes. Observation shows the Portfolio Manager's real decisions, and a verdict for every decision, with every buy verdict reading "trading paused". Seeing what the gate would have decided unpaused (a read-only replay) is a possible later feature, not part of this one.
+- Q: While paused, the Risk Gate rejects every buy as "trading paused" before any sizing, universe or cash rule (a closed market or a stale quote is rejected earlier, as today). Is that acceptable for observation? → A: Yes. Observation shows the Portfolio Manager's real decisions, and a verdict for every decision, with no buy ever approved: each buy verdict reads "trading paused", or "market closed" or "decision stale" when those apply first. Seeing what the gate would have decided unpaused (a read-only replay) is a possible later feature, not part of this one.
 - Q: The paper account currently holds positions. What happens to them? → A: The owner closes every position and cancels every open order in the broker's own interface before Execution first starts. A flat account is a precondition of the deployment. Execution would otherwise place stop-loss sells for positions it finds, even while paused.
 - Q: Should the orchestrator, the Risk Gate's loop and the reference-data job each be their own service, or share one? → A: One service per process, each holding only its own variables, because a service's variables are visible to every process in it. Execution becomes a fourth service.
 - Q: Where should the database setup step run? → A: From the owner's own machine against the database's public address, with the admin credential only in the owner's shell. It never enters any hosted service.
@@ -25,17 +25,17 @@
 
 ### User Story 1 - The system runs unattended and no order can reach the broker (Priority: P1)
 
-The owner deploys the system for the first time, to a hosting project that holds nothing yet, with trading paused. Research runs on its schedule. The Portfolio Manager runs when reports arrive. The Risk Gate turns each decision into a verdict, rejecting every buy as "trading paused". The reference data is kept fresh. Execution records the account's state, and the account holds nothing it could sell.
+The owner deploys the system for the first time, to a hosting project that holds nothing yet, with trading paused. Research runs on its schedule. The Portfolio Manager runs when reports arrive. The Risk Gate turns each decision into a verdict, and never approves a buy while paused. The reference data is kept fresh. Execution records the account's state, and the account holds nothing it could sell.
 
 **Why this priority**: This is the point of the feature. Everything else supports it, and the "no order can be placed" property is a safety property (Constitution I, III, VI), so it comes first.
 
-**Independent Test**: Deploy to an empty project with the paper account flat and trading paused. Wait through one trading day, then read the stored reports, decisions, verdicts and Execution's refusals. Confirm that no order exists, every decision has a verdict, every buy verdict reads "trading paused", and broker credentials exist only on Execution's service.
+**Independent Test**: Deploy to an empty project with the paper account flat and trading paused. Wait through one trading day, then read the stored reports, decisions, verdicts and Execution's refusals. Confirm that no order exists, every decision has a verdict, no buy verdict is approved (each buy rejection reads "trading paused", "market closed" or "decision stale"), and broker credentials exist only on Execution's service.
 
 **Acceptance Scenarios**:
 
 1. **Given** an empty hosting project, a flat paper account and trading paused, **When** the owner follows the deployment steps, **Then** every in-scope component is running, each connected to the shared database as its own restricted role.
 2. **Given** the deployment is running on a trading day, **When** Research and the Portfolio Manager run on schedule, **Then** reports, decisions and account snapshots appear in the shared database, and each decision is followed by a risk verdict.
-3. **Given** the Portfolio Manager decides to buy while paused, **When** the Risk Gate evaluates it, **Then** the verdict is a rejection for "trading paused", and nothing reaches Execution.
+3. **Given** the Portfolio Manager decides to buy while paused, **When** the Risk Gate evaluates it, **Then** the verdict is a rejection (for "trading paused", unless a closed market or a stale quote rejected it first), and nothing reaches Execution.
 4. **Given** the deployment is running, **When** the owner inspects every deployed service's environment, **Then** broker keys and Execution's database login appear only on Execution's service, and the admin credential appears nowhere.
 5. **Given** the deployment is running, **When** the owner reads the orders table, **Then** it is empty.
 
@@ -72,7 +72,7 @@ Once deployed, the owner can find out that each service is up, that the schedule
 1. **Given** a service has a missing or malformed variable, **When** it starts, **Then** it exits with a message naming the missing variable (never its value), and does not run in a degraded mode.
 2. **Given** the services are running, **When** the owner reads the logs and the orchestrator's run records, **Then** each agent run, skip and failure shows with its reason.
 3. **Given** a service crashes, **When** the hosting platform restarts it, **Then** it resumes without double-running a slot that already ran (existing restart behaviour of the components).
-4. **Given** the first trading day after deployment, **When** the owner runs the documented post-deploy check, **Then** it confirms account snapshots, decisions and a verdict for each exist, that buy verdicts read "trading paused", and that orders are empty.
+4. **Given** the first trading day after deployment, **When** the owner runs the documented post-deploy check, **Then** it confirms account snapshots, decisions and a verdict for each exist, that no buy verdict is approved, and that orders are empty.
 5. **Given** the first deploy has just been applied, **When** the owner runs the documented pre-open check before the next open, **Then** it confirms trading reads paused and Execution recorded no positions. If either fails, the owner removes Execution before the open.
 
 ---
@@ -87,7 +87,7 @@ After watching decisions and verdicts for as long as they like, the owner turns 
 
 **Acceptance Scenarios**:
 
-1. **Given** approvals made while paused, **When** the owner clears the pause, **Then** none of them becomes an order: every buy was rejected by the gate as "trading paused", and anything else lapses at the close.
+1. **Given** approvals made while paused, **When** the owner clears the pause, **Then** none of them becomes an order: the gate approved no buy while paused, and anything else lapses at the close.
 2. **Given** Execution starts with a non-paper broker address, **When** it starts, **Then** it refuses to start.
 3. **Given** trading is on and the owner wants to stop new buying, **When** they set the pause, **Then** no new buy is placed, and existing positions keep their stop-loss exits and approved sells.
 4. **Given** trading is on and the owner wants to remove Execution entirely, **When** the documented preconditions hold (after the close, no positions, no open orders, nothing in flight), **Then** removing the service places nothing and leaves nothing unprotected.
@@ -170,7 +170,7 @@ After watching decisions and verdicts for as long as they like, the owner turns 
 ### Measurable Outcomes
 
 - **SC-001**: From an empty hosting project and a documented list of secrets, the owner reaches a running observe-only deployment in one sitting, without editing source code.
-- **SC-002**: After a full trading day: at least one account snapshot exists, at least one Portfolio Manager decision exists, 100% of decisions have a risk verdict, every buy verdict is a "trading paused" rejection, and zero orders exist.
+- **SC-002**: After a full trading day: at least one account snapshot exists, at least one Portfolio Manager decision exists, 100% of decisions have a risk verdict, no buy verdict is approved (each buy rejection reads "trading paused", "market closed" or "decision stale"), and zero orders exist.
 - **SC-003**: Broker credentials and Execution's login are on exactly one service (Execution). No service holds the admin credential. No service holds another component's login, except the orchestrator's agents' logins on the orchestrator's service.
 - **SC-004**: Running the setup step twice on the same database applies each migration exactly once.
 - **SC-005**: A missing variable is reported by name within one start attempt, for every service.
