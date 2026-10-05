@@ -12,7 +12,7 @@
 
 ### Session 2026-10-05
 
-- Q: Should the first deployment leave Execution undeployed, or deploy it with trading paused? → A: [NEEDS CLARIFICATION: see FR-008. The pause flag stops the orchestrator from starting the Portfolio Manager (spec 005), so a paused deployment would produce no decisions to observe. The default below is to leave Execution undeployed.]
+- Q: Should the first deployment leave Execution undeployed, or deploy it with trading paused? → A: Leave Execution undeployed. The pause flag stops the orchestrator from starting the Portfolio Manager (spec 005), so a paused deployment would produce no decisions to observe.
 
 ## User Scenarios & Testing *(mandatory)*
 
@@ -103,7 +103,7 @@ After watching decisions and verdicts for as long as they like, the owner turns 
 - **FR-005**: Every service's required variables MUST be listed by name, per service, in the repository's example configuration, with no value committed anywhere in the repository, and the example MUST stay current with the deployment.
 - **FR-006**: A service MUST refuse to start, naming the missing or malformed variable and never printing its value, rather than run with reduced behaviour.
 - **FR-007**: Each service MUST have a documented, single start command, and the platform MUST restart a crashed service automatically.
-- **FR-008**: In the observe-only deployment no component that holds broker credentials, and no component that can submit an order, MUST be deployed, and no broker credential MUST exist in any service's environment. [NEEDS CLARIFICATION: confirm leaving Execution undeployed, rather than deploying it with trading paused. The pause flag stops the Portfolio Manager from running (spec 005), so the paused option yields no decisions to observe.]
+- **FR-008**: In the observe-only deployment no component that holds broker credentials, and no component that can submit an order, MUST be deployed, and no broker credential MUST exist in any service's environment. Trading is kept off by leaving Execution undeployed, not by the pause flag, because the pause flag also stops the Portfolio Manager from running (spec 005).
 - **FR-009**: With trading off, the Portfolio Manager and the Risk Gate MUST still run, so that real decisions and verdicts accumulate for the owner to read.
 - **FR-010**: Switching trading on MUST be one explicit, documented owner action (adding the order-placing component with its own database login and the paper broker keys), and MUST NOT be reachable from any agent, the Assistant or any natural-language interface (Constitution IV, VII).
 - **FR-011**: Approvals produced while trading was off MUST NOT become orders when trading is later switched on. The existing approval expiry covers this, and the plan MUST verify it rather than assume it.
