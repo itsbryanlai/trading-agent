@@ -88,6 +88,8 @@ def main(  # noqa: PLR0915 - baseline; split when next touched
     except (ConfigError, ScheduleConfigError) as exc:
         log.critical("orchestrator: refusing to start: %s", exc)
         return EXIT_REFUSED
+    if config.portfolio_manager.run_while_paused:
+        log.info("orchestrator: portfolio_manager runs while paused (observe-only, ADR 0021)")
 
     try:
         conn = connect(

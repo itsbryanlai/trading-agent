@@ -31,6 +31,10 @@ def config(enabled=("research", "opportunistic_identifier", "portfolio_manager")
     agents = {}
     for agent in cfg.agents():
         fields = {"enabled": agent.name in enabled}
+        if agent.name == "portfolio_manager":
+            # The shipped file observes (true, ADR 0021); the planner tests default to
+            # the pause blocking the PM, and opt in with run_while_paused=True.
+            fields["run_while_paused"] = False
         fields.update(changes.get(agent.name, {}))
         agents[agent.name] = dataclasses.replace(agent, **fields)
     return dataclasses.replace(

@@ -57,3 +57,27 @@ def test_the_property_reaches_event_driven_runs():
         "event_driven",
         "event_driven",
     ]
+
+
+@settings(max_examples=80, deadline=None)
+@given(
+    day=st.sampled_from([MONDAY, EARLY_CLOSE]),
+    reports=st.lists(st.integers(min_value=0, max_value=9 * 60), max_size=10),
+    failures=st.lists(st.booleans(), max_size=20),
+)
+def test_with_run_while_paused_a_paused_day_plans_like_an_unpaused_one(day, reports, failures):
+    """ADR 0021: with the setting true, a known pause changes no PM start."""
+    base = et("07:00", day)
+
+    def run(paused):
+        outcomes = iter(failures)
+        sim = Simulator(
+            config(portfolio_manager={"run_while_paused": True}),
+            paused=lambda now: paused,
+            outcome=lambda action, now: "failed" if next(outcomes, False) else "succeeded",
+        )
+        sim.reports = sorted(base + timedelta(minutes=m) for m in reports)
+        sim.run(et("07:00", day), et("17:00", day))
+        return [(r.reason, r.started_at) for r in sim.starts(PM)]
+
+    assert run(paused=True) == run(paused=False)

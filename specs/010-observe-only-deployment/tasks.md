@@ -56,14 +56,14 @@ description: "Task list for feature 010, observe-only deployment (revised after 
 - [ ] T005 [P] Create `.python-version` containing `3.12` (research R2).
 - [ ] T006 [P] Create `requirements.txt` containing `-e .`, with a comment: editable so the config loaders that resolve `config/` from `Path(__file__).parents[3]` find the repository root (research R2). Confirm that `.venv/bin/pip install -r requirements.txt --dry-run` resolves.
 - [ ] T007 [P] Add `.railway/node_modules/` to `.gitignore`.
-- [ ] T008 Tests first, per [contracts/observe-setting.md](contracts/observe-setting.md). Extend `tests/unit/orchestrator/test_config.py` so the key is required and must be a boolean, with the error naming `portfolio_manager.run_while_paused`. Extend `tests/unit/orchestrator/test_planner_pause.py` with:
+- [X] T008 Tests first, per [contracts/observe-setting.md](contracts/observe-setting.md). Extend `tests/unit/orchestrator/test_config.py` so the key is required and must be a boolean, with the error naming `portfolio_manager.run_while_paused`. Extend `tests/unit/orchestrator/test_planner_pause.py` with:
   - setting `false` and paused: blocked, with the existing tests unchanged;
   - setting `true` and paused: the morning session and event-driven runs start as on an unpaused day;
   - setting `true` and an unknown flag: blocked, and an unknown flag at the morning session records the skip and claims the slot (pins the existing behaviour, analyze N4);
   - a Hypothesis property: with `true`, the PM plan for a paused day equals the unpaused plan. Put it in `test_planner_properties.py` beside the existing properties.
 
   Update the shared fixtures in `tests/unit/orchestrator/support.py` so existing tests build a config with `run_while_paused=False`.
-- [ ] T009 Implement the setting:
+- [X] T009 Implement the setting:
   - add `run_while_paused: bool` to `PortfolioManagerConfig` and `_KEYS` in `src/trading_agent/orchestrator/config.py`, required and boolean-checked;
   - in `src/trading_agent/orchestrator/planner.py`, `_pause_block` (or its PM call sites) skips the block for a known `paused=True` when the setting is true, and still blocks on `None`;
   - in `src/trading_agent/orchestrator/__main__.py`, log one line at startup when true: `portfolio_manager runs while paused (observe-only, ADR 0021)`;
