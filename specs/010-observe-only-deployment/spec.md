@@ -13,6 +13,11 @@
 ### Session 2026-10-05
 
 - Q: Should the first deployment leave Execution undeployed, or deploy it with trading paused? → A: Leave Execution undeployed. The pause flag stops the orchestrator from starting the Portfolio Manager (spec 005), so a paused deployment would produce no decisions to observe.
+- Q: Should the orchestrator, the Risk Gate's loop and the reference-data job each be their own service, or share one? → A: Three separate services, each holding only its own variables, because a service's variables are visible to every process in it.
+- Q: Where should the database setup step run? → A: From the owner's own machine against the database's public address, with the admin credential only in the owner's shell. It never enters any hosted service.
+- Q: How should each component's database login be created? → A: A repo command the owner runs locally creates every component's login, Execution's included, with generated passwords, and prints each connection string once. Execution's login is created now but placed in no service until switch-on.
+- Q: Until the dashboard exists, how does the owner read decisions and verdicts? → A: Through a personal login in the existing read-only dashboard role, plus a documented set of read queries. No new role.
+- Q: Should merges redeploy automatically, or should each deploy be manual? → A: Services auto-deploy only from a dedicated `release/prod` branch. Merging `main` into `release/prod` is the deploy action, and merging to `main` alone deploys nothing.
 
 ## User Scenarios & Testing *(mandatory)*
 
@@ -86,6 +91,8 @@ After watching decisions and verdicts for as long as they like, the owner turns 
 
 - A component's variable is missing or the database login is wrong: the component refuses to start with a clear message and no partial work.
 - The setup step runs against a database that already has some migrations applied: only the missing ones are applied.
+- A release includes a new migration but the owner merges to `release/prod` before applying it: the affected service's start or first query fails loudly, and no data is written against the wrong schema. The release steps put the setup first to prevent this.
+- A change merged to `main` is not live until it reaches `release/prod`, so `main` can run ahead of production.
 - A restart happens during a scheduled run: the orchestrator marks the run interrupted and never starts a slot twice.
 - The reference-data job has not yet run today when the first decision arrives: the gate rejects the buy for lack of reference data, which is normal and must read clearly in the verdict.
 - The first deployment happens outside market hours or on a weekend: services start and wait, without errors.
@@ -97,20 +104,23 @@ After watching decisions and verdicts for as long as they like, the owner turns 
 ### Functional Requirements
 
 - **FR-001**: The deployment MUST consist of a managed shared database, one service running the orchestrator together with the agents it starts (Research and the Portfolio Manager), one service running the Risk Gate's own loop, and one service running the reference-data job. The Opportunistic Identifier, journal writer, Assistant and dashboard are not part of it.
-- **FR-002**: Each service MUST run as its own process with its own database login, and the orchestrator MUST start each agent with only that agent's own variables (ADR 0013, ADR 0015).
-- **FR-003**: A single, documented setup step, run only with the admin credential and never on component startup, MUST bring an empty database to the current schema, and MUST be safe to run repeatedly.
+- **FR-002**: Each of the three is its own separately deployed service, holding only its own variables. No two components share a service, because a service's variables are visible to every process in it. Each service MUST run its own process with its own database login, and the orchestrator MUST start each agent with only that agent's own variables (ADR 0013, ADR 0015).
+- **FR-003**: A single, documented setup step, run by the owner from their own machine with the admin credential held only in their shell (never stored in any hosted service, and never run on component startup), MUST bring an empty database to the current schema, and MUST be safe to run repeatedly.
+- **FR-004a**: A command the owner runs locally, with the admin credential in their shell, MUST create one login per component role (orchestrator, Research, Portfolio Manager, Risk Gate, reference data and Execution), each with a generated strong password. It MUST print each connection string once, store none of them, and never print the admin credential. Execution's login is created during setup but placed in no service until switch-on. Re-running the command MUST NOT silently change an existing login's password.
+- **FR-004b**: The same command MUST also create a personal owner login in the existing read-only dashboard role, which can read every table and write nothing. The deployment documentation MUST include read queries for the day's reports, decisions, verdicts with their reasons, and orchestrator run records. No new database role is introduced.
 - **FR-004**: The setup MUST end with every in-scope component able to connect as its own role, each holding exactly the permissions its spec grants, and no component holding the admin credential or any other component's login.
 - **FR-005**: Every service's required variables MUST be listed by name, per service, in the repository's example configuration, with no value committed anywhere in the repository, and the example MUST stay current with the deployment.
 - **FR-006**: A service MUST refuse to start, naming the missing or malformed variable and never printing its value, rather than run with reduced behaviour.
 - **FR-007**: Each service MUST have a documented, single start command, and the platform MUST restart a crashed service automatically.
+- **FR-007a**: Every service MUST deploy automatically from the `release/prod` branch and from no other branch. Merging `main` into `release/prod` is the owner's deploy action. The documented release steps MUST have the owner apply any pending database setup before that merge, so code never runs against a schema it doesn't match.
 - **FR-008**: In the observe-only deployment no component that holds broker credentials, and no component that can submit an order, MUST be deployed, and no broker credential MUST exist in any service's environment. Trading is kept off by leaving Execution undeployed, not by the pause flag, because the pause flag also stops the Portfolio Manager from running (spec 005).
 - **FR-009**: With trading off, the Portfolio Manager and the Risk Gate MUST still run, so that real decisions and verdicts accumulate for the owner to read.
-- **FR-010**: Switching trading on MUST be one explicit, documented owner action (adding the order-placing component with its own database login and the paper broker keys), and MUST NOT be reachable from any agent, the Assistant or any natural-language interface (Constitution IV, VII).
+- **FR-010**: Switching trading on MUST be one explicit, documented owner action (adding the order-placing component with its already-created database login and the paper broker keys), and MUST NOT be reachable from any agent, the Assistant or any natural-language interface (Constitution IV, VII).
 - **FR-011**: Approvals produced while trading was off MUST NOT become orders when trading is later switched on. The existing approval expiry covers this, and the plan MUST verify it rather than assume it.
 - **FR-012**: The documented switch-on MUST state the check that the broker address is the paper endpoint, and the order-placing component MUST refuse to start otherwise (Constitution VI).
 - **FR-013**: A documented switch-off MUST exist that stops new orders without force-liquidating positions, consistent with the existing breaker and stop-loss behaviour.
 - **FR-014**: The deployment MUST NOT change any risk limit, position-sizing rule, schedule, or order logic. Any such change is a separate, flagged change.
-- **FR-015**: The deployment steps MUST name which actions the owner performs by hand (creating logins, entering secrets) and which the repository supplies, so no secret passes through the repository, a commit, or chat.
+- **FR-015**: The deployment steps MUST name which actions the owner performs (running the setup and login commands, pasting each connection string and secret into its service, merging to `release/prod`) and which the repository supplies, so no secret passes through the repository, a commit, or chat.
 
 ### Key Entities
 
@@ -132,7 +142,7 @@ After watching decisions and verdicts for as long as they like, the owner turns 
 
 ## Assumptions
 
-- The owner creates the hosting project, the database service, the component logins and every secret by hand. This feature does not create accounts or enter secrets.
+- The owner creates the hosting project and the database service, runs the setup and login commands, and enters every secret into its service. This feature supplies the commands and steps; it does not create accounts or enter secrets.
 - The Risk Gate's loop and Execution already exist as separate runnable processes (ADR 0013, features 002, 003 and 009), and reference data as a runnable job (feature 004). This feature adds how they are deployed, not new behaviour.
 - Research and the Portfolio Manager are already enabled in the orchestrator's schedule and use the Qwen provider by default, with the owner's accepted exposure of portfolio state to that provider.
 - Execution's absence means approved verdicts are never submitted. This is the intended observe-only effect.
