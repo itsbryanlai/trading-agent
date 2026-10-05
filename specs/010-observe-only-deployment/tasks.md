@@ -55,7 +55,7 @@ description: "Task list for feature 010, observe-only deployment (revised after 
 
 - [X] T005 [P] Create `.python-version` containing `3.12` (research R2).
 - [X] T006 [P] Create `requirements.txt` containing `-e .`, with a comment: editable so the config loaders that resolve `config/` from `Path(__file__).parents[3]` find the repository root (research R2). Confirm that `.venv/bin/pip install -r requirements.txt --dry-run` resolves.
-- [ ] T007 [P] Add `.railway/node_modules/` to `.gitignore`.
+- [X] T007 [P] Add `.railway/node_modules/` to `.gitignore`.
 - [X] T008 Tests first, per [contracts/observe-setting.md](contracts/observe-setting.md). Extend `tests/unit/orchestrator/test_config.py` so the key is required and must be a boolean, with the error naming `portfolio_manager.run_while_paused`. Extend `tests/unit/orchestrator/test_planner_pause.py` with:
   - setting `false` and paused: blocked, with the existing tests unchanged;
   - setting `true` and paused: the morning session and event-driven runs start as on an unpaused day;
