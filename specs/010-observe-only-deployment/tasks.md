@@ -94,7 +94,7 @@ description: "Task list for feature 010, observe-only deployment (revised after 
   - the login table equals the contract's eight rows;
   - output never contains the admin URL's password;
   - exit codes 0, 2 and 3.
-- [ ] T012 [P] [US2] Integration tests in `tests/integration/storage/test_logins.py`, against `TEST_DATABASE_URL` after migrations. Reuse `tests/integration/storage/grants_matrix.py` and the helpers in `tests/integration/helpers.py`. Check that:
+- [X] T012 [P] [US2] Integration tests in `tests/integration/storage/test_logins.py`, against `TEST_DATABASE_URL` after migrations. Reuse `tests/integration/storage/grants_matrix.py` and the helpers in `tests/integration/helpers.py`. Check that:
   - every login is created and can connect;
   - each is a member of exactly its one group role and is `NOSUPERUSER NOCREATEDB NOCREATEROLE`;
   - `ta_owner_read_login` can `SELECT` from `decisions`, `risk_verdicts`, `reports`, `account_snapshots`, `execution_refusals` and `orchestrator_runs`, and cannot `INSERT` into `decisions` or `UPDATE` `system_state`;
