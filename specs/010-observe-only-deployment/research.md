@@ -13,7 +13,7 @@ With Execution undeployed, observation would produce no decisions and no verdict
 
 **Decision**: Deploy Execution with trading paused, and add one reviewed orchestrator setting so the Portfolio Manager runs while paused. Execution already:
 - takes its snapshots whatever the pause says;
-- refuses approved buys as final `trading_paused` while paused (spec 003 FR-018), which also gives every observation-period approval an outcome, so none lingers in `in_flight_orders` (the view excludes refused approvals);
+- would refuse an approved buy as final `trading_paused` while paused (spec 003 FR-018). In practice none reaches it, because the gate itself rejects every buy as `trading_paused` first (`risk/gate.py`, `_account_stop`; analyze N1). Every buy verdict while observing is therefore that rejection: the owner sees the PM's real decisions, but not the gate's unpaused judgment (owner accepted, Clarify; a read-only replay is a possible later feature). No approval lingers in `in_flight_orders`;
 - places sells only for held positions and stop-loss exits. A flat account (R9) means there is nothing to sell.
 
 **Alternatives**:
@@ -81,15 +81,15 @@ Restarts use Railway's default on-failure policy.
 **Decision**: Clear the pause only after the close and before the next open.
 
 **Rationale**: Verified in code (analyze confirmed it):
-- While paused, every approved buy is refused, finally, at Execution's next tick.
-- The only window is an approval made in the last tick before the pause is cleared. Clearing after the close removes it: `submittable` requires the approval's own trading day with the market open, `lapse_today` expires the day's approvals after the close, and the gate rejects with `market_closed` outside hours, so no approval exists until the next session.
+- While paused, the gate rejects every buy, and Execution would refuse one anyway.
+- The only window is a decision evaluated in the last pass before the pause is cleared. Clearing after the close removes it: `submittable` requires the approval's own trading day with the market open, `expiry_check` refuses the day's approvals from the close, and `lapse_today` marks them expired once `MAYBE_PLACED_WAIT` has passed (analyze C11), and the gate rejects with `market_closed` outside hours, so no approval exists until the next session.
 
 ## R8. The pause, the observe setting, switch-on and switch-off
 
 **Decision**:
 - **Observe setting**: a new boolean `portfolio_manager.run_while_paused` in `config/schedule.yaml`, default `false`. The loader requires it, like every key. When `true`, the planner doesn't block PM runs for a known `paused = true`. An unreadable flag (`None`) still blocks (fail closed). Analyst runs are unchanged.
 - **Setup**: right after the login command, the owner runs `UPDATE system_state SET trading_paused = true, updated_at = now()` as `ta_owner_control_login`, before any service exists.
-- **Switch on** (after the close): clear the pause with the same login. Then a reviewed change sets `run_while_paused: false`, released through `release/prod`, so a later pause stops the PM again (spec 005 behaviour).
+- **Switch on**, in this order (analyze N3): first, while still paused, a reviewed change sets `run_while_paused: false` (and updates the guard test), released through `release/prod`. Then, after the close and before the next open, clear the pause with the same login. A pause at any later time stops the PM again (spec 005 behaviour). Doing it the other way round would leave a window where a re-pause doesn't stop the PM's sell decisions.
 - **Switch off**:
   - Pausing stops buys, while sells and stop-loss exits continue.
   - Removing Execution requires being after the close with no positions, no open orders and `in_flight_orders` empty (analyze C3). Then delete the service from `.railway/railway.ts` and apply.
@@ -104,7 +104,7 @@ Restarts use Railway's default on-failure policy.
 3. confirm Alpaca shows zero positions and zero open orders;
 4. only then deploy.
 
-The post-deploy check confirms the `positions` table is empty after Execution's first reconciliation.
+Right after the first `railway config apply`, before the next open, a **pre-open check** as `ta_owner_read_login` confirms that `trading_paused` is true and the `positions` table is empty (Execution mirrors broker positions at startup). If either fails, remove Execution before the open (analyze N2, N6). A held position would trade through PM sell decisions (the gate's `_sell` doesn't check the pause) and stop-loss exits.
 
 **Rationale**: The owner confirmed the account currently holds positions. Execution places stop-loss exits and approved sells while paused, so held positions could trade during observation.
 
@@ -124,14 +124,14 @@ The post-deploy check confirms the `positions` table is empty after Execution's 
 
 It also checks that `config/schedule.yaml` has `run_while_paused: true`, so observing can't silently stop, and that every declared name is in `.env.example`.
 
-## R12. The post-deploy check
+## R12. The pre-open and post-deploy checks
 
-**Decision**: `docs/operations/observe-queries.sql` includes a "first trading day" block, run as `ta_owner_read_login`:
+**Decision**: `docs/operations/observe-queries.sql` includes a "pre-open" block (paused is true, `positions` is empty; run right after the first deploy) and a "first trading day" block, run as `ta_owner_read_login`:
 - `system_state.trading_paused` is true;
 - `positions` is empty;
 - at least one account snapshot exists today;
 - every decision has a verdict;
-- every approved buy has a `trading_paused` refusal;
+- every buy verdict is a `trading_paused` rejection;
 - `orders` is empty.
 
 The runbook says to run it after the first trading day (SC-002, US3 scenario 4; analyze C7).

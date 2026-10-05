@@ -24,10 +24,10 @@ It has no write grant.
 
 ## State over the feature's life
 
-| Phase | `trading_paused` | `run_while_paused` | Paper account | Approved buys | `orders` |
+| Phase | `trading_paused` | `run_while_paused` | Paper account | Buy verdicts | `orders` |
 |---|---|---|---|---|---|
 | Setup | set `true` before any service | `true` | owner flattens it | — | empty |
-| Observing | `true` | `true` | flat, nothing to sell | refused `trading_paused` (final), so out of `in_flight_orders` | empty |
-| Switch-on (after the close) | cleared by the owner | then set `false` by a reviewed release | flat | none pending: all refused or lapsed | empty |
+| Observing | `true` | `true` | flat (confirmed by the pre-open check), nothing to sell | rejected by the gate, `trading_paused` | empty |
+| Switch-on | cleared by the owner after the close | set `false` first, by a reviewed release while still paused | flat | none pending | empty |
 | Trading | `false` | `false` | Execution's | submitted the same session, or lapsed | Execution's |
-| Paused switch-off | `true` | `false` (the PM stops) | positions keep their stop-loss exits | refused | sells and exits only |
+| Paused switch-off | `true` | `false` (the PM stops) | positions keep their stop-loss exits | rejected by the gate | sells and exits only |

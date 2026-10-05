@@ -25,7 +25,7 @@ TEST_DATABASE_URL=postgresql://postgres:dev@localhost:5433/postgres PYTHONPATH=s
 **Expected**: all pass, including:
 - the login command scenarios;
 - every statement of `observe-queries.sql` running as `ta_dashboard`;
-- Execution refusing a paused buy as `trading_paused` with no broker call (existing spec 003 tests).
+- the gate rejecting a buy as `trading_paused` while paused, and Execution refusing a paused buy as a second layer (existing tests).
 
 ## 3. Rehearsal on a throwaway local database (Railway's Postgres major version)
 
@@ -56,12 +56,16 @@ railway config plan
 
 **Expected**: create `postgres`, `orchestrator`, `risk-gate`, `reference-data` and `execution`, and nothing else. Values show as `«hidden»`.
 
-## 5. Post-deploy check (owner, after the first trading day)
+## 5. Pre-open check (owner, right after the first deploy)
+
+Run the "pre-open" block of `observe-queries.sql` as `ta_owner_read_login` before the next open. **Expected**: paused is true, and `positions` is empty. If either fails, remove `execution` from `.railway/railway.ts` and apply before the open.
+
+## 6. Post-deploy check (owner, after the first trading day)
 
 Run the "first trading day" block of `docs/operations/observe-queries.sql` as `ta_owner_read_login` (research R12). **Expected** (SC-002):
 - paused is true;
 - `positions` is empty;
 - an account snapshot exists from today;
 - every decision has a verdict;
-- every approved buy has a `trading_paused` refusal;
+- every buy verdict is a `trading_paused` rejection;
 - `orders` is empty.

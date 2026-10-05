@@ -59,7 +59,7 @@ description: "Task list for feature 010, observe-only deployment (revised after 
 - [ ] T008 Tests first, per [contracts/observe-setting.md](contracts/observe-setting.md). Extend `tests/unit/orchestrator/test_config.py` so the key is required and must be a boolean, with the error naming `portfolio_manager.run_while_paused`. Extend `tests/unit/orchestrator/test_planner_pause.py` with:
   - setting `false` and paused: blocked, with the existing tests unchanged;
   - setting `true` and paused: the morning session and event-driven runs start as on an unpaused day;
-  - setting `true` and an unknown flag: blocked;
+  - setting `true` and an unknown flag: blocked, and an unknown flag at the morning session records the skip and claims the slot (pins the existing behaviour, analyze N4);
   - a Hypothesis property: with `true`, the PM plan for a paused day equals the unpaused plan. Put it in `test_planner_properties.py` beside the existing properties.
 
   Update the shared fixtures in `tests/unit/orchestrator/support.py` so existing tests build a config with `run_while_paused=False`.
@@ -72,7 +72,7 @@ description: "Task list for feature 010, observe-only deployment (revised after 
   Make T008 pass. Analysts must stay unaffected.
 - [ ] T010 Mutation-check T008 and T009:
   - make `None` unblock;
-  - make the setting also unblock analysts' pause handling, if any;
+  - ignore the setting at the event-driven call site only (analyze N5);
   - default the key instead of requiring it;
   - invert the check.
 
@@ -183,19 +183,22 @@ description: "Task list for feature 010, observe-only deployment (revised after 
   - orchestrator run records, with outcomes and skips;
   - today's `instrument_reference` count.
 
-  Add the "first trading day" post-deploy block from research R12: paused is true, `positions` is empty, a snapshot exists from today, every decision has a verdict, every approved buy has a `trading_paused` refusal, and `orders` is empty. Use only objects `ta_dashboard` may read.
+  Add two blocks from research R12:
+  - **"pre-open"**: paused is true, `positions` is empty;
+  - **"first trading day"**: paused is true, `positions` is empty, a snapshot exists from today, at least one decision exists, every decision has a verdict, every buy verdict is a `trading_paused` rejection, and `orders` is empty. Use only objects `ta_dashboard` may read.
 - [ ] T023 [US3] Integration test in `tests/integration/storage/test_observe_queries.py`: run every statement in that file as `ta_dashboard` against a migrated database, and assert that none raises. Mutation-check it by adding a query on an object `ta_dashboard` can't read.
 
 ---
 
 ## Phase 6: User Story 4 – Trading is switched on later, as one deliberate step (P2)
 
-**Independent Test**: tests prove that paused buys are refused as final and that a day's approvals lapse after the close. The runbook's switch-on and switch-off are complete.
+**Independent Test**: tests prove that the gate rejects buys while paused, that Execution refuses them as a second layer, and that a day's approvals lapse after the close. The runbook's switch-on and switch-off are complete.
 
 - [ ] T024 [P] [US4] Confirm that the existing Execution tests (`tests/unit/execution/`, `tests/integration/execution/`) cover:
   - (a) an approved buy while paused is refused `trading_paused`, with no broker submit;
   - (b) an approved buy whose trading day has closed is refused `approval_expired`, with no broker submit;
-  - (c) an approved sell while paused is still placed.
+  - (c) an approved sell while paused is still placed;
+  - (d) in the Risk Gate tests (`tests/unit/risk/`), a buy decision while paused is rejected `trading_paused` before any other rule, and a sell decision while paused is still evaluated.
 
   Add any missing case to the existing test files, with a fake broker and a fixed clock. Don't change Execution code.
 - [ ] T025 [US4] Write `docs/operations/deployment.md`, the owner runbook, using variable names only (never a value):
@@ -211,10 +214,13 @@ description: "Task list for feature 010, observe-only deployment (revised after 
      8. create `release/prod` from `main`;
      9. run `railway config plan`, check it, then `railway config apply`;
      10. paste each service's values, with `ALPACA_BASE_URL` empty or exactly the paper address;
-     11. confirm in Execution's log that it started on the paper account.
+     11. confirm in Execution's log that it started on the paper account;
+     12. **before the next open**, run the "pre-open" block of `observe-queries.sql`. Paused must be true and `positions` empty. If either fails, remove `execution` from `.railway/railway.ts` and apply before the open (analyze N2, N6).
   3. **Release checklist**: proxy on, then `migrate`, then proxy off, if the release adds a migration. Then a PR from `main` into `release/prod`, CI green, merge, and `railway config apply` if `.railway/` changed.
   4. **Observing and the post-deploy check**: `observe-queries.sql` as `ta_owner_read_login`, and the first-trading-day block after day one.
-  5. **Switching trading on**: after the close and before the next open, clear the pause (exact `UPDATE`) and read it back. Then make a reviewed change setting `run_while_paused: false` (which also updates the guard test), released via `release/prod`.
+  5. **Switching trading on**, in this order (analyze N3):
+     1. while still paused, a reviewed change sets `run_while_paused: false` (and updates the guard test), released via `release/prod`;
+     2. then, after the close and before the next open, clear the pause (exact `UPDATE`) and read it back.
   6. **Switching trading off**: pause (sells and stop-loss exits continue), or remove `execution` from `.railway/railway.ts` and apply. Removal is only allowed after the close with zero positions, zero open orders and `in_flight_orders` empty, with a query for each.
   7. **If something breaks**: exit codes 2 and 3, and where the logs and run records are.
 
