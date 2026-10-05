@@ -45,7 +45,7 @@ description: "Task list for feature 010, observe-only deployment (revised after 
   Add its row to `docs/adr/README.md`.
 - [X] T002 Amend the "Technology & Deployment Constraints" Railway bullet in `.specify/memory/constitution.md` to name infrastructure as code and one worker service per process, citing ADR 0021. Bump 1.1.0 → 1.1.1 (PATCH), update **Last Amended**, and add a Sync Impact Report. Leave every principle unchanged.
 - [X] T003 [P] Update the "Deployment shape" section of `docs/architecture/overview.md`: the four services, Railpack, `.railway/railway.ts`, `release/prod`, and observe-only through the pause. Cite ADR 0021. Replace "Nixpacks build".
-- [ ] T004 [P] Update `specs/005-orchestrator/spec.md`'s pause behaviour (the US with pause scenarios, FR "(e) trading is not paused", and SC-004) with a note: "unless `portfolio_manager.run_while_paused` is true (ADR 0021); an unreadable flag still blocks". Add a matching line to `specs/005-orchestrator/contracts/orchestrator-interface.md`'s Configuration section. Change no other behaviour.
+- [X] T004 [P] Update `specs/005-orchestrator/spec.md`'s pause behaviour (the US with pause scenarios, FR "(e) trading is not paused", and SC-004) with a note: "unless `portfolio_manager.run_while_paused` is true (ADR 0021); an unreadable flag still blocks". Add a matching line to `specs/005-orchestrator/contracts/orchestrator-interface.md`'s Configuration section. Change no other behaviour.
 
 **Checkpoint**: the decisions are recorded, and code may start.
 

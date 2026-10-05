@@ -46,6 +46,8 @@ portfolio_manager:
   before_close_minutes: 30     # >= 30; the cutoff is the earlier of this and last_start
 ```
 
+Note (feature 010, ADR 0021): `portfolio_manager` also has a required boolean `run_while_paused`. When true, a known pause does not block PM runs; an unreadable flag still blocks. Analyst runs are unaffected. The exact key and rules are in `specs/010-observe-only-deployment/contracts/observe-setting.md`.
+
 Every key is required and unknown keys are rejected. The bounds are in research O13. Each agent's `interval_minutes`, where it has one, must be longer than its `timeout_minutes`. The file is changed only through code review (FR-015).
 
 ## Agent contract (for the agent features)
