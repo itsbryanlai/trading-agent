@@ -13,23 +13,49 @@ from trading_agent.storage.logins import LOGINS, main, parse_args, split_host
 ADMIN_PASSWORD = "S3cret-admin-pw"
 ADMIN_URL = f"postgresql://admin:{ADMIN_PASSWORD}@public.example:5432/railway"
 GROUPS = {login.group for login in LOGINS}
+GROUP_OF = {login.name: login.group for login in LOGINS}
+HINT = "re-run to check; use --reset if a login shows as existing"
+
+
+class FakePgConn:
+    """Stands in for the driver's libpq wrapper: a recognisable SCRAM verifier."""
+
+    def encrypt_password(self, password, user, algorithm=None):
+        assert algorithm == b"scram-sha-256" and user.startswith(b"ta_")
+        return b"SCRAM-SHA-256$4096:fakesalt$verifier-of-" + password
 
 
 class FakeConnection:
-    """Answers the two role lookups and records the other statements."""
+    """Answers the role lookups and records the other statements."""
 
-    def __init__(self, groups, existing=()):
+    pgconn = FakePgConn()
+
+    def __init__(self, groups, existing=(), changed=None):
         self.groups = set(groups)
         self.existing = set(existing)
+        self.changed = changed or {}  # login -> attribute overrides
         self.statements: list[str] = []
+
+    def _login_row(self, name):
+        row = {
+            "rolname": name,
+            "rolsuper": False,
+            "rolcreatedb": False,
+            "rolcreaterole": False,
+            "groups": [GROUP_OF[name]],
+        }
+        return row | self.changed.get(name, {})
 
     def execute(self, statement, params=None):
         if params is None:
             self.statements.append(statement.as_string(None))
             return None
         wanted = set(params[0])
-        known = self.groups if wanted & GROUPS else self.existing
-        rows = [{"rolname": n} for n in sorted(wanted & known)]
+        if "pg_auth_members" in statement:
+            rows = [self._login_row(n) for n in sorted(wanted & self.existing)]
+        else:
+            known = self.groups if wanted & GROUPS else self.existing
+            rows = [{"rolname": n} for n in sorted(wanted & known)]
         return type("Result", (), {"fetchall": lambda self: rows})()
 
 
@@ -196,3 +222,61 @@ def test_a_bad_admin_url_is_refused_without_quoting_it(monkeypatch, capsys):
     monkeypatch.setenv("ADMIN_DATABASE_URL", f"admin {ADMIN_PASSWORD} nonsense")
     assert main(["--service-host", "h"]) == 2
     assert ADMIN_PASSWORD not in capsys.readouterr().err
+
+
+def test_the_database_receives_a_scram_verifier_never_the_plain_password(capsys):
+    conn = FakeConnection(GROUPS)
+    assert main(["--service-host", "h"], connect_fn=_connector(conn)) == 0
+    lines = capsys.readouterr().out.splitlines()
+    creates = [s for s in conn.statements if s.startswith("CREATE ROLE")]
+    assert len(creates) == 8
+    for line, statement in zip(lines, creates, strict=True):
+        password = line.split("  ")[1].split(":")[2].split("@")[0]
+        assert "PASSWORD 'SCRAM-SHA-256$" in statement
+        assert password in statement  # inside the fake's verifier only
+        assert f"PASSWORD '{password}'" not in statement
+
+
+def test_a_reset_also_sends_a_verifier(capsys):
+    conn = FakeConnection(GROUPS, existing={login.name for login in LOGINS})
+    main(["--service-host", "h", "--reset", "ta_risk_gate_login"], connect_fn=_connector(conn))
+    [alter] = conn.statements
+    assert alter.startswith("ALTER ROLE") and "PASSWORD 'SCRAM-SHA-256$" in alter
+
+
+@pytest.mark.parametrize(
+    "change",
+    [
+        {"rolsuper": True},
+        {"rolcreatedb": True},
+        {"rolcreaterole": True},
+        {"groups": []},
+        {"groups": ["ta_research", "ta_execution"]},
+        {"groups": ["ta_execution"]},
+    ],
+    ids=["superuser", "createdb", "createrole", "no group", "extra group", "wrong group"],
+)
+@pytest.mark.parametrize("extra", [[], ["--reset", "ta_research_login"]], ids=["plain", "reset"])
+def test_an_existing_login_that_differs_from_the_contract_is_refused(change, extra, capsys):
+    names = {login.name for login in LOGINS}
+    conn = FakeConnection(GROUPS, existing=names - {"ta_risk_gate_login"})
+    conn.changed = {"ta_research_login": change}
+    # One login is missing, so a create would follow if the check did not stop the run.
+    assert main(["--service-host", "h", *extra], connect_fn=_connector(conn)) == 2
+    captured = capsys.readouterr()
+    assert conn.statements == [] and captured.out == ""
+    assert "ta_research_login" in captured.err
+
+
+def test_the_generic_failure_says_to_re_run_not_that_nothing_was_created(capsys):
+    error = psycopg.errors.InsufficientPrivilege("x")
+    assert main(["--service-host", "h"], connect_fn=_connector(error=error)) == 1
+    err = capsys.readouterr().err
+    assert HINT in err and "nothing was created" not in err
+
+
+def test_a_lost_connection_says_to_re_run_too(capsys):
+    error = psycopg.OperationalError("gone")
+    assert main(["--service-host", "h"], connect_fn=_connector(error=error)) == 3
+    err = capsys.readouterr().err
+    assert HINT in err and "nothing was created" not in err

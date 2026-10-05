@@ -186,3 +186,31 @@ def test_a_missing_group_role_exits_2_and_creates_nothing(run, database_url, mon
     code, lines = run()
     assert code == 2 and lines == {}
     assert _password_hashes(database_url) == {}
+
+
+@pytest.mark.parametrize(
+    "alteration",
+    ["CREATEDB", "CREATEROLE", "SUPERUSER"],
+)
+def test_an_existing_login_with_extra_privileges_is_refused_and_nothing_changes(
+    run, database_url, alteration
+):
+    run()
+    before = _password_hashes(database_url)
+    with psycopg.connect(database_url, autocommit=True) as admin:
+        admin.execute(f"ALTER ROLE ta_research_login {alteration}")
+    code, lines = run("--reset", "ta_research_login")
+    assert code == 2 and lines == {}
+    assert _password_hashes(database_url) == before
+
+
+def test_an_existing_login_in_a_second_group_is_refused(run, database_url):
+    run()
+    with psycopg.connect(database_url, autocommit=True) as admin:
+        admin.execute("GRANT ta_execution TO ta_research_login")
+    assert run()[0] == 2
+
+
+def test_the_stored_password_is_a_scram_verifier(run, database_url):
+    run()
+    assert all(v.startswith("SCRAM-SHA-256$") for v in _password_hashes(database_url).values())

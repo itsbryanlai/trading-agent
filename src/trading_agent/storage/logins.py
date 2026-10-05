@@ -30,6 +30,9 @@ DEFAULT_PORT = 5432
 EXIT_OK = 0
 EXIT_REFUSED = 2
 EXIT_DATABASE_LOST = 3
+# A failure can land after the transaction began, or after it committed but before the
+# reply arrived, so "nothing was created" would not always be true.
+RERUN_HINT = "re-run to check; use --reset if a login shows as existing"
 
 
 class Login(NamedTuple):
@@ -131,18 +134,57 @@ def _present(conn: psycopg.Connection, names: Sequence[str]) -> set[str]:
     return {row["rolname"] for row in rows.fetchall()}
 
 
+def _verifier(conn: psycopg.Connection, name: str, password: str) -> str:
+    """The SCRAM-SHA-256 verifier the server stores, so the plain password never
+    travels in the statement (and so never reaches the server log)."""
+    return conn.pgconn.encrypt_password(password.encode(), name.encode(), b"scram-sha-256").decode()
+
+
+def _existing_logins(conn: psycopg.Connection, names: Sequence[str]) -> dict[str, dict]:
+    rows = conn.execute(
+        "SELECT r.rolname, r.rolsuper, r.rolcreatedb, r.rolcreaterole,"
+        " coalesce(array_agg(g.rolname::text) FILTER (WHERE g.rolname IS NOT NULL),"
+        " '{}'::text[]) AS groups"
+        " FROM pg_roles r"
+        " LEFT JOIN pg_auth_members m ON m.member = r.oid"
+        " LEFT JOIN pg_roles g ON g.oid = m.roleid"
+        " WHERE r.rolname = ANY(%s) GROUP BY r.oid, r.rolname, r.rolsuper, r.rolcreatedb, r.rolcreaterole",
+        (list(names),),
+    )
+    return {row["rolname"]: row for row in rows.fetchall()}
+
+
+def _check_existing(found: dict[str, dict]) -> None:
+    """Refuse when an existing login is not exactly what the contract says."""
+    group_of = {login.name: login.group for login in LOGINS}
+    for name, row in sorted(found.items()):
+        flags = (row["rolsuper"], row["rolcreatedb"], row["rolcreaterole"])
+        if any(flags) or sorted(row["groups"]) != [group_of[name]]:
+            raise LoginsError(
+                f"{name} exists but is not a NOSUPERUSER NOCREATEDB NOCREATEROLE member of"
+                f" exactly {group_of[name]}: fix or drop it as the administrator, then re-run."
+                " Nothing was changed."
+            )
+
+
 def _create(conn: psycopg.Connection, login: Login, password: str) -> None:
     conn.execute(
         sql.SQL(
             "CREATE ROLE {} LOGIN INHERIT NOSUPERUSER NOCREATEDB NOCREATEROLE "
             "PASSWORD {} IN ROLE {}"
-        ).format(sql.Identifier(login.name), sql.Literal(password), sql.Identifier(login.group))
+        ).format(
+            sql.Identifier(login.name),
+            sql.Literal(_verifier(conn, login.name, password)),
+            sql.Identifier(login.group),
+        )
     )
 
 
 def _repassword(conn: psycopg.Connection, name: str, password: str) -> None:
     conn.execute(
-        sql.SQL("ALTER ROLE {} PASSWORD {}").format(sql.Identifier(name), sql.Literal(password))
+        sql.SQL("ALTER ROLE {} PASSWORD {}").format(
+            sql.Identifier(name), sql.Literal(_verifier(conn, name, password))
+        )
     )
 
 
@@ -164,7 +206,9 @@ def apply(
         missing = sorted(groups - _present(conn, sorted(groups)))
         if missing:
             raise LoginsError(f"group roles missing ({', '.join(missing)}): run migrate first")
-        existing = _present(conn, [login.name for login in LOGINS])
+        found = _existing_logins(conn, [login.name for login in LOGINS])
+        _check_existing(found)
+        existing = set(found)
         absent = [name for name in resets if name not in existing]
         if absent:
             raise LoginsError(f"--reset: {', '.join(absent)} does not exist yet")
@@ -195,10 +239,10 @@ def main(
         return EXIT_REFUSED
     except psycopg.OperationalError as exc:
         # Only the type: a driver message can name the host or the user.
-        print(f"database unreachable: {type(exc).__name__}", file=sys.stderr)
+        print(f"database unreachable: {type(exc).__name__}; {RERUN_HINT}", file=sys.stderr)
         return EXIT_DATABASE_LOST
     except Exception as exc:
-        print(f"logins failed: {type(exc).__name__}; nothing was created", file=sys.stderr)
+        print(f"logins failed: {type(exc).__name__}; {RERUN_HINT}", file=sys.stderr)
         return 1
     for line in lines:
         print(line)
