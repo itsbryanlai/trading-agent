@@ -88,7 +88,7 @@ description: "Task list for feature 010, observe-only deployment (revised after 
 
 **Independent Test**: on a throwaway Postgres, run `migrate` twice and `logins` twice. Every login connects with only its group's permissions, and the second run changes no password. The control login can set the pause.
 
-- [ ] T011 [P] [US2] Unit tests in `tests/unit/storage/test_logins.py`:
+- [X] T011 [P] [US2] Unit tests in `tests/unit/storage/test_logins.py`:
   - argument parsing: `--service-host` is required, the port defaults to 5432, and `--reset` must name a known login, else exit 2;
   - connection-string building, with the password URL-quoted;
   - the login table equals the contract's eight rows;
@@ -105,7 +105,7 @@ description: "Task list for feature 010, observe-only deployment (revised after 
   - with a group role dropped, the command exits 2 and creates nothing.
 
   Drop the created logins in teardown.
-- [ ] T013 [US2] Implement `src/trading_agent/storage/logins.py` (`python -m trading_agent.storage.logins`) per the contract exactly:
+- [X] T013 [US2] Implement `src/trading_agent/storage/logins.py` (`python -m trading_agent.storage.logins`) per the contract exactly:
   - the eight-login table;
   - `secrets.token_urlsafe(32)` passwords;
   - `CREATE ROLE … LOGIN INHERIT NOSUPERUSER NOCREATEDB NOCREATEROLE PASSWORD … IN ROLE …`, built only with `psycopg.sql`;
