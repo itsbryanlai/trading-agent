@@ -194,7 +194,7 @@ description: "Task list for feature 010, observe-only deployment (revised after 
 
 **Independent Test**: tests prove that the gate rejects buys while paused, that Execution refuses them as a second layer, and that a day's approvals lapse after the close. The runbook's switch-on and switch-off are complete.
 
-- [ ] T024 [P] [US4] Confirm that the existing Execution tests (`tests/unit/execution/`, `tests/integration/execution/`) cover:
+- [X] T024 [P] [US4] Confirm that the existing Execution tests (`tests/unit/execution/`, `tests/integration/execution/`) cover:
   - (a) an approved buy while paused is refused `trading_paused`, with no broker submit;
   - (b) an approved buy whose trading day has closed is refused `approval_expired`, with no broker submit;
   - (c) an approved sell while paused is still placed;

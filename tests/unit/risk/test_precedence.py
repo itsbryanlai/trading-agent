@@ -69,3 +69,23 @@ def test_market_closed_beats_everything_for_both_sides():
 def test_exit_no_position_beats_missing_equity():
     result = evaluate(sell(target=2), context(equity=None, cash=None), CONFIG)
     assert result.verdict.rejection_rule == rules.NO_POSITION
+
+
+def test_a_paused_buy_is_rejected_before_any_universe_cash_or_sizing_rule():
+    # Fresh quote, open market. Every later buy rule would also fail: no reference
+    # data, no cash, and a position already over the ceiling (feature 010, observe-only).
+    failing_later = {
+        "trading_paused": True,
+        "reference": None,
+        "cash": 0,
+        "shares_held": 400,
+        "avg_entry_price": 190,
+    }
+    result = evaluate(buy(target=10), context(**failing_later), CONFIG)
+    assert result.verdict.rejection_rule == rules.TRADING_PAUSED
+
+
+def test_a_paused_partial_sell_is_still_evaluated_and_approved():
+    held = {"trading_paused": True, "shares_held": 50, "avg_entry_price": 180}
+    result = evaluate(sell(target=2), context(**held), CONFIG)
+    assert result.verdict.approved and result.verdict.order.side == "sell"
