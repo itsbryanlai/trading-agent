@@ -139,11 +139,8 @@ def env_entries(block: str) -> tuple[dict[str, str], list[str]]:
     return entries, odd
 
 
-def violations(raw: str, env_example: str, schedule: dict) -> list[str]:
-    text = strip_comments(raw)
+def _whole_file(text: str, blocks: dict[str, str]) -> list[str]:
     found: list[str] = []
-    blocks = service_blocks(text)
-
     if set(blocks) != set(CONTRACT):
         found.append(f"services are {sorted(blocks)}, contract says {sorted(CONTRACT)}")
     if re.findall(r"\bpostgres\(", text) != ["postgres("] or 'postgres("postgres")' not in text:
@@ -152,58 +149,69 @@ def violations(raw: str, env_example: str, schedule: dict) -> list[str]:
         r"\b(fn|redis|mysql|mongo|bucket|volume|database|template|image|empty|group)\(", text
     ):
         found.append(f"resource kind {other}() is not in the contract")
-
     for forbidden in ("ADMIN_DATABASE_URL", ".env.DATABASE_URL", ".env.DATABASE_PUBLIC_URL"):
         if forbidden in text:
             found.append(f"{forbidden} must not appear")
     if re.search(r"\.env\.PG", text) or re.search(r"\w\.env\.", text):
         found.append("no variable may reference another resource's env (database-owned values)")
-
     execution = blocks.get("execution")
     outside = text.replace(execution, "") if execution else text
     for prefix in ("ALPACA_", "EXECUTION_"):
         if prefix in outside:
             found.append(f"{prefix}* appears outside the execution service")
-
     if len(re.findall(r"\bgithub\(", text)) != len(re.findall(re.escape(SOURCE), text)):
         found.append('every github() source must be exactly branch: "release/prod"')
+    return found
 
-    declared: set[str] = set()
-    for name, block in blocks.items():
-        if name not in CONTRACT:
-            continue
-        start, names = CONTRACT[name]
-        entries, odd = env_entries(block)
-        found += [f"{name}: env line not `NAME: value,`: {line}" for line in odd]
-        found += [
-            f"{name}: {var} is {value}, not preserve()"
-            for var, value in entries.items()
-            if value != "preserve()"
-        ]
-        if set(entries) != names:
-            found.append(f"{name}: variables differ from the contract: {set(entries) ^ names}")
-        if SOURCE not in block:
-            found.append(f"{name}: source is not {SOURCE}")
-        if f'start: "{start}"' not in block:
-            found.append(f"{name}: start command is not {start!r}")
-        if not re.search(r"\breplicas\s*:\s*1\b", block):
-            found.append(f"{name}: must run one replica")
-        declared |= set(entries)
 
+def _one_service(name: str, block: str) -> tuple[list[str], set[str]]:
+    start, names = CONTRACT[name]
+    entries, odd = env_entries(block)
+    found = [f"{name}: env line not `NAME: value,`: {line}" for line in odd]
+    found += [
+        f"{name}: {var} is {value}, not preserve()"
+        for var, value in entries.items()
+        if value != "preserve()"
+    ]
+    if set(entries) != names:
+        found.append(f"{name}: variables differ from the contract: {set(entries) ^ names}")
+    if SOURCE not in block:
+        found.append(f"{name}: source is not {SOURCE}")
+    if f'start: "{start}"' not in block:
+        found.append(f"{name}: start command is not {start!r}")
+    if not re.search(r"\breplicas\s*:\s*1\b", block):
+        found.append(f"{name}: must run one replica")
+    return found, set(entries)
+
+
+def _against_the_repo(
+    blocks: dict[str, str], declared: set[str], env_example: str, schedule: dict
+) -> list[str]:
+    found: list[str] = []
     example = set(re.findall(r"^([A-Z][A-Z0-9_]*)=", env_example, re.MULTILINE))
     if declared - example:
         found.append(f"declared but missing from .env.example: {sorted(declared - example)}")
-
-    agents = {
-        name: cfg for name, cfg in schedule.items() if isinstance(cfg, dict) and cfg.get("enabled")
-    }
-    wanted = {var for cfg in agents.values() for var in cfg["env"]}
+    agents = [cfg for cfg in schedule.values() if isinstance(cfg, dict) and cfg.get("enabled")]
+    wanted = {var for cfg in agents for var in cfg["env"]}
     have = set(env_entries(blocks.get("orchestrator", ""))[0]) - {"ORCHESTRATOR_DATABASE_URL"}
     if wanted != have:
         found.append(f"orchestrator agent variables differ from schedule.yaml: {wanted ^ have}")
     if schedule["portfolio_manager"].get("run_while_paused") is not True:
         found.append("config/schedule.yaml must have portfolio_manager.run_while_paused: true")
     return found
+
+
+def violations(raw: str, env_example: str, schedule: dict) -> list[str]:
+    text = strip_comments(raw)
+    blocks = service_blocks(text)
+    found = _whole_file(text, blocks)
+    declared: set[str] = set()
+    for name, block in blocks.items():
+        if name in CONTRACT:
+            problems, names = _one_service(name, block)
+            found += problems
+            declared |= names
+    return found + _against_the_repo(blocks, declared, env_example, schedule)
 
 
 @pytest.fixture
