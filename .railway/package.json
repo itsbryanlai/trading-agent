@@ -1,0 +1,8 @@
+{
+  "name": "trading-agent-railway",
+  "private": true,
+  "description": "Dev-only: the Railway CLI evaluates railway.ts with this SDK. Never deployed (ADR 0021).",
+  "dependencies": {
+    "railway": "3.12.0"
+  }
+}

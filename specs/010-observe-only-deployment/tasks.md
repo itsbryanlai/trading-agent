@@ -144,7 +144,7 @@ description: "Task list for feature 010, observe-only deployment (revised after 
   - the set of services differs from the contract.
 
   It also checks that every declared name appears in `.env.example`, that the orchestrator's agent names equal `config/schedule.yaml`'s `env` lists for the enabled agents, and that `config/schedule.yaml` has `run_while_paused: true`.
-- [ ] T016 [US1] **Main session, not a subagent (network).** Write `.railway/package.json`: `"private": true`, with the `railway` npm package as its only dependency, pinned to the exact version from `npm view railway version`. Run `npm install` in `.railway/` and commit `package-lock.json`. Don't commit `node_modules`.
+- [X] T016 [US1] **Main session, not a subagent (network).** Write `.railway/package.json`: `"private": true`, with the `railway` npm package as its only dependency, pinned to the exact version from `npm view railway version`. Run `npm install` in `.railway/` and commit `package-lock.json`. Don't commit `node_modules`.
 - [ ] T017 [US1] Write `.railway/railway.ts` per the contract:
   - `postgres("postgres")` and the four services;
   - each with `source: github("itsbryanlai/trading-agent", { branch: "release/prod" })`, its start command, and every variable `preserve()`;
