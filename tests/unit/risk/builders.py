@@ -37,6 +37,14 @@ def D(value) -> Decimal:
     return value if isinstance(value, Decimal) else Decimal(str(value))
 
 
+_IN_FLIGHT = (
+    "in_flight_buy_qty",
+    "in_flight_buy_cost_symbol",
+    "in_flight_sell_qty",
+    "in_flight_buy_cost_all",
+)
+
+
 def context(**overrides) -> Context:
     values = {
         "now": NOW,
@@ -51,11 +59,17 @@ def context(**overrides) -> Context:
         "baseline_equity": D(100000),
         "increase_orders_approved_today": 0,
         "reference": PASSING_REFERENCE,
+        "in_flight_buy_qty": 0,
+        "in_flight_buy_cost_symbol": 0,
+        "in_flight_sell_qty": 0,
+        "in_flight_buy_cost_all": 0,
     }
     values.update(overrides)
     for key in ("equity", "cash", "baseline_equity", "avg_entry_price"):
         if values[key] is not None:
             values[key] = D(values[key])
+    for key in _IN_FLIGHT:
+        values[key] = D(values[key])
     return Context(**values)
 
 

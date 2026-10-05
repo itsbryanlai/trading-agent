@@ -35,7 +35,10 @@ Guarantees:
 `now`, `trading_day`, `market_open`, `trading_paused`, `halt_active`, `shares_held`,
 `avg_entry_price` (if held), `equity` and `cash` from today's latest snapshot (or none),
 `baseline_equity` (or none), `increase_orders_approved_today`, `reference` (the universe row for the
-symbol today, or none).
+symbol today, or none), and, amended by `specs/009-pending-orders` ([ADR 0020](../../../docs/adr/0020-the-gate-counts-orders-in-flight.md)),
+the orders still in flight today: `in_flight_buy_qty`, `in_flight_buy_cost_symbol`,
+`in_flight_sell_qty` (this symbol) and `in_flight_buy_cost_all` (every symbol; each buy at its price
+ceiling). All default to 0.
 
 **`config`**: a validated `RiskConfig` (contracts/risk-config.md).
 
@@ -52,6 +55,18 @@ Guarantees:
 - An approved buy never takes the position above `max_position_pct` of equity, nor cash below
   `cash_reserve_pct` of equity, when filled at any price up to its `limit_price` (FR-001a, SC-001).
 - An approved sell or exit never sells more shares than `shares_held` (FR-006).
+- Amended by 009 (ADR 0020), one rule: in-flight orders only ever make a verdict stricter. A buy
+  counts in-flight buys and ignores in-flight sells; a sell counts in-flight sells and ignores
+  in-flight buys. So no verdict is looser than the gate gave before 009, whatever is in flight.
+  An approved buy, together with every in-flight buy, keeps the position under `max_position_pct`
+  at the price ceilings, whatever is in flight to sell. An approved decision sell never exceeds
+  `shares_held − in_flight_sell_qty`. With all four in-flight values at 0, every verdict is exactly
+  as before.
+- Cash, as the guarantee is worded after 009: the buy plus every in-flight buy keeps the latest
+  account snapshot's cash above `cash_reserve_pct` of equity at the ceilings. An in-flight buy
+  leaves the count when it fills, and the next snapshot can be up to its interval (about 30
+  minutes) later, so in that window the gate's cash check is as loose as before 009, never looser.
+  Execution re-checks live cash before every buy.
 - Exits are rejected only for `market_closed`, `no_position`, `stop_loss_not_breached`,
   `no_account_snapshot_today` (partial sells only), `direction_contradicts_target`, or
   `target_already_met`. They are never rejected by a halt, the pause, the order cap, a missing

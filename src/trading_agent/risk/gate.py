@@ -112,16 +112,24 @@ def _sell(request: DecisionRequest, ctx: Context) -> Verdict:
     if held <= 0:
         return Verdict.reject(rules.NO_POSITION)
     target = request.target_weight_pct / _HUNDRED
+    # Only shares being sold are counted: a buy that might not fill never makes more
+    # to sell, so in-flight orders only ever tighten a verdict (ADR 0020, research I4, I5).
+    available = held - ctx.in_flight_sell_qty
     if target == 0:
-        return Verdict.approve(_market_sell(request.symbol, held, ctx, source="decision"))
+        if available < 1:
+            return Verdict.reject(rules.TARGET_ALREADY_MET)
+        qty = _floor(available)
+        return Verdict.approve(_market_sell(request.symbol, qty, ctx, source="decision"))
     if ctx.equity is None:
         return Verdict.reject(rules.NO_ACCOUNT_SNAPSHOT_TODAY)
+    if available < 1:  # every held share is already being sold (research I5, I5a)
+        return Verdict.reject(rules.TARGET_ALREADY_MET)
 
     quote, equity = request.quote, ctx.equity
-    if target * equity > held * quote + quote:
+    if target * equity > available * quote + quote:
         return Verdict.reject(rules.DIRECTION_CONTRADICTS_TARGET)
     keep = _ceil(target * equity / quote)
-    qty = held - keep
+    qty = _floor(available - keep)
     if qty < 1:
         return Verdict.reject(rules.TARGET_ALREADY_MET)
     return Verdict.approve(_market_sell(request.symbol, qty, ctx, source="decision"))
@@ -136,16 +144,26 @@ def _buy(request: DecisionRequest, ctx: Context, config: RiskConfig, crossed: bo
     target = request.target_weight_pct / _HUNDRED
     ceiling = price_ceiling(quote, config.max_buy_price_tolerance_pct)
 
-    if target * equity < held * quote - quote:
+    # Value already committed (ADR 0020, research I4a): held shares at the quote,
+    # in-flight buys at the ceiling they were sized at. In-flight sells are not
+    # subtracted: a sell that might not fill can't make room for a buy.
+    committed = held * quote + ctx.in_flight_buy_cost_symbol
+    if target * equity < committed - quote:
         return Verdict.reject(rules.DIRECTION_CONTRADICTS_TARGET)
-    wanted = _floor((target * equity - held * quote) / ceiling)
+    wanted = _floor((target * equity - committed) / ceiling)
     if wanted < 1:
         return Verdict.reject(rules.TARGET_ALREADY_MET)
 
     # Existing shares and new ones are both valued at the ceiling: a fill at the
-    # top of the tolerance must still respect both limits (G3).
-    position_room = _floor(config.max_position_pct / _HUNDRED * equity / ceiling) - held
-    cash_room = _floor((cash - config.cash_reserve_pct / _HUNDRED * equity) / ceiling)
+    # top of the tolerance must still respect both limits (G3). The position room
+    # counts in-flight buys and never subtracts in-flight sells: a sell that might
+    # not fill can't make room. The cash room subtracts every in-flight buy's cost.
+    position_room = _floor(
+        config.max_position_pct / _HUNDRED * equity / ceiling - held - ctx.in_flight_buy_qty
+    )
+    cash_room = _floor(
+        (cash - ctx.in_flight_buy_cost_all - config.cash_reserve_pct / _HUNDRED * equity) / ceiling
+    )
 
     if position_room < 1:
         return Verdict.reject(rules.MAX_POSITION_PCT)

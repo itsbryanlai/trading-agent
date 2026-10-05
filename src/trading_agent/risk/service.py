@@ -7,6 +7,7 @@ It makes no decisions of its own. See specs/002-risk-gate/contracts/gate-interfa
 from __future__ import annotations
 
 from datetime import UTC, date, datetime
+from decimal import Decimal
 from pathlib import Path
 
 import psycopg
@@ -196,6 +197,8 @@ def _load_context(cur, symbol: str, now: datetime) -> tuple[Context, bool]:
     )
     reference_row = cur.fetchone()
 
+    in_flight = _in_flight(cur, symbol, day)
+
     context = Context(
         now=now,
         trading_day=day,
@@ -210,8 +213,35 @@ def _load_context(cur, symbol: str, now: datetime) -> tuple[Context, bool]:
         increase_orders_approved_today=increases_today,
         lowest_equity_today=lowest_today,
         reference=Reference(**reference_row) if reference_row else None,
+        **in_flight,
     )
     return context, record_baseline
+
+
+def _in_flight(cur, symbol: str, day: date) -> dict[str, Decimal]:
+    """Today's approvals still working, summed into the four Context numbers
+    (ADR 0020, research I3). Read in the same transaction as every other input;
+    an earlier day's approval is never in flight (I2)."""
+    cur.execute(
+        "SELECT "
+        "coalesce(sum(unsettled_qty) FILTER (WHERE symbol = %(s)s AND side = 'buy'), 0) "
+        "AS buy_qty, "
+        "coalesce(sum(unsettled_qty * limit_price) FILTER (WHERE symbol = %(s)s "
+        "AND side = 'buy'), 0) AS buy_cost_symbol, "
+        "coalesce(sum(unsettled_qty) FILTER (WHERE symbol = %(s)s AND side = 'sell'), 0) "
+        "AS sell_qty, "
+        "coalesce(sum(unsettled_qty * limit_price) FILTER (WHERE side = 'buy'), 0) "
+        "AS buy_cost_all "
+        "FROM in_flight_orders WHERE trading_day = %(d)s",
+        {"s": symbol, "d": day},
+    )
+    row = cur.fetchone()
+    return {
+        "in_flight_buy_qty": row["buy_qty"],
+        "in_flight_buy_cost_symbol": row["buy_cost_symbol"],
+        "in_flight_sell_qty": row["sell_qty"],
+        "in_flight_buy_cost_all": row["buy_cost_all"],
+    }
 
 
 def _lowest_equity_since_open(cur, day: date, now: datetime):

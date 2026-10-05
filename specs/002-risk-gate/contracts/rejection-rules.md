@@ -28,6 +28,21 @@ A sell decision can also be rejected `decision_stale` (rule 1a above, before eve
 Otherwise approved as a market sell. Apart from `decision_stale`, nothing else can reject an exit: not the pause, the halt, the
 order cap, a missing baseline, or the universe.
 
+## Orders in flight (amended by `specs/009-pending-orders`, ADR 0020)
+
+No rule is added or renamed, and precedence is unchanged. One rule: in-flight orders only ever make a verdict stricter. What changes is what some rules measure against:
+
+| Rule | Measured against |
+|---|---|
+| `direction_contradicts_target`, `target_already_met` (buys) | value already committed: shares held at the quote plus in-flight buys at their price ceiling; in-flight sells are never subtracted |
+| `direction_contradicts_target`, `target_already_met` (sells) | shares available: shares held less in-flight sells; in-flight buys are never added. A target raised while a sell is in flight is `direction_contradicts_target` |
+| `max_position_pct` | shares held plus in-flight buys; in-flight sells are never subtracted |
+| `cash_reserve_pct` | the latest snapshot's cash less the cost of every in-flight buy, on any symbol; the snapshot can predate a fill, so up to its interval the check is as loose as before 009, never looser |
+| `target_already_met` (sells) | also when every held share is already being sold |
+| `no_position`, `stop_loss_not_breached`, every account and universe rule | unchanged |
+
+A sell decision with a target above 0% is still rejected `no_account_snapshot_today` before `target_already_met`.
+
 ## Recording the halt (not a rejection)
 
 On **every** evaluation, whether buy, sell, or trigger, where today's baseline and today's equity
