@@ -27,7 +27,7 @@ It has no write grant.
 | Phase | `trading_paused` | `run_while_paused` | Paper account | Buy verdicts | `orders` |
 |---|---|---|---|---|---|
 | Setup | set `true` before any service | `true` | owner flattens it | — | empty |
-| Observing | `true` | `true` | flat (confirmed by the pre-open check), nothing to sell | rejected by the gate, `trading_paused` | empty |
+| Observing | `true` | `true` | flat (confirmed by the pre-open check), nothing to sell | never approved: `trading_paused` (or `market_closed` / `decision_stale` first) | empty |
 | Switch-on | cleared by the owner after the close | set `false` first, by a reviewed release while still paused | flat | none pending | empty |
 | Trading | `false` | `false` | Execution's | submitted the same session, or lapsed | Execution's |
 | Paused switch-off | `true` | `false` (the PM stops) | positions keep their stop-loss exits | rejected by the gate | sells and exits only |

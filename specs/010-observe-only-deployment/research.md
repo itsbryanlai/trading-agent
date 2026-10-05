@@ -13,7 +13,7 @@ With Execution undeployed, observation would produce no decisions and no verdict
 
 **Decision**: Deploy Execution with trading paused, and add one reviewed orchestrator setting so the Portfolio Manager runs while paused. Execution already:
 - takes its snapshots whatever the pause says;
-- would refuse an approved buy as final `trading_paused` while paused (spec 003 FR-018). In practice none reaches it, because the gate itself rejects every buy as `trading_paused` first (`risk/gate.py`, `_account_stop`; analyze N1). Every buy verdict while observing is therefore that rejection: the owner sees the PM's real decisions, but not the gate's unpaused judgment (owner accepted, Clarify; a read-only replay is a possible later feature). No approval lingers in `in_flight_orders`;
+- would refuse an approved buy as final `trading_paused` while paused (spec 003 FR-018). In practice none reaches it, because the gate itself rejects every buy while paused (`risk/gate.py`: `market_closed`, then `decision_stale`, then `_account_stop`'s `trading_paused` before any sizing, universe or cash rule; analyze N1, P1). No buy is approved while observing: the owner sees the PM's real decisions, but not the gate's unpaused judgment (owner accepted, Clarify; a read-only replay is a possible later feature). No approval lingers in `in_flight_orders`;
 - places sells only for held positions and stop-loss exits. A flat account (R9) means there is nothing to sell.
 
 **Alternatives**:
@@ -104,7 +104,7 @@ Restarts use Railway's default on-failure policy.
 3. confirm Alpaca shows zero positions and zero open orders;
 4. only then deploy.
 
-Right after the first `railway config apply`, before the next open, a **pre-open check** as `ta_owner_read_login` confirms that `trading_paused` is true and the `positions` table is empty (Execution mirrors broker positions at startup). If either fails, remove Execution before the open (analyze N2, N6). A held position would trade through PM sell decisions (the gate's `_sell` doesn't check the pause) and stop-loss exits.
+Right after the first `railway config apply`, before the next open, a **pre-open check** as `ta_owner_read_login` confirms that `trading_paused` is true and the `positions` table is empty, and the owner re-confirms zero open orders in Alpaca (Execution doesn't import orders it didn't place; analyze P2), (Execution mirrors broker positions at startup). If either fails, remove Execution before the open (analyze N2, N6). A held position would trade through PM sell decisions (the gate's `_sell` doesn't check the pause) and stop-loss exits.
 
 **Rationale**: The owner confirmed the account currently holds positions. Execution places stop-loss exits and approved sells while paused, so held positions could trade during observation.
 
@@ -131,7 +131,7 @@ It also checks that `config/schedule.yaml` has `run_while_paused: true`, so obse
 - `positions` is empty;
 - at least one account snapshot exists today;
 - every decision has a verdict;
-- every buy verdict is a `trading_paused` rejection;
+- no buy verdict is approved, and every buy rejection reads `trading_paused`, `market_closed` or `decision_stale`;
 - `orders` is empty.
 
 The runbook says to run it after the first trading day (SC-002, US3 scenario 4; analyze C7).

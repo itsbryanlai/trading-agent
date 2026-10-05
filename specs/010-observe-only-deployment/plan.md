@@ -8,7 +8,7 @@
 
 Deploy the system to Railway as four services (`orchestrator` with Research and the PM, `risk-gate`, `reference-data`, `execution`) and a managed Postgres.
 
-**Trading stays off** because the pause flag is set before any service starts, and the paper account is flat before Execution first starts. A pre-open check confirms both (research R0, R9). Execution still records the account snapshots the PM and gate need. While paused, the gate rejects every buy as `trading_paused`, so observation shows the PM's real decisions, with every buy verdict being that rejection (owner accepted). A new reviewed setting, `portfolio_manager.run_while_paused`, lets the PM run while paused (R8).
+**Trading stays off** because the pause flag is set before any service starts, and the paper account is flat before Execution first starts. A pre-open check confirms both (research R0, R9). Execution still records the account snapshots the PM and gate need. While paused, the gate approves no buy (`trading_paused`, or `market_closed` / `decision_stale` when those apply first), so observation shows the PM's real decisions and their verdicts, never an approved buy (owner accepted). A new reviewed setting, `portfolio_manager.run_while_paused`, lets the PM run while paused (R8).
 
 **The project is described** in Railway's infrastructure-as-code file, because `railway.json` is deprecated (R1). It builds with Railpack, pinned to Python 3.12, with an editable install (R2), and deploys only from `release/prod` (R10).
 

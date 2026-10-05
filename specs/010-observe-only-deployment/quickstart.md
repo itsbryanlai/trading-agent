@@ -58,7 +58,7 @@ railway config plan
 
 ## 5. Pre-open check (owner, right after the first deploy)
 
-Run the "pre-open" block of `observe-queries.sql` as `ta_owner_read_login` before the next open. **Expected**: paused is true, and `positions` is empty. If either fails, remove `execution` from `.railway/railway.ts` and apply before the open.
+Run the "pre-open" block of `observe-queries.sql` as `ta_owner_read_login` before the next open. **Expected**: paused is true, and `positions` is empty. Also re-confirm zero open orders in Alpaca. If either fails, remove `execution` from `.railway/railway.ts` and apply before the open.
 
 ## 6. Post-deploy check (owner, after the first trading day)
 
@@ -67,5 +67,5 @@ Run the "first trading day" block of `docs/operations/observe-queries.sql` as `t
 - `positions` is empty;
 - an account snapshot exists from today;
 - every decision has a verdict;
-- every buy verdict is a `trading_paused` rejection;
+- no buy verdict is approved, and every buy rejection reads `trading_paused`, `market_closed` or `decision_stale`;
 - `orders` is empty.

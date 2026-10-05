@@ -185,7 +185,7 @@ description: "Task list for feature 010, observe-only deployment (revised after 
 
   Add two blocks from research R12:
   - **"pre-open"**: paused is true, `positions` is empty;
-  - **"first trading day"**: paused is true, `positions` is empty, a snapshot exists from today, at least one decision exists, every decision has a verdict, every buy verdict is a `trading_paused` rejection, and `orders` is empty. Use only objects `ta_dashboard` may read.
+  - **"first trading day"**: paused is true, `positions` is empty, a snapshot exists from today, at least one decision exists, every decision has a verdict, no buy verdict is approved, and every buy rejection reads `trading_paused`, `market_closed` or `decision_stale`, and `orders` is empty. Use only objects `ta_dashboard` may read.
 - [ ] T023 [US3] Integration test in `tests/integration/storage/test_observe_queries.py`: run every statement in that file as `ta_dashboard` against a migrated database, and assert that none raises. Mutation-check it by adding a query on an object `ta_dashboard` can't read.
 
 ---
@@ -198,7 +198,7 @@ description: "Task list for feature 010, observe-only deployment (revised after 
   - (a) an approved buy while paused is refused `trading_paused`, with no broker submit;
   - (b) an approved buy whose trading day has closed is refused `approval_expired`, with no broker submit;
   - (c) an approved sell while paused is still placed;
-  - (d) in the Risk Gate tests (`tests/unit/risk/`), a buy decision while paused is rejected `trading_paused` before any other rule, and a sell decision while paused is still evaluated.
+  - (d) in the Risk Gate tests (`tests/unit/risk/`), a buy decision while paused (fresh quote, market open) is rejected `trading_paused` before any sizing, universe or cash rule, and a sell decision while paused is still evaluated.
 
   Add any missing case to the existing test files, with a fake broker and a fixed clock. Don't change Execution code.
 - [ ] T025 [US4] Write `docs/operations/deployment.md`, the owner runbook, using variable names only (never a value):
@@ -215,7 +215,7 @@ description: "Task list for feature 010, observe-only deployment (revised after 
      9. run `railway config plan`, check it, then `railway config apply`;
      10. paste each service's values, with `ALPACA_BASE_URL` empty or exactly the paper address;
      11. confirm in Execution's log that it started on the paper account;
-     12. **before the next open**, run the "pre-open" block of `observe-queries.sql`. Paused must be true and `positions` empty. If either fails, remove `execution` from `.railway/railway.ts` and apply before the open (analyze N2, N6).
+     12. **before the next open**, run the "pre-open" block of `observe-queries.sql`. Paused must be true and `positions` empty, and re-confirm zero open orders in Alpaca (analyze P2). If either fails, remove `execution` from `.railway/railway.ts` and apply before the open (analyze N2, N6).
   3. **Release checklist**: proxy on, then `migrate`, then proxy off, if the release adds a migration. Then a PR from `main` into `release/prod`, CI green, merge, and `railway config apply` if `.railway/` changed.
   4. **Observing and the post-deploy check**: `observe-queries.sql` as `ta_owner_read_login`, and the first-trading-day block after day one.
   5. **Switching trading on**, in this order (analyze N3):
