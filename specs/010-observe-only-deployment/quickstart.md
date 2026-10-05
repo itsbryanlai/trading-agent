@@ -44,6 +44,12 @@ Start the orchestrator, gate and reference-data job locally, **from the reposito
 - refuses to start, naming the variable, when that variable is unset (SC-005);
 - runs when it is set. The gate loads `config/risk.yaml`, and the orchestrator logs `portfolio_manager runs while paused (observe-only, ADR 0021)`.
 
+Rehearsed 2026-10-05 on `postgres:18` (Railway's image is `postgres-ssl:18`), with no API keys set. What to expect:
+- The orchestrator logs the observe-only line, then starts a Research catch-up run, which refuses for its missing `RESEARCH_FINNHUB_API_KEY` (expected without keys). It stops cleanly on SIGTERM.
+- The gate logs nothing at INFO. It is running if it is still up after a pass (60 seconds); a missing or bad `config/risk.yaml` ends it.
+- The reference-data job needs `REFERENCE_DATA_FINNHUB_API_KEY` as well as its login, so it refuses (exit 2) without a key. That is the expected result here.
+- Run the "pre-open" block as `ta_owner_read_login` after setting the pause: both rows read true on a fresh database.
+
 Execution isn't started in the rehearsal: it would need the real paper keys.
 
 Tear down with `docker stop ta-rehearse`.
