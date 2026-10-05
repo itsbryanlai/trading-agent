@@ -72,7 +72,7 @@ Do not reorder. Steps 5 and 7 make the system safe before Execution can start.
    railway config plan
    ```
 
-   Check the output lists exactly `postgres`, `orchestrator`, `risk-gate`, `reference-data` and `execution` to create, and nothing else, with every value hidden.
+   Check the output: it creates exactly `orchestrator`, `risk-gate`, `reference-data` and `execution`, and nothing else, with every value hidden. `postgres` already exists from step 1 and must **not** be listed for creation. If the plan would create a second database, or delete or change anything, stop and don't apply.
 
    **At this first `plan`, also check that `preserve()` on variables not yet set on Railway is accepted.** If the plan rejects those variables, set them in the Railway dashboard first (step 10, creating each service's variables), then run `plan` again.
 
@@ -81,6 +81,8 @@ Do not reorder. Steps 5 and 7 make the system safe before Execution can start.
    ```bash
    railway config apply
    ```
+
+   The four services start building at once. Without their values they refuse to start (exit 2), and that is expected. Execution in particular cannot start without its keys.
 10. **Set each service's values** in the Railway dashboard (or paste them into its variables page). Names are fixed by the contract and match `.env.example`:
     - `orchestrator`: `ORCHESTRATOR_DATABASE_URL`, `RESEARCH_DATABASE_URL`, `RESEARCH_FINNHUB_API_KEY`, `RESEARCH_DASHSCOPE_API_KEY`, `RESEARCH_QWEN_BASE_URL`, `PORTFOLIO_MANAGER_DATABASE_URL`, `PORTFOLIO_MANAGER_FINNHUB_API_KEY`, `PORTFOLIO_MANAGER_DASHSCOPE_API_KEY`, `PORTFOLIO_MANAGER_QWEN_BASE_URL` (and the two `*_ANTHROPIC_API_KEY` names only when a provider needs them).
     - `risk-gate`: `RISK_GATE_DATABASE_URL`.
@@ -88,8 +90,12 @@ Do not reorder. Steps 5 and 7 make the system safe before Execution can start.
     - `execution`: `EXECUTION_DATABASE_URL`, `ALPACA_API_KEY_ID`, `ALPACA_API_SECRET_KEY`, and `ALPACA_BASE_URL` left **empty** or set to exactly the Alpaca paper address. Any other address and Execution refuses to start.
 
     Each `*_DATABASE_URL` is the matching login string from step 4 (host: the database's private network host). Each service's variables are for that service only: do not copy a broker key anywhere but `execution`.
+
+    Then redeploy each service, so it starts with its values (a refused start may have used up Railway's restart retries).
 11. **Confirm Execution started on the paper account.** Open `execution`'s deploy logs. It must log a successful paper-account verification and keep running. If it exits, see section 7.
-12. **Before the next market open, run the pre-open check.** As `ta_owner_read_login`, run block 9 ("PRE-OPEN CHECK") of [`observe-queries.sql`](observe-queries.sql). Both rows must read `ok = true`: `trading_paused` is true and `positions` is empty. Re-confirm in Alpaca that there are zero open orders (Execution does not import orders it did not place).
+12. **Before the next market open, run the pre-open check.** Re-enable the database's public TCP proxy, connect as `ta_owner_read_login` with its string on the public host, and run block 9 ("PRE-OPEN CHECK") of [`observe-queries.sql`](observe-queries.sql). Both rows must read `ok = true`: `trading_paused` is true and `positions` is empty. Re-confirm in Alpaca that there are zero open orders (Execution does not import orders it did not place).
+
+    Then disable the public proxy again.
 
     **If either check fails, remove `execution` from `.railway/railway.ts` and run `railway config apply` before the open.** Then fix the cause (pause not set, or a position in the account) and start again from the failing step.
 
@@ -105,7 +111,7 @@ For every later release:
 
 ## 4. Observing, and the post-deploy check
 
-Connect as `ta_owner_read_login` (public proxy on, or from inside Railway's network). It can read, never write. Run the blocks of [`observe-queries.sql`](observe-queries.sql):
+Connect as `ta_owner_read_login`, with the public proxy enabled for the session and disabled again afterwards (or from inside Railway's network). It can read, never write. Run the blocks of [`observe-queries.sql`](observe-queries.sql):
 
 - Blocks 1 to 8 are everyday observation: reports, decisions with the reports they cite, each decision's verdict and reason, decisions with no verdict, account snapshots, Execution's refusals, orchestrator runs, and today's `instrument_reference` count.
 - **After the first full trading day**, run block 10 ("FIRST TRADING DAY CHECK"). Every row must read `ok = true`: paused, no positions, a snapshot from today, at least one decision, every decision with a verdict, no approved buy, every buy rejection reading `trading_paused`, `market_closed` or `decision_stale`, and no orders.
