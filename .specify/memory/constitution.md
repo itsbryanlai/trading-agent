@@ -1,5 +1,20 @@
 <!--
 Sync Impact Report
+Version change: 1.1.0 → 1.1.1 (PATCH: wording of one deployment bullet, no behavioral change)
+Modified sections:
+  - Technology & Deployment Constraints: the Railway bullet now names infrastructure
+    as code (`.railway/railway.ts`) in place of `railway.json` / `railway.web.json`
+    (Railway deprecates Config as Code), and one worker service per process in place
+    of a single worker service for the orchestrator and agents (ADR 0021).
+Modified principles: none.
+Added / removed sections: none.
+Templates requiring follow-up: none. The plan template's Constitution Check reads
+  this file directly.
+Deferred TODOs: none.
+-->
+
+<!--
+Sync Impact Report
 Version change: 1.0.0 → 1.1.0 (MINOR: materially expanded guidance)
 Modified sections:
   - Technology & Deployment Constraints: LLM agents may use Anthropic (`anthropic`
@@ -125,10 +140,12 @@ user," never "moving money."
 - Postgres is the only durable store. No component may rely on container
   filesystem state surviving a redeploy; anything worth keeping is a
   database row.
-- Deployment targets Railway: a worker service for the orchestrator and
-  agents, a separate web service for the dashboard, a managed Postgres
-  service — mirroring `trading-bot`'s proven `railway.json` /
-  `railway.web.json` split.
+- Deployment targets Railway, described as infrastructure as code
+  (`.railway/railway.ts`; Railway's `railway.json` Config as Code is
+  deprecated): one worker service per process (the orchestrator with its
+  agents, the Risk Gate's loop, the reference-data job, Execution), a
+  separate web service for the dashboard, and a managed Postgres service
+  ([ADR 0021](../../docs/adr/0021-railway-deployment-as-code-observe-only-first.md)).
 - Credentials are never committed. Each component's credential (Alpaca,
   Anthropic, Qwen (DashScope), Finnhub, Telegram bot token, database role connection string)
   is distinct and scoped to that component; `.env.example` is kept current
@@ -172,4 +189,4 @@ fixes with no behavioral change. Compliance with these principles is
 reviewed the same way any other code review checks compliance with
 `docs/specs/` and `docs/adr/`.
 
-**Version**: 1.1.0 | **Ratified**: 2026-09-26 | **Last Amended**: 2026-10-01
+**Version**: 1.1.1 | **Ratified**: 2026-09-26 | **Last Amended**: 2026-10-05
