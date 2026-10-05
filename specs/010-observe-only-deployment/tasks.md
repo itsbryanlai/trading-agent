@@ -232,7 +232,7 @@ description: "Task list for feature 010, observe-only deployment (revised after 
 
 - [X] T026 Run the full offline suite, the integration suite and `PYTHONPATH=src scripts/lint.sh`. Record the counts.
 - [X] T027 Rehearse [quickstart.md](quickstart.md) section 3 against a local `postgres:<Railway's major>` on port 5434, starting each service from the repository root. Confirm the gate loads `config/risk.yaml` and the orchestrator logs the observe-only line. Fix and record anything it shows up.
-- [ ] T028 Fold any rehearsal changes into `quickstart.md` and `.railway/README.md`. Then run `/speckit-converge` (Sonnet subagent), and an adversarial review on the session's model, before the PR.
+- [X] T028 Fold any rehearsal changes into `quickstart.md` and `.railway/README.md`. Then run `/speckit-converge` (Sonnet subagent), and an adversarial review on the session's model, before the PR.
 
 ---
 
