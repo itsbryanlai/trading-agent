@@ -21,10 +21,31 @@ Accounts and keys, by name:
 
 On your machine:
 - Python 3.12 and this repository's virtual environment (`.venv`), for `migrate` and `logins`. Run them from the repository root with `PYTHONPATH=src`.
-- `psql`, to run the SQL in this runbook.
+- `psql`, to run the SQL in this runbook. On macOS: `brew install libpq`, then put it on your `PATH` (it is keg-only): `echo 'export PATH="$(brew --prefix libpq)/bin:$PATH"' >> ~/.zshrc`, and open a new terminal tab. `psql --version` should then work.
 - The Railway CLI, logged in and linked to the project, plus Node, for `railway config plan` and `railway config apply`. In `.railway/`, run `npm install` once.
 
 The variable names each service holds are listed in [`.env.example`](../../.env.example), grouped by service.
+
+### Working with secrets in the terminal
+
+Lessons from the first deploy (2026-10-06):
+
+- **Type these commands directly in your terminal tab. Never run them through an assistant's `!` shell-escape**, or anything else that captures output: their output contains credentials (the `logins` command prints eight passwords). A `!` command also runs in a separate shell, so variables you set in your tab are empty there. If credentials do leak, rotate them with `logins --reset <name>` before using them.
+- **Read a connection string without echoing it** (zsh, the macOS default shell; bash's `read -rs NAME` form fails in zsh with "not an identifier"). Run this on its own, paste at the silent prompt, and press Enter:
+
+  ```bash
+  read -rs "ADMIN_DATABASE_URL?Paste the URL: "
+  ```
+
+  Check it is set without printing it: `echo ${#ADMIN_DATABASE_URL}` must show a number, not `0`. Type `${NAME}` literally in later commands; it refers to the variable.
+- **Point a login string at the public proxy without editing it.** Login strings carry the private host. Query parameters override it, and the first one starts with `?`:
+
+  ```bash
+  export CONTROL_URL="${CONTROL_URL}?sslmode=require&host=PROXY_HOST&port=PROXY_PORT"
+  ```
+
+  `PROXY_HOST` is the host alone and `PROXY_PORT` the number alone, both from the `postgres` service's Public Networking settings. An error such as `could not translate host name "postgres.railway.internal"` means the override is missing. `invalid connection option "?sslmode"` means the variable was empty when you appended to it.
+- **Read-only checks can run in Railway's own query editor** (the `postgres` service → **Database** → **Query**), with no proxy and no pasted credential. That editor connects as the admin user, so run only the `SELECT` blocks of [`observe-queries.sql`](observe-queries.sql) there. Every write in this runbook (the pause) goes through `ta_owner_control_login`.
 
 ## 2. First deploy, in this exact order
 
@@ -52,7 +73,7 @@ Do not reorder. Execution is created early but cannot start until step 11 gives 
    ```
 
    The database starts. The four services build and then refuse to start (exit 2), because none has its values yet. That is expected. Execution cannot start without its keys, and it gets them last (step 11).
-5. **Enable the database's public TCP proxy** in the `postgres` service's networking settings. It stays on only until step 9. Export the proxied connection string in your shell only, as `ADMIN_DATABASE_URL` (the superuser's string, from the database service's variables). Never put it in a file or on a Railway service. **Every connection you make over the public proxy must add `sslmode=require`** (append `?sslmode=require` to the string, or `&sslmode=require` if it already has a query), including this one, the pause in step 8 and every check later in this runbook.
+5. **Enable the database's public TCP proxy** in the `postgres` service's networking settings. It stays on only until step 9. Read the proxied connection string (`DATABASE_PUBLIC_URL`, from the `postgres` service's variables) into your shell only, as `ADMIN_DATABASE_URL`, with `read -rs` (see *Working with secrets in the terminal*). Never put it in a file or on a Railway service. **Every connection you make over the public proxy must add `sslmode=require`** (append `?sslmode=require` to the string, or `&sslmode=require` if it already has a query), including this one, the pause in step 8 and every check later in this runbook.
 6. **Run `migrate`** from your machine:
 
    ```bash
@@ -66,8 +87,8 @@ Do not reorder. Execution is created early but cannot start until step 11 gives 
    PYTHONPATH=src .venv/bin/python -m trading_agent.storage.logins --service-host <private host>
    ```
 
-   It prints eight connection strings once and writes nothing to disk. **Store every printed string in your password manager now.** They cannot be shown again. A lost one is replaced with `--reset <login name>`, which sets a new password for that login only. Re-running the command changes nothing for existing logins.
-8. **Set the pause**, connected as `ta_owner_control_login` (use its string from step 7, but with the **public** host from step 5, since you are outside Railway's network, and `sslmode=require` added). Run:
+   **Type this one directly in your terminal tab, never through a `!` shell-escape:** it prints eight connection strings once and writes nothing to disk. **Store every printed string in your password manager now.** They cannot be shown again. A lost one is replaced with `--reset <login name>`, which sets a new password for that login only. Re-running the command changes nothing for existing logins.
+8. **Set the pause**, connected as `ta_owner_control_login`. Read its string from step 7 into `CONTROL_URL` with `read -rs`, then add `?sslmode=require&host=…&port=…` for the public proxy from step 5 (see *Working with secrets in the terminal*), and run `psql "$CONTROL_URL"`. Run:
 
    ```sql
    UPDATE system_state SET trading_paused = true, updated_at = now();
@@ -96,9 +117,9 @@ Do not reorder. Execution is created early but cannot start until step 11 gives 
 
     After setting a service's values, redeploy it so it starts with them (its refused starts may have used up Railway's restart retries). Research may start a catch-up run as soon as the orchestrator is up. That is expected.
 12. **Confirm Execution started on the paper account.** Open `execution`'s deploy logs. It must log a successful paper-account verification and keep running. If it exits, see section 7.
-13. **Before the next market open, run the pre-open check.** Re-enable the database's public TCP proxy, connect as `ta_owner_read_login` with its string on the public host (with `sslmode=require`), and run block 9 ("PRE-OPEN CHECK") of [`observe-queries.sql`](observe-queries.sql). Both rows must read `ok = true`: `trading_paused` is true and `positions` is empty. Re-confirm in Alpaca, in its own interface, that there are **zero positions and zero open orders** (Execution does not import orders it did not place).
+13. **Before the next market open, run the pre-open check.** The simplest way is Railway's query editor (the `postgres` service → **Database** → **Query**), with no proxy needed. Alternatively, re-enable the public proxy and connect as `ta_owner_read_login` (with `sslmode=require` and the host override). Run block 9 ("PRE-OPEN CHECK") of [`observe-queries.sql`](observe-queries.sql). Both rows must read `ok = true`: `trading_paused` is true and `positions` is empty. Re-confirm in Alpaca, in its own interface, that there are **zero positions and zero open orders** (Execution does not import orders it did not place).
 
-    Then disable the public proxy again.
+    If you used the public proxy, disable it again.
 
     **If any check fails, or Alpaca shows any position or open order, keep the pause and leave Execution deployed.** Close or cancel it in Alpaca's own interface, and re-run this check until it passes. If `trading_paused` is false, set it (step 8) before anything else. Execution places stop-loss exits and approved sells even while paused, so do not leave a position open through the open: closing or cancelling it first is the remedy. Removing Execution is a switch-off, with its own conditions (section 6).
 
@@ -114,7 +135,7 @@ For every later release:
 
 ## 4. Observing, and the post-deploy check
 
-Connect as `ta_owner_read_login`, with the public proxy enabled for the session and disabled again afterwards (or from inside Railway's network). Over the public proxy, add `sslmode=require`. It can read, never write. Run the blocks of [`observe-queries.sql`](observe-queries.sql):
+Use Railway's query editor (`postgres` → **Database** → **Query**; `SELECT`s only, since it runs as the admin user), or connect as `ta_owner_read_login` with the public proxy enabled for the session and disabled again afterwards. Over the public proxy, add `sslmode=require` and the host override. `ta_owner_read_login` can read, never write. Run the blocks of [`observe-queries.sql`](observe-queries.sql):
 
 - Blocks 1 to 8 are everyday observation: reports, decisions with the reports they cite, each decision's verdict and reason, decisions with no verdict, account snapshots, Execution's refusals, orchestrator runs, and today's `instrument_reference` count.
 - **After the first full trading day**, run block 10 ("FIRST TRADING DAY CHECK"). Every row must read `ok = true`: paused, no positions, a snapshot from today, at least one decision, every decision with a verdict, no approved buy, every buy rejection reading `trading_paused`, `market_closed` or `decision_stale`, and no orders.
