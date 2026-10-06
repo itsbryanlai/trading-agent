@@ -28,6 +28,9 @@ ENV_EXAMPLE = ROOT / ".env.example"
 SCHEDULE = ROOT / "config" / "schedule.yaml"
 
 SOURCE = 'github("itsbryanlai/trading-agent", { branch: "release/prod" })'
+# Railpack installs requirements.txt before it copies src/, so the editable install has to
+# run in the build step, once the source is there (fix after the first deploy, 2026-10-07).
+BUILD = 'build: { builder: "RAILPACK", buildCommand: "/app/.venv/bin/pip install -e ." }'
 
 # contracts/service-layout.md, as data: service -> (start command, variable names).
 CONTRACT: dict[str, tuple[str, set[str]]] = {
@@ -224,6 +227,8 @@ def _one_service(name: str, block: str) -> tuple[list[str], set[str]]:
         found.append(f"{name}: variables differ from the contract: {set(entries) ^ names}")
     if SOURCE not in block:
         found.append(f"{name}: source is not {SOURCE}")
+    if BUILD not in block:
+        found.append(f"{name}: build is not {BUILD}")
     if f'start: "{start}"' not in block:
         found.append(f"{name}: start command is not {start!r}")
     if not re.search(r"\breplicas\s*:\s*1\b", block):
@@ -308,6 +313,10 @@ def test_a_database_reference_is_caught(shipped):
 
 def test_a_dropped_branch_is_caught(shipped):
     assert _broken(shipped, SOURCE, 'github("itsbryanlai/trading-agent")')
+
+
+def test_a_dropped_build_command_is_caught(shipped):
+    assert _broken(shipped, BUILD, 'build: { builder: "RAILPACK" }')
 
 
 def test_an_undeclared_service_is_caught(shipped):

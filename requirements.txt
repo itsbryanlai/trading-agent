@@ -1,3 +1,6 @@
-# Editable, so the config loaders that resolve config/ from Path(__file__).parents[3]
-# find the repository root (feature 010, research R2).
--e .
+# Railpack runs `pip install -r requirements.txt` before it copies the source, so an
+# editable install (-e .) can't run here: src/ isn't there yet. Each service's
+# buildCommand in .railway/railway.ts runs `pip install -e .` once the source is in
+# place. Editable, so the config loaders that resolve config/ from
+# Path(__file__).parents[3] find the repository root (feature 010, research R2).
+# Dependencies live in pyproject.toml.
