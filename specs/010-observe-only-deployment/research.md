@@ -31,7 +31,7 @@ With Execution undeployed, observation would produce no decisions and no verdict
 
 ## R2. Build: Railpack, Python 3.12, editable install, repository root as the working directory
 
-**Decision**: Pin Python with `.python-version` (`3.12`). Install with a `requirements.txt` holding `-e .`. Every start command runs from the repository root, which is Railpack's application directory.
+**Decision**: Pin Python with `.python-version` (`3.12`). Install editable with each service's `buildCommand` (`/app/.venv/bin/pip install -e .`). *Corrected 2026-10-07: the first deploy showed that Railpack runs `pip install -r requirements.txt` before copying `src/`, so `-e .` in `requirements.txt` failed with "'src' does not exist". `requirements.txt` now installs nothing.* Every start command runs from the repository root, which is Railpack's application directory.
 
 **Rationale** (corrected, analyze C4 and C5):
 - Railpack defaults to Python 3.13.2 unless a version file pins it. CI and local tests run 3.12.

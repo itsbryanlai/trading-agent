@@ -10,7 +10,8 @@
 // tests/unit/deploy/test_deployed_shape.py reads this file as text to enforce it.
 // Keep one `NAME: preserve(),` per line, and spell the source exactly as below.
 //
-// Build: Railpack, Python 3.12 from .python-version, requirements.txt (-e .).
+// Build: Railpack, Python 3.12 from .python-version. requirements.txt installs nothing:
+// Railpack runs it before copying src/, so the editable install is the buildCommand.
 // Every service starts from the repository root, on one replica, with Railway's
 // default on-failure restart.
 
@@ -21,7 +22,7 @@ export default defineRailway(() => {
 
   const orchestrator = service("orchestrator", {
     source: github("itsbryanlai/trading-agent", { branch: "release/prod" }),
-    build: { builder: "RAILPACK" },
+    build: { builder: "RAILPACK", buildCommand: "/app/.venv/bin/pip install -e ." },
     start: "python -m trading_agent.orchestrator",
     replicas: 1,
     env: {
@@ -41,7 +42,7 @@ export default defineRailway(() => {
 
   const riskGate = service("risk-gate", {
     source: github("itsbryanlai/trading-agent", { branch: "release/prod" }),
-    build: { builder: "RAILPACK" },
+    build: { builder: "RAILPACK", buildCommand: "/app/.venv/bin/pip install -e ." },
     start: "python -m trading_agent.risk",
     replicas: 1,
     env: {
@@ -51,7 +52,7 @@ export default defineRailway(() => {
 
   const referenceData = service("reference-data", {
     source: github("itsbryanlai/trading-agent", { branch: "release/prod" }),
-    build: { builder: "RAILPACK" },
+    build: { builder: "RAILPACK", buildCommand: "/app/.venv/bin/pip install -e ." },
     start: "python -m trading_agent.reference",
     replicas: 1,
     env: {
@@ -64,7 +65,7 @@ export default defineRailway(() => {
   // trading is paused before this service first starts (ADR 0021).
   const execution = service("execution", {
     source: github("itsbryanlai/trading-agent", { branch: "release/prod" }),
-    build: { builder: "RAILPACK" },
+    build: { builder: "RAILPACK", buildCommand: "/app/.venv/bin/pip install -e ." },
     start: "python -m trading_agent.execution",
     replicas: 1,
     env: {

@@ -15,7 +15,7 @@ What `.railway/railway.ts` declares, and what each service may hold. The guard t
 
 **Every service**:
 - **Source**: `github("itsbryanlai/trading-agent", { branch: "release/prod" })`.
-- **Build**: Railpack, Python from `.python-version` (3.12), dependencies from `requirements.txt` (`-e .`).
+- **Build**: Railpack, Python from `.python-version` (3.12), and `buildCommand: "/app/.venv/bin/pip install -e ."`. `requirements.txt` installs nothing: Railpack runs it before copying `src/`, so the editable install has to wait for the build step (first deploy, 2026-10-07).
 - **Run**: working directory at the repository root (the gate and Execution read `config/risk.yaml` relative to it). One replica, and Railway's default on-failure restart.
 
 Every `*_DATABASE_URL` is a login string printed by the login command ([logins-command.md](logins-command.md)), pointing at the database's private network host.
