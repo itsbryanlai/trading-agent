@@ -15,3 +15,5 @@ CREATE OR REPLACE VIEW latest_report_time AS
     SELECT max(generated_at) AS generated_at
     FROM reports
     WHERE generated_at <= now() AND direction <> 'no_action';
+
+COMMENT ON VIEW latest_report_time IS 'Newest report that argues something (excludes no_action), dated up to now: the orchestrator''s event-driven PM trigger (feature 011 FR-023).';

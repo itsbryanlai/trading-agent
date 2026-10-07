@@ -94,3 +94,13 @@ def test_the_view_keeps_its_one_column_and_its_readers(conn):
 @pytest.mark.parametrize("role", ["ta_research", "ta_opportunistic_identifier", "ta_risk_gate"])
 def test_it_is_still_not_readable_by_roles_that_never_could(conn, role):
     assert attempt(conn, role, "SELECT * FROM latest_report_time") == "denied"
+
+
+def test_the_view_says_what_it_is_for(conn):
+    comment = conn.execute(
+        "SELECT obj_description('latest_report_time'::regclass, 'pg_class') AS comment"
+    ).fetchone()["comment"]
+    assert comment == (
+        "Newest report that argues something (excludes no_action), dated up to now: "
+        "the orchestrator's event-driven PM trigger (feature 011 FR-023)."
+    )
