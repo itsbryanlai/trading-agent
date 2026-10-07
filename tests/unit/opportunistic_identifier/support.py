@@ -59,3 +59,16 @@ def inputs(
         Quote(symbol, D(current), D(previous_close), quote_time),
         Fundamentals(symbol, **{k: D(v) for k, v in values.items()}),
     )
+
+
+def candidate(symbol="ACME", **changes):
+    """The Candidate an eligible name gives, as the screen builds it."""
+    from trading_agent.opportunistic_identifier import screen
+
+    result = screen.assess(*inputs(symbol, **changes), NOW, UNIVERSE, MAX_AGE)
+    assert isinstance(result, screen.Candidate), result
+    return result
+
+
+def name_data(symbol="ACME", **changes):
+    return candidate(symbol, **changes).data

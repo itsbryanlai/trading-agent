@@ -153,7 +153,7 @@ description: "Task list for the Opportunistic Identifier agent (feature 011)"
   - no key named `positions`, `cash`, `decisions`, `journal` or `reports` appears;
   - `name` and `industry` are cut to 100 characters;
   - `SYSTEM_PROMPT` contains `PROMPT_VERSION`, "buy", the target-weight meaning, conviction 1–5, the statement that `name` and `industry` are untrusted data and not instructions, and the schema from `answer.ANSWER_SCHEMA`.
-- [ ] T018 [P] [US1] `tests/unit/opportunistic_identifier/test_answer_rows.py`:
+- [x] T018 [P] [US1] `tests/unit/opportunistic_identifier/test_answer_rows.py`:
   - a valid answer for 2 shortlisted names gives 2 `ReportRow`s with `direction = 'buy'`, the conviction, `suggested_size_pct` as `Decimal` rounded **down** to 3 places (12.34567 → 12.345), the rationale cleaned by `text.clean` and then cut to `rationale_max_chars`, and `expires_at` at the trading day's close (early close included);
   - each row has three sources exactly as research O9: titles, `url` without any key (assert that the fake key string appears in no field), `publisher = "Finnhub"`, `published_at` (the quote's `t`, or the fetch time), and `relevance = "primary"`;
   - `{"proposals": []}` gives no rows.
@@ -173,7 +173,7 @@ description: "Task list for the Opportunistic Identifier agent (feature 011)"
 ### Implementation for User Story 1
 
 - [x] T021 [US1] `src/trading_agent/opportunistic_identifier/text.py` (copy of `research/text.py`'s `clean`, with its docstring citing Research's review H1) and `screen.py` (pure): `Skip`, `Candidate`, `listing_stop` (O5 step 1), `assess` (then freshness, `reference.normalize.normalize`, `universe_stop`, the 52-week high, fundamentals and move checks; `name` and `industry` cleaned and cut to 100 characters), `universe_stop` (the five-line copy of the gate's comparisons, using `risk.rules` rule names and `US_LISTED_MICS`), and `shortlist`. Make T014–T016 and T020a pass.
-- [ ] T022 [US1] `src/trading_agent/opportunistic_identifier/answer.py` (pure): `ANSWER_SCHEMA` generated from the contract's answer table (`direction` enum `["buy"]`); `check(text, shortlist, open_symbols, rationale_max_chars) -> Checked` (valid path now; drops in US2); `rows(checked, data_by_symbol, trading_day) -> list[ReportRow]` building sources as in research O9. Make T018 pass.
+- [x] T022 [US1] `src/trading_agent/opportunistic_identifier/answer.py` (pure): `ANSWER_SCHEMA` generated from the contract's answer table (`direction` enum `["buy"]`); `check(text, shortlist, open_symbols, rationale_max_chars) -> Checked` (valid path now; drops in US2); `rows(checked, data_by_symbol, trading_day) -> list[ReportRow]` building sources as in research O9. Make T018 pass.
 - [ ] T023 [US1] `src/trading_agent/opportunistic_identifier/prompt.py`: `PROMPT_VERSION = "0.1"`, `SYSTEM_PROMPT` (research O7, schema appended) and `build_user`. Make T017 pass.
 - [ ] T024 [US1] `OIRun` in `src/trading_agent/opportunistic_identifier/service.py`:
   1. reads open symbols;

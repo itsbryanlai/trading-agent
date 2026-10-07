@@ -8,24 +8,13 @@ in one transaction (FR-015).
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 from datetime import datetime
-from decimal import Decimal
 from typing import Protocol
 
 import psycopg
 from psycopg.types.json import Jsonb
 
-
-@dataclass(frozen=True)
-class ReportRow:
-    symbol: str | None
-    direction: str
-    conviction: int | None
-    suggested_size_pct: Decimal | None
-    sources: list[dict]
-    rationale_md: str
-    expires_at: datetime
+from trading_agent.opportunistic_identifier.answer import ReportRow
 
 
 class OIStore(Protocol):
