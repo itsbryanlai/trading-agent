@@ -128,7 +128,7 @@ def assess(
     stop = listing_stop(symbol, listing)
     if stop is not None:
         return stop
-    if _stale(quote, now, quote_max_age):
+    if is_stale(quote, now, quote_max_age):
         return Skip(symbol, STALE_QUOTE)
     price, previous = quote.current, quote.previous_close
     if not _positive(price) or not _positive(previous):
@@ -194,7 +194,7 @@ def shortlist(
     )
 
 
-def _stale(quote: Quote, now: datetime, max_age: timedelta) -> bool:
+def is_stale(quote: Quote, now: datetime, max_age: timedelta) -> bool:
     """Fresh only if the quote's own trade time is on today's session and within `max_age`."""
     when = quote.timestamp
     if when is None:

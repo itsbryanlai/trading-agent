@@ -157,7 +157,7 @@ description: "Task list for the Opportunistic Identifier agent (feature 011)"
   - a valid answer for 2 shortlisted names gives 2 `ReportRow`s with `direction = 'buy'`, the conviction, `suggested_size_pct` as `Decimal` rounded **down** to 3 places (12.34567 → 12.345), the rationale cleaned by `text.clean` and then cut to `rationale_max_chars`, and `expires_at` at the trading day's close (early close included);
   - each row has three sources exactly as research O9: titles, `url` without any key (assert that the fake key string appears in no field), `publisher = "Finnhub"`, `published_at` (the quote's `t`, or the fetch time), and `relevance = "primary"`;
   - `{"proposals": []}` gives no rows.
-- [ ] T019 [P] [US1] `tests/unit/opportunistic_identifier/test_service_happy.py`, testing `OIRun(...).run()` with `FakeOIMarketData`, `FakeModel` and an in-memory `OIStore` at the default clock:
+- [x] T019 [P] [US1] `tests/unit/opportunistic_identifier/test_service_happy.py`, testing `OIRun(...).run()` with `FakeOIMarketData`, `FakeModel` and an in-memory `OIStore` at the default clock:
   - names failing the listing check make no call; the rest are fetched quote, then profile, then fundamentals, with exactly one model call;
   - **pacing** (FR-021): with a fake sleep, consecutive Finnhub calls are spaced by `60 / finnhub_calls_per_minute` seconds;
   - the rows written equal the valid proposals;
@@ -175,7 +175,7 @@ description: "Task list for the Opportunistic Identifier agent (feature 011)"
 - [x] T021 [US1] `src/trading_agent/opportunistic_identifier/text.py` (copy of `research/text.py`'s `clean`, with its docstring citing Research's review H1) and `screen.py` (pure): `Skip`, `Candidate`, `listing_stop` (O5 step 1), `assess` (then freshness, `reference.normalize.normalize`, `universe_stop`, the 52-week high, fundamentals and move checks; `name` and `industry` cleaned and cut to 100 characters), `universe_stop` (the five-line copy of the gate's comparisons, using `risk.rules` rule names and `US_LISTED_MICS`), and `shortlist`. Make T014–T016 and T020a pass.
 - [x] T022 [US1] `src/trading_agent/opportunistic_identifier/answer.py` (pure): `ANSWER_SCHEMA` generated from the contract's answer table (`direction` enum `["buy"]`); `check(text, shortlist, open_symbols, rationale_max_chars) -> Checked` (valid path now; drops in US2); `rows(checked, data_by_symbol, trading_day) -> list[ReportRow]` building sources as in research O9. Make T018 pass.
 - [x] T023 [US1] `src/trading_agent/opportunistic_identifier/prompt.py`: `PROMPT_VERSION = "0.1"`, `SYSTEM_PROMPT` (research O7, schema appended) and `build_user`. Make T017 pass.
-- [ ] T024 [US1] `OIRun` in `src/trading_agent/opportunistic_identifier/service.py`:
+- [x] T024 [US1] `OIRun` in `src/trading_agent/opportunistic_identifier/service.py`:
   1. reads open symbols;
   2. computes the slice;
   3. fetches the symbol list once, applies `listing_stop`, then fetches each remaining name, paced at `finnhub_calls_per_minute` (copy the pacer pattern of `research/service.py`), skipping profile and fundamentals after a stale quote, and starting no call after `config.fetch_deadline(start)`;

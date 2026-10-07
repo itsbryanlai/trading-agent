@@ -72,3 +72,45 @@ def candidate(symbol="ACME", **changes):
 
 def name_data(symbol="ACME", **changes):
     return candidate(symbol, **changes).data
+
+
+class Clock:
+    """A test clock: `now` stays put, and monotonic time advances when the code sleeps."""
+
+    def __init__(self, now: datetime = NOW) -> None:
+        self.now = now
+        self.mono = 0.0
+        self.slept: list[float] = []
+
+    def __call__(self) -> datetime:
+        return self.now
+
+    def sleep(self, seconds: float) -> None:
+        self.slept.append(seconds)
+        self.mono += seconds
+
+    def monotonic(self) -> float:
+        return self.mono
+
+
+def config(universe=(), **changes):
+    """The shipped config with a scan list of the test's choosing."""
+    from dataclasses import replace
+
+    from trading_agent.opportunistic_identifier.config import (
+        DEFAULT_CONFIG_PATH,
+        DEFAULT_RISK_PATH,
+        load_config,
+    )
+
+    return replace(
+        load_config(DEFAULT_CONFIG_PATH, DEFAULT_RISK_PATH),
+        scan_universe=tuple(sorted(universe)),
+        **changes,
+    )
+
+
+def messages(caplog) -> list[str]:
+    return [
+        r.getMessage() for r in caplog.records if r.name == "trading_agent.opportunistic_identifier"
+    ]
