@@ -101,7 +101,7 @@ def test_a_day_with_a_failure_a_timeout_and_a_paused_morning_accounts_for_every_
     _tick(conn, orch, et("08:31"))
     conn.execute("UPDATE system_state SET trading_paused = true")
     _tick(conn, orch, et("10:00"))  # morning skipped; Identifier 10:00 starts and hangs
-    _tick(conn, orch, et("10:10"))  # Identifier timed out
+    _tick(conn, orch, et("10:15"))  # Identifier timed out (its 15 minutes)
     rows = _rows(conn)
     summary = [(r["agent"], r["slot_key"], r["outcome"], r["detail"]) for r in rows]
     assert ("research", "research_daily", "failed", "exit 2") in summary
