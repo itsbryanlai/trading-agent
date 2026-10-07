@@ -284,8 +284,8 @@ description: "Task list for the Opportunistic Identifier agent (feature 011)"
 ## Phase 8: Polish & cross-cutting concerns
 
 - [x] T044 `tests/unit/opportunistic_identifier/test_import_guard.py`, like Research's: the package imports nothing from `research`, `portfolio_manager`, `orchestrator` or `execution`, and pure modules import no `psycopg`, `urllib`, `anthropic` or `os`.
-- [ ] T045 Run `scripts/lint.sh`, the full unit suite and the integration suite. All green, no module over 600 lines, no `# noqa`.
-- [ ] T046 Walk quickstart.md step 1 and confirm each command passes. Steps 2–4 are the owner's.
+- [x] T045 Run `scripts/lint.sh`, the full unit suite and the integration suite. All green, no module over 600 lines, no `# noqa`.
+- [x] T046 Walk quickstart.md step 1 and confirm each command passes. Steps 2–4 are the owner's.
 
 ---
 
