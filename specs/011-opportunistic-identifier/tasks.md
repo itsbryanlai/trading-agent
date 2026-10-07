@@ -241,7 +241,7 @@ description: "Task list for the Opportunistic Identifier agent (feature 011)"
   - `internal_error`: an unexpected exception.
 
   Plus: partial data (some names `NotPermitted` or `ProviderUnavailable`) doesn't fail the run (FR-018). ERROR log lines name the exception type and HTTP status, never the message.
-- [ ] T033 [P] [US3] `tests/unit/opportunistic_identifier/test_service_window_deadline.py`:
+- [x] T033 [P] [US3] `tests/unit/opportunistic_identifier/test_service_window_deadline.py`:
   - **window**: a weekend, a holiday, 09:45 ET, or after the close → nothing fetched, logged, exit 0. 10:00 ET and 15:59 ET run. On the early-close day, 13:01 ET does nothing;
   - **window closed**: the close passing mid-run → nothing written, `window_closed` logged at ERROR, **exit 5**;
   - **deadline**: with a fake clock that advances per call, no call starts after `config.fetch_deadline(start)` (650 s on Qwen, 530 s on Anthropic with the shipped config), unfetched names count as `not_fetched`, and the model call still happens with what was fetched;
