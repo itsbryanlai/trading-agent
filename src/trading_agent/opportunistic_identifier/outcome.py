@@ -10,6 +10,8 @@ from trading_agent.opportunistic_identifier import answer as a
 from trading_agent.opportunistic_identifier import rotation, screen
 from trading_agent.opportunistic_identifier.answer import ReportRow
 from trading_agent.opportunistic_identifier.screen import Skip
+from trading_agent.reference.normalize import ALL_REASONS as ALL_NORMALIZE_REASONS
+from trading_agent.risk import rules
 
 # Skip reasons that come from the fetch itself.
 NOT_FETCHED = "not_fetched"
@@ -17,6 +19,27 @@ PROVIDER_UNAVAILABLE = "provider_unavailable"
 NOT_PERMITTED = "not_permitted"
 RATE_LIMITED = "rate_limited"
 FETCH_FAILURES = frozenset({NOT_FETCHED, PROVIDER_UNAVAILABLE, NOT_PERMITTED, RATE_LIMITED})
+
+# Every per-name skip reason (contracts/oi-interface.md "Closed sets"): the fetch's, the
+# screen's own, every `reference.normalize` failure and the universe rules.
+SKIP_REASONS = (
+    FETCH_FAILURES
+    | {
+        screen.STALE_QUOTE,
+        screen.MISSING_PRICE,
+        screen.MISSING_52_WEEK_HIGH,
+        screen.INCONSISTENT_52_WEEK_RANGE,
+        screen.MISSING_FUNDAMENTALS,
+        screen.IMPLAUSIBLE_MOVE,
+    }
+    | set(ALL_NORMALIZE_REASONS)
+    | {
+        rules.UNIVERSE_LISTING,
+        rules.UNIVERSE_MARKET_CAP,
+        rules.UNIVERSE_DOLLAR_VOLUME,
+        rules.UNIVERSE_SHARE_PRICE,
+    }
+)
 
 # Quiet no_action reasons (exit 0).
 EMPTY_SCAN_UNIVERSE = "empty_scan_universe"

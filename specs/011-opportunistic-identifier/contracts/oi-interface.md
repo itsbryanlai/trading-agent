@@ -85,7 +85,7 @@ The JSON Schema is generated from this table in code (`answer.ANSWER_SCHEMA`).
 **Skip reasons** (per name, before the model):
 - not fetched or not usable: `not_fetched`, `provider_unavailable`, `not_permitted`, `rate_limited`;
 - quote: `stale_quote`, `missing_price`, `implausible_move`;
-- fundamentals: `missing_52_week_high`, `missing_fundamentals`;
+- fundamentals: `missing_52_week_high`, `inconsistent_52_week_range` (the price is outside the 52-week range by more than 10%, or the low is above the high: usually a split the provider has not adjusted for), `missing_fundamentals`;
 - every `reference.normalize` failure reason (for example `not_listed`, `share_class_unverified`, `non_usd_market_cap`, `missing_market_cap`, `missing_volume`, `implausible_market_cap`, `implausible_dollar_volume`, `value_out_of_range`);
 - outside the universe: `universe_listing`, `universe_market_cap`, `universe_dollar_volume`, `universe_share_price`.
 

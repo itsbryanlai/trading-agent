@@ -40,8 +40,13 @@ STALE_QUOTE = "stale_quote"
 MISSING_PRICE = "missing_price"
 MISSING_52_WEEK_HIGH = "missing_52_week_high"
 MISSING_FUNDAMENTALS = "missing_fundamentals"
+INCONSISTENT_52_WEEK_RANGE = "inconsistent_52_week_range"
 IMPLAUSIBLE_MOVE = "implausible_move"
 
+# The price may sit this far outside the provider's 52-week range: beyond it the range is
+# likelier unadjusted for a split than the price a record (review M1).
+RANGE_SLACK_ABOVE = Decimal("1.1")
+RANGE_SLACK_BELOW = Decimal("0.9")
 MAX_MOVE = Decimal("0.5")  # beyond this a split or a bad print is likelier than a price
 NAME_MAX_CHARS = 100
 
@@ -159,6 +164,8 @@ def assess(
     high = fundamentals.high_52w
     if not _positive(high):
         return Skip(symbol, MISSING_52_WEEK_HIGH)
+    if _range_inconsistent(price, high, fundamentals.low_52w):
+        return Skip(symbol, INCONSISTENT_52_WEEK_RANGE)
     if fundamentals.pe_ttm is None and fundamentals.pb is None:
         return Skip(symbol, MISSING_FUNDAMENTALS)
     move = (price - previous) / previous
@@ -209,6 +216,15 @@ def is_stale(quote: Quote, now: datetime, max_age: timedelta) -> bool:
     if when is None:
         return True
     return calendar.trading_day(when) != calendar.trading_day(now) or now - when > max_age
+
+
+def _range_inconsistent(price: Decimal, high: Decimal, low: Decimal | None) -> bool:
+    """A split the provider hasn't adjusted its 52-week high and low for makes a name look
+    like it has collapsed. A low above the high, a price well above the high, or (when there
+    is a low) a price well below it, says the range and the price aren't on the same scale."""
+    if price > high * RANGE_SLACK_ABOVE:
+        return True
+    return low is not None and (low > high or price < low * RANGE_SLACK_BELOW)
 
 
 def _positive(value: Decimal | None) -> bool:

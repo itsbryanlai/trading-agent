@@ -163,7 +163,7 @@ def test_dollar_volume_just_under_the_floor_is_skipped_and_the_floor_itself_pass
 
 
 def test_share_price_just_under_the_floor_is_skipped_and_the_floor_itself_passes():
-    base = {"avg_volume_10d_millions": "3", "high_52w": "9"}
+    base = {"avg_volume_10d_millions": "3", "high_52w": "9", "low_52w": "1"}
     assert reason(**base, previous_close="4.9999", current="4.9") == "universe_share_price"
     assert reason(**base, previous_close="5", current="4.9") is None
 
@@ -194,7 +194,7 @@ def test_either_pe_or_pb_is_enough():
     [("300.01", "implausible_move"), ("99.99", "implausible_move"), ("300", None), ("100", None)],
 )
 def test_a_move_beyond_fifty_percent_is_implausible_and_fifty_passes(current, expected):
-    assert reason(current=current, high_52w="400") == expected
+    assert reason(current=current, high_52w="400", low_52w="50") == expected
 
 
 def test_name_and_industry_are_cleaned_and_cut_to_100_characters():
@@ -213,3 +213,74 @@ def test_the_data_keeps_what_was_fetched_and_when():
     assert result.data.fetched_at == NOW
     assert result.data.quote.timestamp == FRESH
     assert result.data.fundamentals.pe_ttm == D("20")
+
+
+# --- an inconsistent 52-week range: a split the provider has not adjusted for (review M1) ---------
+
+
+def test_a_ten_for_one_split_shaped_name_is_skipped():
+    # After a 10:1 split the price is a tenth of what it was, while the provider's 52-week
+    # high and low are still the unadjusted ones: the "fall" is the split, not a bargain.
+    assert reason(previous_close="20", current="19", high_52w="250", low_52w="150") == (
+        "inconsistent_52_week_range"
+    )
+
+
+def test_a_reverse_split_shaped_name_is_skipped():
+    assert reason(previous_close="3000", current="2900", high_52w="250", low_52w="150") == (
+        "inconsistent_52_week_range"
+    )
+
+
+@pytest.mark.parametrize(
+    ("current", "expected"),
+    [
+        ("275", None),  # exactly high x 1.1
+        ("275.01", "inconsistent_52_week_range"),
+        ("274", None),
+    ],
+)
+def test_the_price_may_be_at_most_ten_percent_above_the_high(current, expected):
+    assert reason(previous_close="274", current=current, high_52w="250", low_52w="150") == expected
+
+
+@pytest.mark.parametrize(
+    ("current", "expected"),
+    [
+        ("135", None),  # exactly low x 0.9
+        ("134.99", "inconsistent_52_week_range"),
+        ("136", None),
+    ],
+)
+def test_the_price_may_be_at_most_ten_percent_below_the_low(current, expected):
+    result = reason(previous_close="136", current=current, high_52w="250", low_52w="150")
+    assert result == expected
+
+
+@pytest.mark.parametrize(
+    ("low", "expected"), [("250", None), ("250.01", "inconsistent_52_week_range")]
+)
+def test_the_low_may_not_be_above_the_high(low, expected):
+    # price 251 is inside the high x 1.1 and low x 0.9 bounds either way
+    assert reason(previous_close="250", current="251", high_52w="250", low_52w=low) == expected
+
+
+def test_a_missing_low_skips_only_the_low_checks():
+    assert reason(low_52w=None) is None
+    assert reason(low_52w=None, current="19", previous_close="20", high_52w="25") is None
+    assert reason(low_52w=None, previous_close="274", current="275.01", high_52w="250") == (
+        "inconsistent_52_week_range"
+    )
+
+
+def test_the_range_check_comes_after_the_missing_high_and_before_the_other_checks():
+    assert reason(high_52w=None, low_52w="150", current="19", previous_close="20") == (
+        "missing_52_week_high"
+    )
+    # An inconsistent range wins over missing fundamentals.
+    assert (
+        reason(
+            previous_close="20", current="19", high_52w="250", low_52w="150", pe_ttm=None, pb=None
+        )
+        == "inconsistent_52_week_range"
+    )
