@@ -40,10 +40,10 @@ Every key is required, unknown keys are rejected, and any error means exit 2.
 
 ```yaml
 scan_universe: []              # tickers; the owner fills this in. Sorted and de-duplicated at load.
-slice_size: 60                 # names fetched per run, 1–200
+slice_size: 40                 # names fetched per run, 1–200; the budget check caps it (45 at 20 calls a minute)
 shortlist_size: 20             # names sent to the model, 1–40
 quote_max_age_minutes: 15      # 1–60
-finnhub_calls_per_minute: 30   # 1–60
+finnhub_calls_per_minute: 20   # 1–60; 20 leaves room on a shared Finnhub account (research O11)
 rationale_max_chars: 2000      # 200–10000
 max_input_chars: 60000         # 5000–300000
 slots:                         # must match config/schedule.yaml's opportunistic_identifier entry (tested)

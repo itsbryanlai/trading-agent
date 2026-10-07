@@ -159,15 +159,15 @@ A unit test asserts that no source field ever contains the key (the FR-013 crede
 
 `(3 + 3 × slice_size) / finnhub_calls_per_minute × 60 + model.timeout_seconds + 60 ≤ 600`
 
-Here 60 s is the margin for startup, the symbol list's slow path and the write. With the defaults (60 names, 30 calls a minute, 120 s for the model), that's 366 + 120 + 60 = 546 s.
+Here 60 s is the margin for startup, the symbol list's slow path and the write. With the defaults (40 names, 20 calls a minute, 120 s for the model), that's 369 + 120 + 60 = 549 s. At 20 calls a minute the largest slice that fits is 45.
 
 At runtime, a deadline of `start + 600 − model.timeout_seconds − 60` s also stops fetching, even under 429s or slow responses. Unfetched names count as `not_fetched`, and the run carries on with what it has (FR-003, FR-018). A unit test asserts that the 600 equals `config/schedule.yaml`'s `opportunistic_identifier.timeout_minutes`.
 
 ## O11. Pacing and a shared Finnhub account
 
-**Decision**: `finnhub_calls_per_minute` defaults to 30, with the same pacer pattern as Research and feature 004. A 429 backs off and continues until the deadline.
+**Decision** (owner, 2026-10-07): the OI shares one Finnhub account with the other components and `finnhub_calls_per_minute` defaults to **20**, with the same pacer pattern as Research and feature 004. A 429 backs off and continues until the deadline.
 
-**Owner decision needed** (plan, "Things flagged"): if the OI shares one Finnhub account with the reference-data job (30 a minute) and the PM, their combined pace can exceed the free tier's commonly quoted 60 a minute while an OI run overlaps a PM run. ADR 0016 §5 leaves the account choice to you.
+**Rationale**: with the reference-data job at 30 a minute and the PM's quotes, the OI at 20 keeps the shared account's combined pace near the free tier's commonly quoted 60 a minute (unconfirmed) even while an OI run overlaps a PM run. The cost is a smaller slice: 40 names a run, so a 240-name list is covered daily. Rejected: a separate account (recommended, not chosen) and sharing at 30 with 429 backoff absorbing overlaps.
 
 ## O12. Exit codes, failures and quiet runs
 

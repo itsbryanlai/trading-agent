@@ -38,7 +38,7 @@
 
 **Project Type**: an LLM agent in the existing `trading_agent` package; one run per process.
 
-**Performance Goals**: fits the orchestrator's 10-minute timeout by construction. The loader refuses configs whose worst case exceeds it (O10); the defaults take about 546 s at worst. A runtime deadline is the backstop.
+**Performance Goals**: fits the orchestrator's 10-minute timeout by construction. The loader refuses configs whose worst case exceeds it (O10); the defaults take about 549 s at worst. A runtime deadline is the backstop.
 
 **Constraints**:
 - **No portfolio, decisions, verdicts, orders or journal.** The only write is its own `reports` rows.
@@ -52,11 +52,11 @@
 | Item | Size |
 |---|---|
 | Runs | 6 a day |
-| Fetched per run | up to 60 names (~183 Finnhub calls at 30 a minute) |
+| Fetched per run | up to 40 names (~123 Finnhub calls at 20 a minute, on a shared account) |
 | Sent to the model | 20 names, ~6k tokens in |
 | Written | 0–20 reports out |
 | Scan list | up to 1000 names |
-| Full coverage | `ceil(ceil(U/60)/6)` trading days: a 360-name list is covered daily |
+| Full coverage | `ceil(ceil(U/40)/6)` trading days: a 240-name list is covered daily |
 
 ## Constitution Check
 
@@ -135,14 +135,11 @@ docs/architecture/overview.md, specs/005-orchestrator (note), specs/010-observe-
 
 ## Things flagged for the owner
 
-1. **The Finnhub account (needs your answer).** If the OI shares one Finnhub account with the reference-data job and the PM, their combined pace can exceed the free tier's commonly quoted 60 calls a minute when an OI run overlaps a PM run. Options:
-   - **(a) recommended:** a separate Finnhub account for the OI, so its 30 a minute is its own;
-   - **(b)** share the account and lower the OI to 20 a minute. With the 10-minute budget, that cuts `slice_size` to about 35.
-   - **(c)** share it as is, and let 429 backoff absorb overlaps.
-2. **Ship disabled, enable separately (recommended, O14).** This feature merges with `enabled: false`, so a release deploys nothing that runs. Enabling is a one-line PR after your `--check` and real dry run (quickstart steps 2–3) and once your scan list is filled in.
-3. **The scan list ships empty.** You fill `config/opportunistic_identifier.yaml`'s `scan_universe`; I won't invent tickers. A list of up to ~360 names is covered every day at the defaults.
+1. **The Finnhub account (owner, 2026-10-07: shared, OI slowed).** The OI shares one Finnhub account with the other components and paces at 20 calls a minute. The budget allows a `slice_size` of up to 45; the default is 40, for headroom (O10, O11).
+2. **Ship disabled, enable separately (owner, 2026-10-07: agreed, O14).** This feature merges with `enabled: false`, so a release deploys nothing that runs. Enabling is a one-line PR after your `--check` and real dry run (quickstart steps 2–3) and once your scan list is filled in.
+3. **The scan list ships empty.** You fill `config/opportunistic_identifier.yaml`'s `scan_universe`; I won't invent tickers. A list of up to ~240 names is covered every day at the defaults.
 4. **The orchestrator's PM trigger changes (FR-023, migration 0014).** A view definition only. No grant, and no orchestrator code. It needs the usual open, migrate, close step at release.
-5. **The universe check is a copy, not a shared function (O4).** I've left `risk/gate.py` untouched. A property test pins the OI's copy to `gate._universe_stop`. The alternative, making the gate's function public, is a small refactor of Risk Gate code, which I'd rather not do inside this feature.
+5. **The universe check is a copy, not a shared function (owner, 2026-10-07: agreed, O4).** I've left `risk/gate.py` untouched. A property test pins the OI's copy to `gate._universe_stop`. The alternative, making the gate's function public, is a small refactor of Risk Gate code, which I'd rather not do inside this feature.
 6. **The OI loads `config/risk.yaml`** with the gate's loader, for the universe floors only (O4). Not a limit change, and not a new reader of the limits that matter to the PM.
 7. **Not yet confirmed, settled by your runs:**
    - the metric key names (step 2);
