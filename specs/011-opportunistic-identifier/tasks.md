@@ -148,7 +148,7 @@ description: "Task list for the Opportunistic Identifier agent (feature 011)"
   - names in `open_symbols` are left out first and counted as `already_open`;
   - a hand-computed 6-name example: ranks by `move_today` ascending and by `below_high` descending (1-based ordinals, equal values ordered by symbol), averaged, and the lowest `size` kept, with ties broken by symbol;
   - fewer candidates than `size` returns them all, and none returns an empty list.
-- [ ] T017 [P] [US1] `tests/unit/opportunistic_identifier/test_prompt.py`:
+- [x] T017 [P] [US1] `tests/unit/opportunistic_identifier/test_prompt.py`:
   - `build_user(now, trading_day, shortlist)` returns JSON with exactly `now`, `trading_day` and `names`, where each name has exactly the data-model.md fields, numbers as JSON numbers and missing values as `null`;
   - no key named `positions`, `cash`, `decisions`, `journal` or `reports` appears;
   - `name` and `industry` are cut to 100 characters;
@@ -174,7 +174,7 @@ description: "Task list for the Opportunistic Identifier agent (feature 011)"
 
 - [x] T021 [US1] `src/trading_agent/opportunistic_identifier/text.py` (copy of `research/text.py`'s `clean`, with its docstring citing Research's review H1) and `screen.py` (pure): `Skip`, `Candidate`, `listing_stop` (O5 step 1), `assess` (then freshness, `reference.normalize.normalize`, `universe_stop`, the 52-week high, fundamentals and move checks; `name` and `industry` cleaned and cut to 100 characters), `universe_stop` (the five-line copy of the gate's comparisons, using `risk.rules` rule names and `US_LISTED_MICS`), and `shortlist`. Make T014–T016 and T020a pass.
 - [x] T022 [US1] `src/trading_agent/opportunistic_identifier/answer.py` (pure): `ANSWER_SCHEMA` generated from the contract's answer table (`direction` enum `["buy"]`); `check(text, shortlist, open_symbols, rationale_max_chars) -> Checked` (valid path now; drops in US2); `rows(checked, data_by_symbol, trading_day) -> list[ReportRow]` building sources as in research O9. Make T018 pass.
-- [ ] T023 [US1] `src/trading_agent/opportunistic_identifier/prompt.py`: `PROMPT_VERSION = "0.1"`, `SYSTEM_PROMPT` (research O7, schema appended) and `build_user`. Make T017 pass.
+- [x] T023 [US1] `src/trading_agent/opportunistic_identifier/prompt.py`: `PROMPT_VERSION = "0.1"`, `SYSTEM_PROMPT` (research O7, schema appended) and `build_user`. Make T017 pass.
 - [ ] T024 [US1] `OIRun` in `src/trading_agent/opportunistic_identifier/service.py`:
   1. reads open symbols;
   2. computes the slice;
