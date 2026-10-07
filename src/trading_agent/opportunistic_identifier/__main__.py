@@ -12,6 +12,7 @@ no row could be written (logged).
 
 from __future__ import annotations
 
+import json
 import logging
 import sys
 import time
@@ -23,15 +24,19 @@ import psycopg
 from psycopg.rows import dict_row
 
 from trading_agent.llm.settings import ModelSettings, ModelSettingsError, require_https_base_url
+from trading_agent.opportunistic_identifier.check import run_check, valid_symbols
 from trading_agent.opportunistic_identifier.config import (
     DEFAULT_CONFIG_PATH,
     DEFAULT_RISK_PATH,
     OIConfigError,
     load_config,
 )
+from trading_agent.opportunistic_identifier.dry_run import ReadOnlyStore
+from trading_agent.opportunistic_identifier.dry_run import lines as dry_run_lines
 from trading_agent.opportunistic_identifier.finnhub import OIFinnhub
 from trading_agent.opportunistic_identifier.outcome import WINDOW_CLOSED
 from trading_agent.opportunistic_identifier.service import OIRun, PgOIStore
+from trading_agent.risk import calendar
 from trading_agent.storage.db import ConfigError, require_env
 
 log = logging.getLogger("trading_agent.opportunistic_identifier")
@@ -80,6 +85,7 @@ def main(
     clock: Callable[[], datetime] = lambda: datetime.now(UTC),
     sleep: Callable[[float], None] = time.sleep,
     monotonic: Callable[[], float] = time.monotonic,
+    out: Callable[[str], None] = print,
 ) -> int:
     try:
         return _main(
@@ -89,52 +95,71 @@ def main(
             connect,
             config_path,
             risk_path,
-            clock,
-            sleep,
-            monotonic,
+            (clock, sleep, monotonic),
+            out,
         )
     except Exception as exc:  # a crash: never Python's default exit 1 (research O12)
         log.critical("opportunistic_identifier: crashed: %s", type(exc).__name__)
         return EXIT_CRASHED
 
 
-def _main(argv, market_factory, model_factory, connect, config_path, risk_path, *clocks):
+def _main(argv, market_factory, model_factory, connect, config_path, risk_path, clocks, out):
     clock, sleep, monotonic = clocks
     args = list(sys.argv[1:] if argv is None else argv)
-    if args:
-        log.critical("opportunistic_identifier: unknown arguments")
+    dry_run = args == ["--dry-run"]
+    checking = bool(args) and args[0] == "--check"
+    if args and not dry_run and not (checking and valid_symbols(args[1:])):
+        log.critical("opportunistic_identifier: unknown or invalid arguments")
         return EXIT_REFUSED
 
     try:
-        cfg = load_config(config_path, risk_path)
-        market_key = require_env(FINNHUB_KEY_VARIABLE)
-        model_key = require_env(cfg.provider_key_variable)
-        database_url = require_env(DATABASE_VARIABLE)
-        base_url = _qwen_base_url() if cfg.model.provider == "qwen" else None
+        cfg, market_key, model_key, database_url, base_url = _settings(
+            config_path, risk_path, checking=checking, dry_run=dry_run
+        )
     except (ConfigError, OIConfigError) as exc:
         log.critical("opportunistic_identifier: refusing to start: %s", exc)
         return EXIT_REFUSED
 
-    try:
-        conn = connect(
-            database_url,
-            autocommit=True,
-            row_factory=dict_row,
-            connect_timeout=CONNECT_TIMEOUT_SECONDS,
-        )
-    except psycopg.OperationalError as exc:
-        log.critical("opportunistic_identifier: database unreachable: %s", type(exc).__name__)
-        return EXIT_DATABASE
-
-    try:
-        run = OIRun(
+    if checking:
+        return run_check(
+            args[1:],
             market_factory(market_key),
-            model_factory(cfg.model.provider, model_key, cfg.model, base_url=base_url),
-            PgOIStore(conn),
             cfg,
             clock=clock,
             sleep=sleep,
             monotonic=monotonic,
+            out=out,
+        )
+
+    conn = None
+    if database_url is not None:
+        try:
+            conn = connect(
+                database_url,
+                autocommit=True,
+                row_factory=dict_row,
+                connect_timeout=CONNECT_TIMEOUT_SECONDS,
+            )
+        except psycopg.OperationalError as exc:
+            log.critical("opportunistic_identifier: database unreachable: %s", type(exc).__name__)
+            return EXIT_DATABASE
+
+    try:
+        if dry_run:
+            if conn is None:
+                out(json.dumps({"note": "no database: open reports not read"}))
+            store = ReadOnlyStore(PgOIStore(conn) if conn is not None else None)
+        else:
+            store = PgOIStore(conn)
+        run = OIRun(
+            market_factory(market_key),
+            model_factory(cfg.model.provider, model_key, cfg.model, base_url=base_url),
+            store,
+            cfg,
+            clock=clock,
+            sleep=sleep,
+            monotonic=monotonic,
+            dry_run=dry_run,
         )
         try:
             outcome = run.run()
@@ -142,10 +167,35 @@ def _main(argv, market_factory, model_factory, connect, config_path, risk_path, 
             log.critical("opportunistic_identifier: database error: %s", type(exc).__name__)
             return EXIT_DATABASE
     finally:
-        conn.close()
+        if conn is not None:
+            conn.close()
+    if dry_run:
+        today = calendar.trading_day(clock())
+        for line in dry_run_lines(outcome, closed_day=not calendar.is_session(today)):
+            out(line)
     if outcome.failure == WINDOW_CLOSED:
         return EXIT_WINDOW_CLOSED
     return EXIT_FAILURE_RECORDED if outcome.failure is not None else EXIT_OK
+
+
+def _settings(config_path, risk_path, *, checking: bool, dry_run: bool):
+    """The config and the variables this mode needs: `--check` needs no model and no database,
+    and a dry run's database is optional. Raises ConfigError naming a variable, never a value."""
+    cfg = load_config(config_path, risk_path)
+    market_key = require_env(FINNHUB_KEY_VARIABLE)
+    if checking:
+        return cfg, market_key, None, None, None
+    model_key = require_env(cfg.provider_key_variable)
+    database_url = _optional(DATABASE_VARIABLE) if dry_run else require_env(DATABASE_VARIABLE)
+    base_url = _qwen_base_url() if cfg.model.provider == "qwen" else None
+    return cfg, market_key, model_key, database_url, base_url
+
+
+def _optional(name: str) -> str | None:
+    try:
+        return require_env(name)
+    except ConfigError:
+        return None
 
 
 def _qwen_base_url() -> str:

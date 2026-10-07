@@ -257,17 +257,17 @@ description: "Task list for the Opportunistic Identifier agent (feature 011)"
 
 **Independent test**: a dry run with fakes writes nothing and prints the fake model's token counts.
 
-- [ ] T036 [P] [US4] `tests/unit/opportunistic_identifier/test_main_dry_run.py`:
+- [x] T036 [P] [US4] `tests/unit/opportunistic_identifier/test_main_dry_run.py`:
   - `--dry-run` prints JSON lines `slice`, `skip`, `shortlist` (symbol, both ranks, score), `would_write`, `dropped` and `summary`, including `input_tokens` and `output_tokens`;
   - the store's `write` is never called;
   - it runs outside the window;
   - without `OPPORTUNISTIC_IDENTIFIER_DATABASE_URL`, `open_symbols` is empty and it still runs;
   - no line contains the fake key values.
-- [ ] T037 [P] [US4] `tests/unit/opportunistic_identifier/test_main_check.py`:
+- [x] T037 [P] [US4] `tests/unit/opportunistic_identifier/test_main_check.py`:
   - `--check AAPL MSFT` prints, per symbol, the raw metric keys received, the derived values, and `eligible` or the skip reason;
   - no model client is built, and neither the database variable nor the model variables are required;
   - more than 10 symbols, or an implausible ticker → exit 2.
-- [ ] T038 [US4] Implement `--dry-run` and `--check` in `__main__.py`, adding `dry_run.py` if `__main__.py` would pass 300 lines, so T036–T037 pass.
+- [x] T038 [US4] Implement `--dry-run` and `--check` in `__main__.py`, adding `dry_run.py` if `__main__.py` would pass 300 lines, so T036–T037 pass.
 
 ---
 
