@@ -30,7 +30,9 @@ opportunistic_identifier:
   enabled: false
   module: trading_agent.opportunistic_identifier
   env: []                      # OPPORTUNISTIC_IDENTIFIER_* names only
-  timeout_minutes: 10
+  # 15, not 10: the run's fetch deadline and model attempts are budgeted against it
+  # (specs/011-opportunistic-identifier research O10). Must stay under interval_minutes.
+  timeout_minutes: 15
   window_start: "10:00"
   window_end: "15:00"
   interval_minutes: 60

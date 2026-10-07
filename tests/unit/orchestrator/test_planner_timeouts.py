@@ -13,10 +13,10 @@ OI = "opportunistic_identifier"
 def test_a_run_past_its_timeout_is_stopped():
     hung = record(OI, slot_key="oi@11:00", slot_at=et("11:00"), started=et("11:00"))
     cfg = config(enabled=(OI,))
-    assert p.Stop(hung.id, OI) in p.plan(et("11:10"), cfg, state([hung]))
+    assert p.Stop(hung.id, OI) in p.plan(et("11:15"), cfg, state([hung]))
     assert not [
         a
-        for a in p.plan(et("11:10") - timedelta(seconds=1), cfg, state([hung]))
+        for a in p.plan(et("11:15") - timedelta(seconds=1), cfg, state([hung]))
         if isinstance(a, p.Stop)
     ]
 
