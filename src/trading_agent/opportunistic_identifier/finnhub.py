@@ -110,7 +110,9 @@ class OIFinnhub:
         if not isinstance(metric, dict):
             metric = {}
         return Fundamentals(
-            symbol, **{field: _decimal(metric.get(key)) for key, field in _METRIC_FIELDS.items()}
+            symbol,
+            **{field: _decimal(metric.get(key)) for key, field in _METRIC_FIELDS.items()},
+            received_keys=tuple(sorted(key for key in metric if isinstance(key, str))),
         )
 
     # --- HTTP --------------------------------------------------------------------

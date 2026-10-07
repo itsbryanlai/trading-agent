@@ -71,6 +71,7 @@ class FakeOIMarketData:
         current="201",
         quote_time: datetime | None | str = "default",
         listed: bool = True,
+        received_keys: tuple[str, ...] = (),
         **fundamentals,
     ) -> None:
         """A symbol with sane values by default; pass None for a missing field."""
@@ -86,7 +87,9 @@ class FakeOIMarketData:
         self.quotes[symbol] = Quote(symbol, _dec(current), _dec(previous_close), when)
         values = {**DEFAULT_FUNDAMENTALS, **fundamentals}
         self.fundamentals_by_symbol[symbol] = Fundamentals(
-            symbol, **{key: _dec(value) for key, value in values.items()}
+            symbol,
+            **{key: _dec(value) for key, value in values.items()},
+            received_keys=received_keys,
         )
 
     def fail(self, call: str, symbol: str | None = None, *, error: ProviderError, after: int = 0):

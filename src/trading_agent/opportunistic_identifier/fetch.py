@@ -65,12 +65,12 @@ class Fetcher:
         self.clock, self.sleep, self.monotonic = clock, sleep, monotonic
         self._deadline = deadline
         self._interval = 60 / cfg.finnhub_calls_per_minute
-        self._max_age = timedelta(minutes=cfg.quote_max_age_minutes)
+        self.max_age = timedelta(minutes=cfg.quote_max_age_minutes)
         self._last_weight: int | None = None  # None until the first Finnhub call
         self._backoff = 0.0
 
     def fetch(self, scan: ScanSlice, outcome: RunOutcome) -> list[screen.Candidate]:
-        listings = self._listings()
+        listings = self.listings()
         candidates: list[screen.Candidate] = []
         attempted = failed = 0
         for symbol in scan.symbols:
@@ -89,9 +89,9 @@ class Fetcher:
             raise Failed(MARKET_DATA_UNAVAILABLE)
         return candidates
 
-    def _listings(self) -> dict[str, Listing]:
+    def listings(self) -> dict[str, Listing]:
         try:
-            return self._paced(self.market.us_listings, weight=SYMBOL_LIST_WEIGHT)
+            return self.paced(self.market.us_listings, weight=SYMBOL_LIST_WEIGHT)
         except KeyRejected as exc:
             log.error(
                 "opportunistic_identifier: %s: %s", MARKET_DATA_UNAVAILABLE, type(exc).__name__
@@ -105,13 +105,13 @@ class Fetcher:
 
     def _name(self, symbol: str, listing: Listing, outcome: RunOutcome) -> screen.Candidate | Skip:
         try:
-            quote = self._paced(lambda: self.market.quote(symbol))
+            quote = self.paced(lambda: self.market.quote(symbol))
             outcome.counts.fetched += 1
             fetched_at = self.clock()
-            if screen.is_stale(quote, fetched_at, self._max_age):
+            if screen.is_stale(quote, fetched_at, self.max_age):
                 return Skip(symbol, screen.STALE_QUOTE)  # a stale name costs one call, not three
-            profile = self._paced(lambda: self.market.profile(symbol))
-            fundamentals = self._paced(lambda: self.market.fundamentals(symbol))
+            profile = self.paced(lambda: self.market.profile(symbol))
+            fundamentals = self.paced(lambda: self.market.fundamentals(symbol))
         except _OutOfTime:
             return Skip(symbol, NOT_FETCHED)
         except KeyRejected as exc:
@@ -120,7 +120,7 @@ class Fetcher:
             )
             raise Failed(MARKET_DATA_UNAVAILABLE) from None
         except ProviderError as exc:
-            return Skip(symbol, self._reason(exc))
+            return Skip(symbol, self.reason(exc))
         return screen.assess(
             symbol,
             listing,
@@ -129,16 +129,16 @@ class Fetcher:
             fundamentals,
             fetched_at,
             self.cfg.universe,
-            self._max_age,
+            self.max_age,
         )
 
-    def _reason(self, exc: ProviderError) -> str:
+    def reason(self, exc: ProviderError) -> str:
         if isinstance(exc, RateLimited):
             self._backoff = RATE_LIMIT_BACKOFF_SECONDS
             return RATE_LIMITED
         return NOT_PERMITTED if isinstance(exc, NotPermitted) else PROVIDER_UNAVAILABLE
 
-    def _paced(self, call, *, weight: int = 1):
+    def paced(self, call, *, weight: int = 1):
         """Space Finnhub calls by the configured pace (the call after the symbol list waits
         for its three requests, and after a 429 for a minute). No call starts after the
         deadline, and none is waited for if it would start after it."""

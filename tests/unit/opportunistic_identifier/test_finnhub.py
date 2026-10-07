@@ -312,3 +312,18 @@ def test_repr_str_and_logs_never_show_the_key(caplog):
     with caplog.at_level(logging.DEBUG), pytest.raises(ProviderUnavailable):
         a.quote("X")
     assert all(KEY not in r.getMessage() for r in caplog.records)
+
+
+def test_fundamentals_carry_the_names_of_every_metric_sent_and_never_a_value():
+    body = {"metric": {"peTTM": 20.5, "zzzUnknownMetric": 7, "52WeekHigh": 250, "beta": 1.1}}
+    got = adapter(Opener(body)).fundamentals("AAPL")
+    assert got.received_keys == ("52WeekHigh", "beta", "peTTM", "zzzUnknownMetric")
+    assert "20.5" not in repr(got.received_keys)
+    # The names are not part of equality: two fetches with different extras still compare equal.
+    other = {"metric": {"peTTM": 20.5, "52WeekHigh": 250, "beta": 1.1}}
+    assert got == adapter(Opener(other)).fundamentals("AAPL")
+
+
+def test_no_metric_object_means_no_received_names():
+    assert adapter(Opener({})).fundamentals("X").received_keys == ()
+    assert adapter(Opener({"metric": []})).fundamentals("X").received_keys == ()

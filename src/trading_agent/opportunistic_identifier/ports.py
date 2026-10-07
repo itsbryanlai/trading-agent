@@ -10,7 +10,7 @@ job does (research O4).
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from decimal import Decimal
 from typing import Protocol
 
@@ -82,6 +82,9 @@ class Fundamentals:
     debt_to_equity: Decimal | None = None  # totalDebt/totalEquityQuarterly
     dividend_yield: Decimal | None = None  # currentDividendYieldTTM
     beta: Decimal | None = None  # beta
+    # The names (never values) of every metric the provider sent, so `--check` can confirm the
+    # names above. Not part of equality or the repr.
+    received_keys: tuple[str, ...] = field(default=(), compare=False, repr=False)
 
     def to_metrics(self) -> ref.Metrics:
         return ref.Metrics(self.symbol, self.avg_volume_10d_millions)
