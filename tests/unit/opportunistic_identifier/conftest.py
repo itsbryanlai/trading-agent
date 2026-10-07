@@ -4,6 +4,9 @@ obvious fake."""
 from __future__ import annotations
 
 import pytest
+import yaml
+
+from tests.unit.opportunistic_identifier.support import ROOT
 
 FAKE_URL = "postgresql://oi:fake-not-real@localhost/none"
 FAKE_FINNHUB = "fake-finnhub-not-real"
@@ -26,3 +29,16 @@ def env(monkeypatch):
         "FINNHUB_API_KEY",
     ):
         monkeypatch.delenv(other, raising=False)
+
+
+SHIPPED = ROOT / "config" / "opportunistic_identifier.yaml"
+
+
+@pytest.fixture
+def config_path(tmp_path):
+    """The shipped config with a one-name scan list."""
+    data = yaml.safe_load(SHIPPED.read_text())
+    data["scan_universe"] = ["AAA"]
+    path = tmp_path / "oi.yaml"
+    path.write_text(yaml.safe_dump(data))
+    return path

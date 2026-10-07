@@ -16,20 +16,8 @@ from tests.unit.opportunistic_identifier.conftest import (
     FAKE_FINNHUB,
     SECRETS,
 )
-from tests.unit.opportunistic_identifier.support import ROOT, Clock, FakeConn
+from tests.unit.opportunistic_identifier.support import Clock, FakeConn
 from trading_agent.opportunistic_identifier import __main__ as runner
-
-SHIPPED = ROOT / "config" / "opportunistic_identifier.yaml"
-
-
-@pytest.fixture
-def config_path(tmp_path):
-    """The shipped config with a one-name scan list."""
-    data = yaml.safe_load(SHIPPED.read_text())
-    data["scan_universe"] = ["AAA"]
-    path = tmp_path / "oi.yaml"
-    path.write_text(yaml.safe_dump(data))
-    return path
 
 
 def proposal(symbol="AAA") -> dict:
@@ -42,9 +30,21 @@ def proposal(symbol="AAA") -> dict:
     }
 
 
-def run(args=(), *, config_path, conn=None, connect_error=None, answer=None, seen=None, **kw):
+def run(
+    args=(),
+    *,
+    config_path,
+    conn=None,
+    connect_error=None,
+    answer=None,
+    seen=None,
+    model=None,
+    market=None,
+    clock=None,
+    **kw,
+):
     conn = conn if conn is not None else FakeConn()
-    clock = Clock()
+    clock = clock or Clock()
     seen = seen if seen is not None else {}
 
     def connect(url, **options):
@@ -55,6 +55,8 @@ def run(args=(), *, config_path, conn=None, connect_error=None, answer=None, see
 
     def market_factory(key):
         seen["market_key"] = key
+        if market is not None:
+            return market
         data = FakeOIMarketData()
         data.add("AAA", current="190")
         return data
@@ -62,6 +64,8 @@ def run(args=(), *, config_path, conn=None, connect_error=None, answer=None, see
     def model_factory(provider, key, model_cfg, *, base_url=None):
         seen["model"] = (provider, key, model_cfg.name)
         seen["base_url"] = base_url
+        if model is not None:
+            return model(clock) if callable(model) else model
         return FakeModel(answer if answer is not None else {"proposals": [proposal()]})
 
     code = runner.main(
