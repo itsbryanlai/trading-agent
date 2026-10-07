@@ -62,7 +62,7 @@ and the pause flag, and writes only its own run records
 | Agent | Reads | Writes | Cadence |
 |---|---|---|---|
 | Research | Finnhub news (general + an owner watchlist), own credential; model per [ADR 0018](../adr/0018-qwen-as-a-model-provider.md) | `reports` (own rows) | daily at 08:30 ET ([`specs/007-research-agent`](../../specs/007-research-agent/spec.md)) |
-| Opportunistic Identifier | market data and fundamentals (read-only Finnhub key, [ADR 0016](../adr/0016-market-data-for-the-llm-agents.md)) | `reports` (own rows) | intraday polling |
+| Opportunistic Identifier | an owner scan list; quote, profile and fundamentals per name (own read-only Finnhub key, [ADR 0016](../adr/0016-market-data-for-the-llm-agents.md)); the universe floors in `config/risk.yaml`; model per [ADR 0018](../adr/0018-qwen-as-a-model-provider.md) | `reports` (own rows: buys, or one `no_action`) | hourly, 10:00-15:00 ET, shipped disabled ([`specs/011-opportunistic-identifier`](../../specs/011-opportunistic-identifier/spec.md)) |
 | Portfolio Manager | both agents' unexpired reports, portfolio state, live quote (read-only Finnhub key, [ADR 0016](../adr/0016-market-data-for-the-llm-agents.md)), journal, its own decisions from today; model per [ADR 0018](../adr/0018-qwen-as-a-model-provider.md) (Qwen by default) | `decisions` | morning session + event-driven on new reports, ≥30 min apart, none after 15:30 ET ([ADR 0011](../adr/0011-event-driven-portfolio-manager-runs.md)) |
 | Assistant | everything | nothing | on-demand (Telegram) |
 
