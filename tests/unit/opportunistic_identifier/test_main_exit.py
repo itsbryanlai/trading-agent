@@ -137,3 +137,28 @@ def test_no_exit_path_logs_a_credential(env, config_path, caplog, secret):
     run(config_path=config_path, connect_error=psycopg.OperationalError(secret))
     run(config_path=config_path, conn=FakeConn(fail_write=True))
     assert secret not in caplog.text
+
+
+class ClosingConn(FakeConn):
+    """A connection whose insert is refused for expiring before it was generated."""
+
+    def cursor(self):
+        import contextlib
+
+        from tests.unit.opportunistic_identifier.test_service_window_deadline import Violation
+
+        class Cursor:
+            def executemany(self, statement, rows):
+                raise Violation("reports_expires_after_generated")
+
+        return contextlib.nullcontext(Cursor())
+
+
+def test_the_database_refusing_a_row_at_the_close_is_exit_5_not_3(env, config_path, caplog):
+    code, conn, _ = run(config_path=config_path, conn=ClosingConn())
+    assert code == runner.EXIT_WINDOW_CLOSED == 5 and conn.written == []
+    errors = [r.getMessage() for r in caplog.records if r.levelno >= logging.ERROR]
+    assert errors == [
+        "opportunistic_identifier: window_closed: the close passed before the write; "
+        "nothing written"
+    ]

@@ -154,3 +154,19 @@ def test_on_an_autocommit_connection_a_failed_run_leaves_no_rows(database_url):
         conn.execute("RESET ROLE")
         conn.execute("DELETE FROM reports WHERE rationale_md = %s", (marker,))
         conn.close()
+
+
+def test_a_row_expiring_before_it_was_generated_is_refused_under_the_constraint_the_service_maps(
+    conn,
+):
+    # The service turns exactly this violation into window_closed (exit 5): pin the name.
+    from trading_agent.opportunistic_identifier.service import EXPIRES_CONSTRAINT
+
+    with pytest.raises(psycopg.errors.CheckViolation) as caught:
+        with as_role(conn, ROLE):
+            PgOIStore(conn, _allow_savepoints=True).write([row(expires_at=NOW)])
+    assert (
+        caught.value.diag.constraint_name
+        == EXPIRES_CONSTRAINT
+        == ("reports_expires_after_generated")
+    )

@@ -47,6 +47,8 @@ log = logging.getLogger("trading_agent.opportunistic_identifier")
 # A row written at or after the close would break `expires_at > generated_at`, and the write
 # comes minutes after the start: leave this much room.
 CLOSE_MARGIN = timedelta(minutes=1)
+# The check constraint on `reports` that refuses a row expiring at or before its creation.
+EXPIRES_CONSTRAINT = "reports_expires_after_generated"
 _MODEL_CATEGORIES = (
     (ModelKeyRejected, o.MODEL_KEY_REJECTED),
     (ModelRejected, o.MODEL_REJECTED_REQUEST),
@@ -288,21 +290,30 @@ class OIRun:
         if not self.dry_run and self.clock() >= expires_at - CLOSE_MARGIN:
             # The run outlasted its window: a row written now would expire before it was
             # generated. Nothing is written; the exit status says so (exit 5).
-            log.error(
-                "opportunistic_identifier: %s: the close passed before the write; nothing written",
-                o.WINDOW_CLOSED,
-            )
-            outcome.rows, outcome.failure = [], o.WINDOW_CLOSED
-            return
+            return self._window_closed(outcome)
         outcome.rows = [replace(row, expires_at=expires_at) for row in outcome.rows]
         if not self.dry_run:
-            self.store.write(outcome.rows)  # not caught: a database error is exit 3
+            try:
+                self.store.write(outcome.rows)  # any other database error is exit 3
+            except psycopg.errors.CheckViolation as exc:
+                # The close can pass between the clock check above and the insert: the
+                # database then refuses the row for expiring before it was generated.
+                if exc.diag.constraint_name != EXPIRES_CONSTRAINT:
+                    raise
+                return self._window_closed(outcome)
         if outcome.failure is None and outcome.rows[0].direction != "no_action":
             log.info("opportunistic_identifier: wrote %d report(s)", len(outcome.rows))
         else:
             log.info(
                 "opportunistic_identifier: wrote no_action (%s)", outcome.failure or outcome.note
             )
+
+    def _window_closed(self, outcome: RunOutcome) -> None:
+        log.error(
+            "opportunistic_identifier: %s: the close passed before the write; nothing written",
+            o.WINDOW_CLOSED,
+        )
+        outcome.rows, outcome.failure = [], o.WINDOW_CLOSED
 
 
 def _tally(counts: dict[str, int], empty: str) -> str:

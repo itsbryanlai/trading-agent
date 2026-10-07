@@ -5,8 +5,10 @@ from __future__ import annotations
 
 import logging
 from datetime import UTC, datetime, timedelta
+from types import SimpleNamespace
 from zoneinfo import ZoneInfo
 
+import psycopg
 import pytest
 
 from tests.fakes.model import FakeModel
@@ -277,3 +279,50 @@ def test_rate_limiting_until_the_deadline_fails_the_run_after_the_last_call_that
     assert outcome.counts.skipped == {"rate_limited": 11, "not_fetched": 9}
     assert outcome.failure == "market_data_unavailable" and model.calls == []
     assert len(store.rows) == 1 and store.rows[0].direction == "no_action"
+
+
+# --- the database refusing a row written at the close (review L5) ------------------------------
+
+
+class Violation(psycopg.errors.CheckViolation):
+    """A check violation carrying a constraint name, as the server sends one."""
+
+    def __init__(self, constraint: str) -> None:
+        super().__init__("violates a check constraint")
+        self._constraint = constraint
+
+    @property
+    def diag(self):
+        return SimpleNamespace(constraint_name=self._constraint)
+
+
+def _run_with_violation(constraint: str):
+    when = at(THURSDAY, "11:00")
+    store = FakeOIStore(fail_write=Violation(constraint))
+    return run(
+        fresh_market(when), answer_for("AAA"), universe=["AAA"], clock=Clock(when), store=store
+    )
+
+
+def test_a_row_the_database_refuses_for_expiring_before_it_was_generated_is_window_closed(
+    caplog,
+):
+    # The close can pass between the clock check and the insert: the constraint says so.
+    with caplog.at_level(logging.INFO):
+        outcome, _, _, store, _ = _run_with_violation("reports_expires_after_generated")
+    assert outcome.failure == "window_closed" and outcome.rows == [] and store.writes == []
+    errors = [r.getMessage() for r in caplog.records if r.levelno >= logging.ERROR]
+    assert errors == [
+        "opportunistic_identifier: window_closed: the close passed before the write; "
+        "nothing written"
+    ]
+    assert not [m for m in messages(caplog) if m.startswith("opportunistic_identifier: wrote")]
+
+
+@pytest.mark.parametrize(
+    "constraint",
+    ["reports_sources_required_when_actionable", "reports_buy_size_positive", "", None],
+)
+def test_any_other_check_violation_still_reaches_the_caller_as_a_database_error(constraint):
+    with pytest.raises(psycopg.errors.CheckViolation):
+        _run_with_violation(constraint)
