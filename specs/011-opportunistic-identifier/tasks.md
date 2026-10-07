@@ -195,7 +195,7 @@ description: "Task list for the Opportunistic Identifier agent (feature 011)"
 
   Tests in `tests/unit/opportunistic_identifier/test_main.py`: missing or invalid variables → exit 2, naming the variable without its value; unknown argument → exit 2; a happy run → exit 0; with `ANTHROPIC_API_KEY`, `RESEARCH_DASHSCOPE_API_KEY` and `FINNHUB_API_KEY` set but the OI's own unset → exit 2 (FR-020: non-prefixed and other agents' variables are never used).
 - [x] T026 [US1] `src/trading_agent/storage/migrations/0014_latest_argued_report.sql`: `CREATE OR REPLACE VIEW latest_report_time AS SELECT max(generated_at) AS generated_at FROM reports WHERE generated_at <= now() AND direction <> 'no_action';`, with a header comment citing spec FR-023, research O13 and ADR 0011, and saying the grants are unchanged. Make T020 pass, and run the full `tests/integration/orchestrator` suite.
-- [ ] T027 [US1] Docs for FR-023:
+- [x] T027 [US1] Docs for FR-023:
   - one line in `docs/specs/orchestrator.md` Inputs: "a `no_action` report doesn't count as new (`specs/011-opportunistic-identifier` FR-023)";
   - a dated amendment note, `Amended 2026-10-07 by feature 011`, at the end of `specs/005-orchestrator/spec.md`, stating the same, without changing its accepted requirements' text;
   - in the same note, that the Opportunistic Identifier's timeout is now 15 minutes (`specs/005-orchestrator/spec.md` Assumptions still says 10; don't edit that line);

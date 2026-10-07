@@ -112,7 +112,8 @@ Readers: the orchestrator, the Assistant and the dashboard
 
 ## `latest_report_time` (view)
 
-A single value: the newest report's creation time. It is the only thing the
+A single value: the newest report's creation time, excluding `no_action` reports (feature 011,
+migration `0014`). It is the only thing the
 orchestrator may learn about reports (ADR 0011). Readers: the orchestrator, the
 Assistant and the dashboard.
 
