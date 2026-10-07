@@ -104,7 +104,18 @@ def test_the_system_prompt_states_the_rules_and_carries_the_schema():
 
 
 def test_the_system_prompt_names_its_version():
+    assert prompt.PROMPT_VERSION == "0.2"
     assert f"v{prompt.PROMPT_VERSION}" in prompt.SYSTEM_PROMPT
+
+
+def test_the_prompt_does_not_assert_that_every_name_has_fallen(  # review M3
+):
+    system = " ".join(prompt.SYSTEM_PROMPT.split())
+    assert "whose price has fallen" not in system and "that have fallen" not in system
+    assert "ranked a list of stocks by how far their price has fallen today and from" in system
+    assert "the 52-week high" in system
+    assert "some may not have fallen at all" in system
+    assert "only real undervaluation" in system
 
 
 def test_an_empty_shortlist_gives_an_empty_names_list():

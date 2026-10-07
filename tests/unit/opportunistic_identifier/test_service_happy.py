@@ -192,7 +192,7 @@ def test_log_lines_follow_the_contract_with_token_counts(caplog):
     with caplog.at_level(logging.INFO, logger="trading_agent.opportunistic_identifier"):
         run(answer=answer_for("AAA", "BBB"))
     assert messages(caplog) == [
-        "opportunistic_identifier: run started (prompt v0.1, provider qwen, model qwen3.7-plus, "
+        "opportunistic_identifier: run started (prompt v0.2, provider qwen, model qwen3.7-plus, "
         "batch 1/1)",
         "opportunistic_identifier: 6 in slice, 4 fetched, 3 skipped (not_listed: 1, "
         "stale_quote: 1, universe_listing: 1), 0 already open",
