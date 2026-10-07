@@ -136,10 +136,10 @@ docs/architecture/overview.md, specs/005-orchestrator (note), specs/010-observe-
 
 ## Things flagged for the owner
 
-1. **The Finnhub account (owner, 2026-10-07: shared, OI slowed).** The OI shares one Finnhub account with the other components and paces at 20 calls a minute. The budget allows a `slice_size` of up to 45; the default is 40, for headroom (O10, O11).
+1. **The Finnhub account (owner, 2026-10-07: shared, OI slowed).** The OI shares one Finnhub account with the other components and paces at 20 calls a minute. The budget allows a `slice_size` of up to 71 on Qwen and 57 on Anthropic; the default is 40 (O10, O11).
 2. **Ship disabled, enable separately (owner, 2026-10-07: agreed, O14).** This feature merges with `enabled: false`, so a release deploys nothing that runs. Enabling is a one-line PR after your `--check` and real dry run (quickstart steps 2–3) and once your scan list is filled in.
 3. **The scan list ships empty.** You fill `config/opportunistic_identifier.yaml`'s `scan_universe`; I won't invent tickers. A list of up to ~240 names is covered every day at the defaults.
-4. **The OI's timeout rises to 15 minutes** in `config/schedule.yaml` (owner, 2026-10-07, after `/speckit-analyze` B1). Allowed by the schedule's rules (under the 60-minute interval and the 30-minute before-close).
+4. **The OI's timeout rises to 15 minutes** in `config/schedule.yaml` (owner, 2026-10-07, after `/speckit-analyze` B1). Allowed by the schedule's rules: the OI's timeout must be shorter than its 60-minute interval. Three orchestrator tests that assume 10 minutes are updated with it (T007a).
 5. **The orchestrator's PM trigger changes (FR-023, migration 0014).** A view definition only. No grant, and no orchestrator code. It needs the usual open, migrate, close step at release.
 6. **The universe check is a copy, not a shared function (owner, 2026-10-07: agreed, O4).** I've left `risk/gate.py` untouched. A property test pins the OI's copy to `gate._universe_stop`. The alternative, making the gate's function public, is a small refactor of Risk Gate code, which I'd rather not do inside this feature.
 7. **The OI loads `config/risk.yaml`** with the gate's loader, for the universe floors only (O4). Not a limit change, and not a new reader of the limits that matter to the PM.

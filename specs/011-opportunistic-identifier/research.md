@@ -161,7 +161,7 @@ A unit test asserts that no source field ever contains the key (the FR-013 crede
 
 ## O10. Run budget
 
-**Decision** (after `/speckit-analyze` B1; owner, 2026-10-07): the orchestrator's timeout for the OI rises from 10 to **15 minutes** (`config/schedule.yaml` `opportunistic_identifier.timeout_minutes: 15`; `RUN_BUDGET_SECONDS = 900`). That is allowed by the schedule's own rules: shorter than the 60-minute interval and than the PM's 30-minute `before_close`.
+**Decision** (after `/speckit-analyze` B1; owner, 2026-10-07): the orchestrator's timeout for the OI rises from 10 to **15 minutes** (`config/schedule.yaml` `opportunistic_identifier.timeout_minutes: 15`; `RUN_BUDGET_SECONDS = 900`). That is allowed by the schedule's own rule for the OI: its timeout must be shorter than its 60-minute interval (`orchestrator/config.py` `_interval_outlasts_timeout`).
 
 **The guarantee is a runtime deadline**, not a worst-case sum. Fetching stops at:
 

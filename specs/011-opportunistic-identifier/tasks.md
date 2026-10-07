@@ -87,8 +87,14 @@ description: "Task list for the Opportunistic Identifier agent (feature 011)"
   - 401 → `KeyRejected`; 403 on the symbol list → `KeyRejected`; 403 per symbol → `NotPermitted`; 429 → `RateLimited`; other HTTP errors, timeouts, truncated bodies and non-JSON → `ProviderUnavailable`;
   - the key is in the `X-Finnhub-Token` header and in no URL, `repr`, `str` or exception message;
   - a redirect is refused.
-- [ ] T007 Implement `src/trading_agent/opportunistic_identifier/ports.py` (the `MarketData` protocol; `Listing` with `to_reference()`; `CompanyProfile` with `to_reference()`; `Fundamentals` with `to_metrics()`; re-export the four `reference.provider` errors) and `finnhub.py` (`OIFinnhub`, built like `reference/finnhub.py`, `BASE_URL = "https://finnhub.io/api/v1"`, using `open_without_redirects()`), so T006 passes. Add a test that `to_reference()` and `to_metrics()` give exactly the `reference.provider` types `reference.normalize.normalize` accepts. Also a test that the module's `SYMBOL_LIST_MICS == tuple(sorted(risk.rules.US_LISTED_MICS))`. **Adapter equivalence** (`/speckit-analyze` G1): feed identical fake Finnhub response bodies for `/stock/symbol`, `/stock/profile2`, `/quote` and `/stock/metric` through both `reference.finnhub.FinnhubProvider` and `OIFinnhub`, and assert `reference.normalize.normalize` returns the same `ReferenceRow` or `Failure` for each, including a conflicting listing, a non-USD market cap and a zero volume.
-- [ ] T008 [P] Tests first, in `tests/unit/opportunistic_identifier/test_config.py`, for `config.load_config(path, risk_path)`:
+- [ ] T007 Implement `src/trading_agent/opportunistic_identifier/ports.py` (the `MarketData` protocol; `Listing` with `to_reference()`; `CompanyProfile` with `to_reference()`; `Fundamentals` with `to_metrics()`; re-export the four `reference.provider` errors) and `finnhub.py` (`OIFinnhub`, built like `reference/finnhub.py`, `BASE_URL = "https://finnhub.io/api/v1"`, `TIMEOUT_SECONDS = 10` (the per-call socket timeout the budget counts), using `open_without_redirects()`), so T006 passes. Add a test that `to_reference()` and `to_metrics()` give exactly the `reference.provider` types `reference.normalize.normalize` accepts. Also a test that the module's `SYMBOL_LIST_MICS == tuple(sorted(risk.rules.US_LISTED_MICS))`. **Adapter equivalence** (`/speckit-analyze` G1): feed identical fake Finnhub response bodies for `/stock/symbol`, `/stock/profile2`, `/quote` and `/stock/metric` through both `reference.finnhub.FinnhubProvider` and `OIFinnhub`, and assert `reference.normalize.normalize` returns the same `ReferenceRow` or `Failure` for each, including a conflicting listing, a non-USD market cap and a zero volume.
+- [ ] T007a Schedule timeout (research O10): in `config/schedule.yaml` set `opportunistic_identifier.timeout_minutes: 15`, with a comment citing research O10 (leave `env` and `enabled` for T040). Update the orchestrator tests that load the real schedule and assume 10 minutes:
+  - `tests/unit/orchestrator/test_planner_timeouts.py` `test_a_run_past_its_timeout_is_stopped`: the Stop is at `et("11:15")`, and none at one second before;
+  - `tests/unit/orchestrator/test_service_day.py` (around line 138): tick until after `et("11:20")`, and `finished_at - et("11:15") < timedelta(minutes=1)`;
+  - `tests/unit/orchestrator/test_logging.py` (around line 60): the comment says "past its 15 minutes", and the tick moves to `et("10:16")` so the run is genuinely past its timeout.
+
+  Run `pytest tests/unit/orchestrator tests/unit/deploy`. **Never revert the timeout to make a test pass**: the OI's run budget depends on it.
+- [ ] T008 Tests first, in `tests/unit/opportunistic_identifier/test_config.py`, for `config.load_config(path, risk_path)`:
   - every key is required and unknown keys are rejected, including in `slots` and `model` (via `llm.settings.parse_model_settings` with `timeout_bounds=(30, 300)`);
   - bounds: `slice_size` 1–200, `shortlist_size` 1–40 and ≤ `slice_size`, `quote_max_age_minutes` 1–60, `finnhub_calls_per_minute` 1–60, `rationale_max_chars` 200–10000, `max_input_chars` 5000–300000, `slots.every_minutes` 15–240, `slots.before_close_minutes` 0–120, and `slots.first` and `slots.last` as `HH:MM` with `first ≤ last`;
   - `scan_universe`: each entry passes `reference.symbols.is_plausible_ticker` and contains no `.` or `-`, with at most 1000 entries. Duplicates are de-duplicated, and the result is sorted;
@@ -102,6 +108,7 @@ description: "Task list for the Opportunistic Identifier agent (feature 011)"
 - [ ] T010 [P] Tests first, in `tests/unit/opportunistic_identifier/test_rotation.py`:
   - `day_slots(day, slots)`: the times from `first`, every `every_minutes`, up to `min(last, close − before_close_minutes)`, exactly the orchestrator's `oi_slots` rule. A normal day gives 6 (10:00–15:00); 2026-11-27 (close 13:00) gives 3 (10:00, 11:00, 12:00); a non-session day gives none. An extra test compares `day_slots` with `orchestrator.planner.oi_slots` times for 20 sample days, including early closes (tests may import `orchestrator`; the package may not);
   - `slot_number(now, slots)`: the index of the latest of today's slots at or before `now`; 09:45 → 0; 15:59 → 5;
+  - **a non-session day** (only reachable by `--dry-run`, since a real run stops at the window check): `slice_for` uses the next session, slot 0, and says so in the dry run's `slice` line. Test with Sat 2026-10-10 (→ Mon 2026-10-12, slot 0);
   - `run_index(today, now, slots)`: the number of slots on every session from 2026-01-02 up to the day before `today`, plus `slot_number`. Consecutive slots, across weekends, holidays and early closes, get consecutive indices;
   - `slice_for(universe, today, now, slots, slice_size)` returns `ScanSlice(run_index, batch, batches, symbols)`, with `batches = ceil(U / slice_size)`, `batch = run_index mod batches`, and symbols the batch's consecutive slice of the sorted universe. An empty universe gives `batches = 0` and no symbols;
   - **Hypothesis property (SC-003)**: for any universe of 1–1000 symbols, `slice_size` 1–200 and any start date in 2026–2027, running every slot that exists for `batches` consecutive slots covers every symbol exactly once.
@@ -191,6 +198,7 @@ description: "Task list for the Opportunistic Identifier agent (feature 011)"
 - [ ] T027 [US1] Docs for FR-023:
   - one line in `docs/specs/orchestrator.md` Inputs: "a `no_action` report doesn't count as new (`specs/011-opportunistic-identifier` FR-023)";
   - a dated amendment note, `Amended 2026-10-07 by feature 011`, at the end of `specs/005-orchestrator/spec.md`, stating the same, without changing its accepted requirements' text;
+  - in the same note, that the Opportunistic Identifier's timeout is now 15 minutes (`specs/005-orchestrator/spec.md` Assumptions still says 10; don't edit that line);
   - wherever `docs/specs/data-model.md` or `specs/001-data-model` describes `latest_report_time` as "the newest report's creation time", add "excluding `no_action` reports (feature 011)".
 
 **Checkpoint**: US1 is shippable with the schedule still disabled.
@@ -235,7 +243,7 @@ description: "Task list for the Opportunistic Identifier agent (feature 011)"
   Plus: partial data (some names `NotPermitted` or `ProviderUnavailable`) doesn't fail the run (FR-018). ERROR log lines name the exception type and HTTP status, never the message.
 - [ ] T033 [P] [US3] `tests/unit/opportunistic_identifier/test_service_window_deadline.py`:
   - **window**: a weekend, a holiday, 09:45 ET, or after the close → nothing fetched, logged, exit 0. 10:00 ET and 15:59 ET run. On the early-close day, 13:01 ET does nothing;
-  - **window closed**: the close passing mid-run → nothing written, `window_closed` logged, **exit 5**;
+  - **window closed**: the close passing mid-run → nothing written, `window_closed` logged at ERROR, **exit 5**;
   - **deadline**: with a fake clock that advances per call, no call starts after `config.fetch_deadline(start)` (650 s on Qwen, 530 s on Anthropic with the shipped config), unfetched names count as `not_fetched`, and the model call still happens with what was fetched;
   - **rate limit**: `RateLimited` backs off and continues until the deadline.
 - [ ] T034 [P] [US3] `tests/unit/opportunistic_identifier/test_main_exit.py`: a database unreachable or a failed read or write → exit 3. The `no_action` write itself failing → exit 3. An exception escaping before any write → exit 4, logged CRITICAL with its type only.
@@ -266,7 +274,7 @@ description: "Task list for the Opportunistic Identifier agent (feature 011)"
 ## Phase 7: Rollout wiring (shipped disabled) and docs
 
 - [ ] T039 [P] Login: add `Login("ta_opportunistic_identifier_login", "ta_opportunistic_identifier")` to `LOGINS` in `src/trading_agent/storage/logins.py` (update the comment to "nine rows"). Update `tests/unit/storage/test_logins.py` and `tests/integration/storage/test_logins.py` to nine. Add a dated amendment note to `specs/010-observe-only-deployment/contracts/logins-command.md`.
-- [ ] T040 [P] Schedule: in `config/schedule.yaml`, fill `opportunistic_identifier.env` with the five `OPPORTUNISTIC_IDENTIFIER_*` names, each with the same style of comment as Research's, and set `timeout_minutes: 15` with a comment citing research O10. **Keep `enabled: false`**, and update the header comment ("the OI exists (feature 011) and ships disabled; a separate PR enables it after the owner's dry run"). Run `pytest tests/unit/orchestrator`.
+- [ ] T040 [P] Schedule: in `config/schedule.yaml`, fill `opportunistic_identifier.env` with the five `OPPORTUNISTIC_IDENTIFIER_*` names, each with the same style of comment as Research's (the timeout was set in T007a). **Keep `enabled: false`**, and update the header comment ("the OI exists (feature 011) and ships disabled; a separate PR enables it after the owner's dry run"). Run `pytest tests/unit/orchestrator`.
 - [ ] T041 [P] Deployment: add the five names as `preserve()` to the orchestrator service's `env` in `.railway/railway.ts`. Add them to the pinned orchestrator tuple in `tests/unit/deploy/test_deployed_shape.py`, and update `.railway/README.md`'s variable list if it names Research's. Run `pytest tests/unit/deploy`.
 - [ ] T042 [P] Behavior spec: update `docs/specs/opportunistic-identifier-agent.md` to point at this feature, as `docs/specs/research-agent.md` does. Cover: the owner's scan list; design A (code screens, one model call on about 20 names); buy only; the two-rank ranking; the 15-minute quote limit; open names left out; Qwen by default; its own Finnhub key on a shared account; and quiet runs not waking the PM. Keep the existing non-goals.
 - [ ] T043 [P] Update the Opportunistic Identifier row in `docs/architecture/overview.md` to reflect this feature's inputs and cadence (no new design).
@@ -284,15 +292,14 @@ description: "Task list for the Opportunistic Identifier agent (feature 011)"
 ## Dependencies & execution order
 
 - **Phase 1** first. T001–T004 are independent.
-- **T040 lands before or with T008–T009**, since the config test reads `timeout_minutes: 15` from `config/schedule.yaml`.
-- **Phase 2** blocks every story. The pairs T006→T007, T008→T009, T010→T011 and T012→T013 are each test then code, and the pairs can run in parallel with each other.
+- **Phase 2** blocks every story. Order within it: T005, then T006→T007 → T007a → T008→T009 (the config test reads `finnhub.TIMEOUT_SECONDS` and the 15-minute schedule). T010→T011 and T012→T013 can run in parallel with that chain.
 - **US1 (Phase 3)** needs Phase 2. Within it: T014–T020 tests, then T021 → T022 → T023 → T024 → T025. T026–T027 are independent of T021–T025.
 - **US2** needs T022 and T024. **US3** needs T024–T025. **US4** needs T025.
 - **Phase 7** is independent of US2–US4, but merges after them. **Phase 8** comes last.
 
 ## Parallel examples
 
-- **Phase 2**: T006, T008, T010 and T012 (four test files) at once.
+- **Phase 2**: T006, T010 and T012 (three test files) at once; T008 after T007a.
 - **US1 tests**: T014, T015, T016, T017, T018 and T020 at once, then T019 once the fake exists.
 - **Phase 7**: T039–T043 at once.
 

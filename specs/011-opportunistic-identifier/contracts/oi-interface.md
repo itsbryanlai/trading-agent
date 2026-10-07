@@ -112,4 +112,5 @@ Logs never contain a variable's value, the prompt, or the model's answer.
 | INFO | end | `opportunistic_identifier: wrote <n> report(s)` or `… wrote no_action (<why>)` |
 | INFO | outside window | `opportunistic_identifier: outside the trading window; nothing to do` |
 | ERROR | failure | `opportunistic_identifier: <category>: <exception type>`, plus ` (HTTP <status>)` when there is one |
+| ERROR | exit 5 | `opportunistic_identifier: window_closed: the close passed before the write; nothing written` |
 | CRITICAL | exits 2 and 3 | the reason, by variable name or error type |
