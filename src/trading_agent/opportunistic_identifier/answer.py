@@ -5,9 +5,8 @@ trusted: a proposal is written only if it passes every rule, and every field tha
 is rebuilt by code. A report's sources are built from what the run fetched, never from the
 model's text (FR-013). The dry-run and the write both go through here.
 
-Drop reasons are coarse for now: any proposal that isn't fully valid is dropped as
-`malformed_answer`, which fails closed. The per-rule reasons arrive with the drop rules
-(tasks T028-T031). SC-002 ("nothing off the shortlist is written") is a Hypothesis property
+A proposal is dropped, with exactly one reason, at the first rule it fails, in the order
+below. SC-002 ("nothing off the shortlist is written") is a Hypothesis property
 of this module (tests/unit/opportunistic_identifier/test_answer_property.py).
 """
 
@@ -16,7 +15,7 @@ from __future__ import annotations
 import json
 import math
 from collections.abc import Collection, Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import date, datetime
 from decimal import ROUND_DOWN, Decimal, InvalidOperation
 
@@ -24,7 +23,24 @@ from trading_agent.opportunistic_identifier import text
 from trading_agent.opportunistic_identifier.screen import NameData
 from trading_agent.risk import calendar
 
+# The drop reasons, in the order the rules apply (a closed set; contracts/oi-interface.md).
 MALFORMED_ANSWER = "malformed_answer"
+NOT_SHORTLISTED = "not_shortlisted"
+INVALID_DIRECTION = "invalid_direction"
+INVALID_CONVICTION = "invalid_conviction"
+INVALID_SIZE = "invalid_size"
+DUPLICATE_SYMBOL = "duplicate_symbol"
+ALREADY_OPEN = "already_open"
+DROP_REASONS = (
+    MALFORMED_ANSWER,
+    NOT_SHORTLISTED,
+    INVALID_DIRECTION,
+    INVALID_CONVICTION,
+    INVALID_SIZE,
+    DUPLICATE_SYMBOL,
+    ALREADY_OPEN,
+)
+SYMBOL_LOG_CHARS = 16  # a model-written symbol reaches a log only cleaned and this short
 
 ELLIPSIS = "…"
 # Where the sources point. The adapter's BASE_URL (a test keeps them equal): this module is
@@ -120,36 +136,44 @@ def check(
     drops: list[Drop] = []
     for index, item in enumerate(parsed["proposals"]):
         found = _proposal(item, allowed, rationale_max_chars)
-        if (
-            found is None
-            or found.symbol in open_symbols
-            or any(p.symbol == found.symbol for p in accepted)
-        ):
-            drops.append(Drop(index, None, MALFORMED_ANSWER))
+        if isinstance(found, Drop):
+            drops.append(replace(found, index=index))
+        elif any(p.symbol == found.symbol for p in accepted):
+            drops.append(Drop(index, found.symbol, DUPLICATE_SYMBOL))
+        elif found.symbol in open_symbols:
+            drops.append(Drop(index, found.symbol, ALREADY_OPEN))
         else:
             accepted.append(found)
     return Checked(tuple(accepted), tuple(drops), unusable=False, received=len(parsed["proposals"]))
 
 
-def _proposal(item, shortlist: set[str], rationale_max_chars: int) -> Proposal | None:
-    if not isinstance(item, dict) or set(item) != set(_FIELDS):
-        return None
-    symbol = item["symbol"]
-    if not isinstance(symbol, str) or symbol not in shortlist:
-        return None  # exact string match: " MSFT" and "msft" are not "MSFT"
-    if item["direction"] != "buy":
-        return None
-    conviction = item["conviction"]
-    if isinstance(conviction, bool) or not isinstance(conviction, int) or not 1 <= conviction <= 5:
-        return None
-    size = _size(item["suggested_size_pct"])
-    rationale = item["rationale"]
-    if size is None or not isinstance(rationale, str):
-        return None
+def _proposal(item, shortlist: set[str], rationale_max_chars: int) -> Proposal | Drop:
+    """The proposal, or the first rule it fails (its index is filled in by the caller)."""
+    if not isinstance(item, dict):
+        return Drop(0, None, MALFORMED_ANSWER)
+    symbol = item.get("symbol")
+    named = _loggable(symbol) if isinstance(symbol, str) else None
+    rationale = item.get("rationale")
+    if set(item) != set(_FIELDS) or not isinstance(symbol, str) or not isinstance(rationale, str):
+        return Drop(0, named, MALFORMED_ANSWER)
     rationale = text.clean(rationale).strip()
     if not rationale:
-        return None
+        return Drop(0, named, MALFORMED_ANSWER)
+    if symbol not in shortlist:  # exact string match: " MSFT" and "msft" are not "MSFT"
+        return Drop(0, named, NOT_SHORTLISTED)
+    if item["direction"] != "buy":
+        return Drop(0, named, INVALID_DIRECTION)
+    conviction = item["conviction"]
+    if isinstance(conviction, bool) or not isinstance(conviction, int) or not 1 <= conviction <= 5:
+        return Drop(0, named, INVALID_CONVICTION)
+    size = _size(item["suggested_size_pct"])
+    if size is None:
+        return Drop(0, named, INVALID_SIZE)
     return Proposal(symbol, conviction, size, _cap(rationale, rationale_max_chars))
+
+
+def _loggable(symbol: str) -> str:
+    return text.clean(symbol)[:SYMBOL_LOG_CHARS]
 
 
 def rows(

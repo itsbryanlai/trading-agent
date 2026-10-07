@@ -178,7 +178,7 @@ def test_run_counts_are_right():
     c = outcome.counts
     assert (c.in_slice, c.fetched, c.already_open, c.eligible, c.shortlisted) == (6, 4, 1, 2, 2)
     assert c.skipped == {"not_listed": 1, "stale_quote": 1, "universe_listing": 1}
-    assert (c.proposed, c.written, c.dropped) == (2, 1, {"malformed_answer": 1})
+    assert (c.proposed, c.written, c.dropped) == (2, 1, {"not_shortlisted": 1})
     assert (c.input_tokens, c.output_tokens) == (1200, 300)
 
 
@@ -236,8 +236,8 @@ def test_every_proposal_dropped_gives_all_dropped(caplog):
         outcome, _, _, store, _ = run(answer=answer_for("ZZZ"))
     (row,) = store.rows
     assert outcome.note == "all_dropped" and row.direction == "no_action"
-    assert "dropped (malformed_answer: 1)" in row.rationale_md
-    assert "opportunistic_identifier: dropped proposal 0 (-): malformed_answer" in messages(caplog)
+    assert "dropped (not_shortlisted: 1)" in row.rationale_md
+    assert "opportunistic_identifier: dropped proposal 0 (ZZZ): not_shortlisted" in messages(caplog)
 
 
 def test_an_empty_scan_list_makes_no_fetch_and_no_model_call():
