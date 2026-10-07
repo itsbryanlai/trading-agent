@@ -166,7 +166,7 @@ description: "Task list for the Opportunistic Identifier agent (feature 011)"
   - a model that proposes nothing gives one `no_action` with `nothing_argued` and the counts, and exit 0;
   - an empty `scan_universe` gives `empty_scan_universe` with no fetch and no model call;
   - an all-skipped slice gives `empty_shortlist` with no model call.
-- [ ] T020a [P] [US1] `tests/unit/opportunistic_identifier/test_text.py`: `clean` removes NUL, other C0 controls except `\n` and `\t`, DEL and lone surrogates, and keeps everything else; identical behavior to `research.text.clean` on a Hypothesis-generated string (the test may import both).
+- [x] T020a [P] [US1] `tests/unit/opportunistic_identifier/test_text.py`: `clean` removes NUL, other C0 controls except `\n` and `\t`, DEL and lone surrogates, and keeps everything else; identical behavior to `research.text.clean` on a Hypothesis-generated string (the test may import both).
 - [ ] T020b [P] [US1] `tests/integration/portfolio_manager/test_reads_oi_reports.py` (SC-006): an open OI buy report inserted as `ta_opportunistic_identifier` is returned by the PM's `PostgresStore.read_inputs` with `agent = 'opportunistic_identifier'`.
 - [ ] T020 [P] [US1] `tests/integration/orchestrator/test_latest_argued_report.py`, migration 0014: as the migration admin, insert a research buy report at T1 and then an OI `no_action` at T2 > T1. `SELECT generated_at FROM latest_report_time` as `ta_orchestrator` returns T1. A later OI buy at T3 returns T3. A future-dated report is still ignored. `ta_assistant` and `ta_dashboard` can still read the view.
 
