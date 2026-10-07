@@ -247,7 +247,7 @@ description: "Task list for the Opportunistic Identifier agent (feature 011)"
   - **deadline**: with a fake clock that advances per call, no call starts after `config.fetch_deadline(start)` (650 s on Qwen, 530 s on Anthropic with the shipped config), unfetched names count as `not_fetched`, and the model call still happens with what was fetched;
   - **rate limit**: `RateLimited` backs off and continues until the deadline.
 - [ ] T034 [P] [US3] `tests/unit/opportunistic_identifier/test_main_exit.py`: a database unreachable or a failed read or write → exit 3. The `no_action` write itself failing → exit 3. An exception escaping before any write → exit 4, logged CRITICAL with its type only.
-- [ ] T035 [US3] Implement the failure mapping, the window check (research O12) and the deadline in `service.py` and `__main__.py`, so T032–T034 pass.
+- [x] T035 [US3] Implement the failure mapping, the window check (research O12) and the deadline in `service.py` and `__main__.py`, so T032–T034 pass.
 
 ---
 

@@ -6,7 +6,8 @@ model key. Variables are reported by name, never by value.
 
 Exit codes: 0 ran (reports or a quiet no_action); 1 wrote a failure no_action; 2 refused to
 start; 3 database unreachable or a read or write failed; 4 crashed (never Python's default 1,
-so a crash isn't mistaken for a recorded failure).
+so a crash isn't mistaken for a recorded failure); 5 the close passed during the run, so
+no row could be written (logged).
 """
 
 from __future__ import annotations
@@ -29,6 +30,7 @@ from trading_agent.opportunistic_identifier.config import (
     load_config,
 )
 from trading_agent.opportunistic_identifier.finnhub import OIFinnhub
+from trading_agent.opportunistic_identifier.outcome import WINDOW_CLOSED
 from trading_agent.opportunistic_identifier.service import OIRun, PgOIStore
 from trading_agent.storage.db import ConfigError, require_env
 
@@ -47,6 +49,7 @@ EXIT_FAILURE_RECORDED = 1
 EXIT_REFUSED = 2
 EXIT_DATABASE = 3
 EXIT_CRASHED = 4
+EXIT_WINDOW_CLOSED = 5
 
 
 def build_model(provider: str, key: str, model: ModelSettings, *, base_url: str | None = None):
@@ -140,6 +143,8 @@ def _main(argv, market_factory, model_factory, connect, config_path, risk_path, 
             return EXIT_DATABASE
     finally:
         conn.close()
+    if outcome.failure == WINDOW_CLOSED:
+        return EXIT_WINDOW_CLOSED
     return EXIT_FAILURE_RECORDED if outcome.failure is not None else EXIT_OK
 
 
