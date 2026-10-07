@@ -57,17 +57,17 @@ description: "Task list for the Opportunistic Identifier agent (feature 011)"
 
 ## Phase 1: Setup
 
-- [ ] T001 [P] Create the packages:
+- [x] T001 [P] Create the packages:
   - `src/trading_agent/opportunistic_identifier/__init__.py`, with a docstring naming ADRs 0002, 0016, 0017 and 0018 and saying "writes only its own buy reports; no portfolio, decisions or broker";
   - `tests/unit/opportunistic_identifier/__init__.py` and `tests/integration/opportunistic_identifier/__init__.py`.
-- [ ] T002 [P] Add `"opportunistic_identifier"` to the top layer of `[tool.importlinter]` in `pyproject.toml`, so it reads `"execution | orchestrator | research | portfolio_manager | opportunistic_identifier"`. Run `scripts/lint.sh` to confirm the contract still passes.
-- [ ] T003 [P] Create `config/opportunistic_identifier.yaml` exactly as in contracts/oi-interface.md "Configuration", with `scan_universe: []`, `slice_size: 40` and `finnhub_calls_per_minute: 20`. Header comment:
+- [x] T002 [P] Add `"opportunistic_identifier"` to the top layer of `[tool.importlinter]` in `pyproject.toml`, so it reads `"execution | orchestrator | research | portfolio_manager | opportunistic_identifier"`. Run `scripts/lint.sh` to confirm the contract still passes.
+- [x] T003 [P] Create `config/opportunistic_identifier.yaml` exactly as in contracts/oi-interface.md "Configuration", with `scan_universe: []`, `slice_size: 40` and `finnhub_calls_per_minute: 20`. Header comment:
   - the schema contract;
   - changed only through code review, and no agent writes it;
   - `slots` must match `config/schedule.yaml`;
   - 20 calls a minute because the Finnhub account is shared (research O11);
   - to switch to Sonnet, set `provider: anthropic` and `name: claude-sonnet-5-5`, and set `OPPORTUNISTIC_IDENTIFIER_ANTHROPIC_API_KEY`.
-- [ ] T004 [P] Add a `--- Opportunistic Identifier (specs/011-opportunistic-identifier, ADR 0015/0016/0018) ---` section to `.env.example`, with names and comments only, no values:
+- [x] T004 [P] Add a `--- Opportunistic Identifier (specs/011-opportunistic-identifier, ADR 0015/0016/0018) ---` section to `.env.example`, with names and comments only, no values:
   - `OPPORTUNISTIC_IDENTIFIER_DATABASE_URL`: a login in `ta_opportunistic_identifier`;
   - `OPPORTUNISTIC_IDENTIFIER_FINNHUB_API_KEY`: read-only. It shares the Finnhub account, so the OI paces at 20 calls a minute;
   - `OPPORTUNISTIC_IDENTIFIER_DASHSCOPE_API_KEY` and `OPPORTUNISTIC_IDENTIFIER_QWEN_BASE_URL` (`https://` only): when `model.provider: qwen`;
