@@ -233,7 +233,7 @@ description: "Task list for the Opportunistic Identifier agent (feature 011)"
 
 **Independent test**: each injected failure gives one `no_action` row and the documented exit status.
 
-- [ ] T032 [P] [US3] `tests/unit/opportunistic_identifier/test_service_failures.py`, one test per failure category, each giving one `no_action` with the category and exit 1:
+- [x] T032 [P] [US3] `tests/unit/opportunistic_identifier/test_service_failures.py`, one test per failure category, each giving one `no_action` with the category and exit 1:
   - `symbol_list_unavailable`;
   - `market_data_unavailable`: `KeyRejected` on the first per-name call; every per-name fetch raising `ProviderUnavailable`;
   - `input_too_large`: `max_input_chars` set below the document;
