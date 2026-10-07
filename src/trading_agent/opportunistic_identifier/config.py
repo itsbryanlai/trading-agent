@@ -143,6 +143,17 @@ def load_config(path: Path = DEFAULT_CONFIG_PATH, risk_path: Path = DEFAULT_RISK
         universe=universe,
         **ints,
     )
+    # Each rationale is at most rationale_max_chars (about 3 characters a token, plus about 60
+    # tokens for the rest of its proposal), and all of them must fit the model's output, or
+    # the answer is cut off and discarded (review M4).
+    if config.shortlist_size * (config.rationale_max_chars + 180) > 3 * settings.max_output_tokens:
+        raise OIConfigError(
+            f"shortlist_size x rationale_max_chars: {config.shortlist_size} proposals of up to "
+            f"{config.rationale_max_chars} characters need about "
+            f"{config.shortlist_size * (config.rationale_max_chars + 180) // 3} output tokens, "
+            f"more than model.max_output_tokens ({settings.max_output_tokens}): lower "
+            "shortlist_size or rationale_max_chars, or raise model.max_output_tokens"
+        )
     if config.paced_fetch_seconds > config.fetch_window_seconds:
         raise OIConfigError(
             f"budget: a paced slice of {config.slice_size} names takes "

@@ -13,6 +13,8 @@ from tests.unit.opportunistic_identifier.support import FRESH, NOW, candidate
 from trading_agent.opportunistic_identifier import answer, prompt
 
 TODAY = date(2026, 10, 8)
+LIMIT = 800
+SYSTEM = prompt.system_prompt(LIMIT)
 FIELDS = {
     "symbol",
     "name",
@@ -95,7 +97,7 @@ def test_instructions_in_a_name_stay_inside_the_json_document():
 
 
 def test_the_system_prompt_states_the_rules_and_carries_the_schema():
-    system = prompt.SYSTEM_PROMPT
+    system = SYSTEM
     assert "buy" in system and "target weight" in system
     assert "1" in system and "5" in system and "conviction" in system
     assert "untrusted" in system and "not instructions" in system
@@ -105,12 +107,12 @@ def test_the_system_prompt_states_the_rules_and_carries_the_schema():
 
 def test_the_system_prompt_names_its_version():
     assert prompt.PROMPT_VERSION == "0.2"
-    assert f"v{prompt.PROMPT_VERSION}" in prompt.SYSTEM_PROMPT
+    assert f"v{prompt.PROMPT_VERSION}" in SYSTEM
 
 
 def test_the_prompt_does_not_assert_that_every_name_has_fallen(  # review M3
 ):
-    system = " ".join(prompt.SYSTEM_PROMPT.split())
+    system = " ".join(SYSTEM.split())
     assert "whose price has fallen" not in system and "that have fallen" not in system
     assert "ranked a list of stocks by how far their price has fallen today and from" in system
     assert "the 52-week high" in system
@@ -124,7 +126,7 @@ def test_an_empty_shortlist_gives_an_empty_names_list():
 
 @pytest.mark.parametrize("word", ["sell", "hold"])
 def test_the_prompt_asks_for_buy_only(word):
-    assert f'"direction": "{word}"' not in prompt.SYSTEM_PROMPT
+    assert f'"direction": "{word}"' not in SYSTEM
 
 
 def test_a_missing_name_or_industry_is_null():
@@ -132,3 +134,13 @@ def test_a_missing_name_or_industry_is_null():
     bare = replace(c.data, name=None, industry=None)
     (entry,) = document([replace(c, data=bare)])["names"]
     assert entry["name"] is None and entry["industry"] is None
+
+
+def test_the_prompt_states_the_rationale_limit_from_the_config():
+    assert "each rationale at most 800 characters" in " ".join(prompt.system_prompt(800).split())
+    assert "each rationale at most 1234 characters" in " ".join(prompt.system_prompt(1234).split())
+    assert "800" not in prompt.system_prompt(1234)
+
+
+def test_the_prompt_says_to_propose_only_names_worth_arguing():
+    assert "Propose only names worth arguing" in SYSTEM

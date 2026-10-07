@@ -195,7 +195,7 @@ def test_no_line_holds_a_key_the_prompt_or_the_raw_answer(env, two):
     for secret in SECRETS:
         assert secret not in text
     assert raw_marker not in text  # a dropped proposal's fields are not echoed
-    assert prompt.SYSTEM_PROMPT[:60] not in text and "paper-trading" not in text
+    assert prompt.system_prompt(800)[:60] not in text and "paper-trading" not in text
     assert by_key(records, "dropped") == [
         {"index": 0, "symbol": "BBB", "reason": "malformed_answer"}
     ]

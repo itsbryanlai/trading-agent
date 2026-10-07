@@ -22,7 +22,7 @@ TEXT_MAX_CHARS = 100  # the provider's company name and industry
 _PERCENT = Decimal(100)
 _HUNDREDTH = Decimal("0.01")
 
-SYSTEM_PROMPT = f"""\
+_INSTRUCTIONS = f"""\
 You are the Opportunistic Identifier of a paper-trading system for US-listed equities \
 (prompt v{PROMPT_VERSION}). A screen has ranked a list of stocks by how far their price has \
 fallen today and from the 52-week high, and you argue which of them look undervalued. The \
@@ -51,7 +51,9 @@ position should end up at, whatever is held now.
 - "rationale": a short argument that the fall looks like undervaluation, based only on the \
 numbers in the document.
 
-Propose only names worth arguing: argue only real undervaluation. A fall alone is not \
+Keep each rationale at most {{RATIONALE_MAX_CHARS}} characters: a longer answer may be cut \
+off, and a cut-off answer is discarded. Propose only names worth arguing: argue only real \
+undervaluation. A fall alone is not \
 undervaluation, and a name that has not fallen is not a bargain for that reason: a name \
 that is cheap for a good reason, or has weak fundamentals, deserves no proposal. At most one \
 proposal per symbol. An empty list is a normal answer: {{"proposals": []}}.
@@ -108,3 +110,9 @@ def number(value: Decimal | None) -> float | int | None:
 
 def _text(value: str | None) -> str | None:
     return None if value is None else text.clean(value)[:TEXT_MAX_CHARS]
+
+
+def system_prompt(rationale_max_chars: int) -> str:
+    """The fixed instructions, with the rationale limit the run's config sets (review M4):
+    the model is told the limit so its whole answer fits `model.max_output_tokens`."""
+    return _INSTRUCTIONS.replace("{RATIONALE_MAX_CHARS}", str(rationale_max_chars))

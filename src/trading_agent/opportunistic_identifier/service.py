@@ -205,10 +205,11 @@ class OIRun:
             return self._quiet(o.EMPTY_SHORTLIST, outcome)
 
         user = p.build_user(now, day, short.candidates)
-        if len(p.SYSTEM_PROMPT) + len(user) > self.cfg.max_input_chars:
+        system = p.system_prompt(self.cfg.rationale_max_chars)
+        if len(system) + len(user) > self.cfg.max_input_chars:
             log.error("opportunistic_identifier: %s: input over the limit", o.INPUT_TOO_LARGE)
             raise Failed(o.INPUT_TOO_LARGE)
-        reply = self._complete(user)
+        reply = self._complete(system, user)
         counts.input_tokens, counts.output_tokens = reply.input_tokens, reply.output_tokens
         log.info(
             "opportunistic_identifier: model used %s input and %s output tokens",
@@ -217,9 +218,9 @@ class OIRun:
         )
         self._check(reply.text, short.candidates, open_symbols, day, outcome)
 
-    def _complete(self, user: str):
+    def _complete(self, system: str, user: str):
         try:
-            return self.model.complete(p.SYSTEM_PROMPT, user, a.ANSWER_SCHEMA)
+            return self.model.complete(system, user, a.ANSWER_SCHEMA)
         except ModelError as exc:
             category = next(
                 (c for cls, c in _MODEL_CATEGORIES if isinstance(exc, cls)), o.INTERNAL_ERROR

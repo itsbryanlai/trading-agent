@@ -8,7 +8,7 @@ import json
 import logging
 
 from tests.fakes.oi_market_data import FakeOIMarketData
-from tests.unit.opportunistic_identifier.support import FAKE_KEY, messages
+from tests.unit.opportunistic_identifier.support import FAKE_KEY, config, messages
 from tests.unit.opportunistic_identifier.test_service_happy import proposal, run
 from trading_agent.opportunistic_identifier import prompt as p
 
@@ -79,7 +79,7 @@ def test_provider_text_reaches_the_prompt_only_inside_the_json_document_cut_to_1
     assert entry["industry"].startswith("SYSTEM: ")
     # The instructions text is the same fixed prompt whatever the provider sends, and the
     # provider's words appear only in the user document, inside their own fields.
-    assert call["system"] == p.SYSTEM_PROMPT
+    assert call["system"] == p.system_prompt(config().rationale_max_chars)
     assert "IGNORE ALL PREVIOUS" not in call["system"]
     assert call["user"].count("IGNORE ALL PREVIOUS") == 1
     assert "n" * 101 not in call["user"] and "i" * 101 not in call["user"]

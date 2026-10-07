@@ -30,7 +30,7 @@ BASE = {
     "shortlist_size": 20,
     "quote_max_age_minutes": 15,
     "finnhub_calls_per_minute": 20,
-    "rationale_max_chars": 2000,
+    "rationale_max_chars": 800,
     "max_input_chars": 60000,
     "slots": {"first": "10:00", "last": "15:00", "every_minutes": 60, "before_close_minutes": 30},
     "model": {
@@ -156,11 +156,23 @@ BOUNDS = [
         ("shortlist_size",),
         1,
         40,
-        {41: [(("slice_size",), 60), (("finnhub_calls_per_minute",), 60)]},
+        {
+            40: [(("model", "max_output_tokens"), 14000)],
+            41: [
+                (("slice_size",), 60),
+                (("finnhub_calls_per_minute",), 60),
+                (("model", "max_output_tokens"), 14000),
+            ],
+        },
     ),
     (("quote_max_age_minutes",), 1, 60, {}),
     (("finnhub_calls_per_minute",), 1, 60, {1: [(("slice_size",), 1), (("shortlist_size",), 1)]}),
-    (("rationale_max_chars",), 200, 10000, {}),
+    (
+        ("rationale_max_chars",),
+        200,
+        10000,
+        {10000: [(("shortlist_size",), 1)], 10001: [(("shortlist_size",), 1)]},
+    ),
     (("max_input_chars",), 5000, 300000, {}),
     (("slots", "every_minutes"), 15, 240, {}),
     (("slots", "before_close_minutes"), 0, 120, {}),
@@ -333,3 +345,35 @@ def test_a_slice_that_exactly_fills_the_window_passes_and_one_second_less_fails(
     exact["model"]["timeout_seconds"] = 168
     with pytest.raises(OIConfigError, match="budget"):
         load(tmp_path, exact)
+
+
+# --- the output budget: every rationale must fit the model's output (review M4) --------
+
+
+def test_the_shipped_config_fits_its_output_budget():
+    cfg = load_config(c.DEFAULT_CONFIG_PATH, c.DEFAULT_RISK_PATH)
+    assert cfg.rationale_max_chars == 800
+    assert cfg.shortlist_size * (cfg.rationale_max_chars / 3 + 60) <= cfg.model.max_output_tokens
+
+
+def test_twenty_rationales_of_2000_characters_do_not_fit_8000_output_tokens(tmp_path):
+    # 20 x (2000 / 3 + 60) is about 14,500 tokens.
+    with pytest.raises(OIConfigError) as caught:
+        load(tmp_path, changed((("rationale_max_chars",), 2000)))
+    for key in ("shortlist_size", "rationale_max_chars", "model.max_output_tokens"):
+        assert key in str(caught.value)
+
+
+def test_a_larger_output_allowance_or_a_shorter_rationale_makes_it_fit(tmp_path):
+    load(
+        tmp_path, changed((("rationale_max_chars",), 2000), (("model", "max_output_tokens"), 15000))
+    )
+    load(tmp_path, changed((("rationale_max_chars",), 2000), (("shortlist_size",), 11)))
+
+
+def test_the_output_budget_boundary_is_exact(tmp_path):
+    # One name, 1000 output tokens: r / 3 + 60 <= 1000 means r <= 2820.
+    edits = [(("shortlist_size",), 1), (("model", "max_output_tokens"), 1000)]
+    load(tmp_path, changed((("rationale_max_chars",), 2820), *edits))
+    with pytest.raises(OIConfigError, match="max_output_tokens"):
+        load(tmp_path, changed((("rationale_max_chars",), 2821), *edits))
