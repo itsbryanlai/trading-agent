@@ -173,7 +173,8 @@ def _proposal(item, shortlist: set[str], rationale_max_chars: int) -> Proposal |
 
 
 def _loggable(symbol: str) -> str:
-    return text.clean(symbol)[:SYMBOL_LOG_CHARS]
+    """Printable characters only (no newline: a log line must stay one line), then cut."""
+    return "".join(c for c in text.clean(symbol) if c.isprintable())[:SYMBOL_LOG_CHARS]
 
 
 def rows(

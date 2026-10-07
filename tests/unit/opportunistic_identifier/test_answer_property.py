@@ -195,7 +195,7 @@ def test_every_proposal_is_accounted_for_and_drops_are_bounded_and_clean(case):
     for drop in checked.drops:
         assert drop.reason in a.DROP_REASONS and 0 <= drop.index < checked.received
         if drop.symbol is not None:
-            assert len(drop.symbol) <= a.SYMBOL_LOG_CHARS and not a.text.has_unsafe(drop.symbol)
+            assert len(drop.symbol) <= a.SYMBOL_LOG_CHARS and drop.symbol.isprintable()
 
 
 def test_the_generator_reaches_every_outcome():

@@ -171,7 +171,7 @@ def test_the_reasons_are_the_contracts_closed_set():
 
 def test_a_drop_names_a_string_symbol_cleaned_and_cut_to_16_characters():
     drop = only_drop(proposal(symbol="X\x00\n" + "Y" * 100, direction="sell"))
-    assert drop.symbol == "X\n" + "Y" * 14 and len(drop.symbol) == 16
+    assert drop.symbol == "X" + "Y" * 15 and len(drop.symbol) == 16  # no NUL, no newline
     # The reason is the first rule it fails: it isn't on the shortlist.
     assert drop.reason == "not_shortlisted"
 
@@ -187,9 +187,9 @@ def test_a_symbol_that_is_not_a_string_is_none(item):
 
 
 def test_a_symbol_is_never_longer_than_16_characters_or_unclean():
-    for symbol in ["A" * 1000, "\x1b[31mred", "ok\ud800" + "z" * 40]:
+    for symbol in ["A" * 1000, "\x1b[31mred", "ok\ud800" + "z" * 40, "a\nb\r\tc\u2028d"]:
         drop = only_drop(proposal(symbol=symbol))
-        assert len(drop.symbol) <= 16 and not a.text.has_unsafe(drop.symbol)
+        assert len(drop.symbol) <= 16 and drop.symbol.isprintable()
 
 
 # --- the whole answer -------------------------------------------------------------------------
