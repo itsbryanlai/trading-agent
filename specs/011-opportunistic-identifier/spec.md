@@ -23,6 +23,10 @@
 - Q: How are today's move and the distance below the 52-week high combined into one ranking? → A: Each measure ranks the names separately (largest fall first), and the two ranks are averaged; ties break by symbol. Rejected: either measure first with the other as a tie-break, and adding the two percentages (the 52-week distance would dominate).
 - Q: How fresh must a quote be for its "today's move" to count? → A: Its own trade time must be from today's session and within 15 minutes of the fetch, the same limit the Risk Gate applies to the PM's quotes (`decision_stale`, ADR 0019). Otherwise the name is skipped as stale.
 
+### Session 2026-10-07 (after `/speckit-analyze`)
+
+- Q: The run's worst case could exceed the 10-minute timeout, leaving no row. Raise the timeout or shrink the run? → A: Raise the OI's timeout to 15 minutes, and guarantee it with a fetch deadline that leaves room for the configured provider's model attempts (1 on Qwen, the default; 2 on Anthropic). The slice stays at 40 names.
+
 ## User Scenarios & Testing *(mandatory)*
 
 The users of the Opportunistic Identifier (OI) are:
@@ -121,7 +125,7 @@ Before the OI is enabled in the schedule, the owner runs it in a dry-run mode th
 - **The universe is too large to fetch every hour**: the run fetches only a slice, chosen by a deterministic rotation documented in code, so that over a fixed number of runs every name in the scan universe is fetched once before any is fetched twice. The rotation must not depend on run order or on anything held in memory between runs.
 - **A symbol already flagged and still open**: it is left out before ranking, so it never reaches the model, and it is not written again that day. With buy-only reports there is no change of direction to re-emit on. If a proposal for it slips through anyway, validation drops it.
 - **Missing data for a symbol** (missing fundamentals, a quote not from today's session or more than 15 minutes old, a halted symbol, a value that is zero or implausible): the symbol is skipped for that run, never sent to the model, and logged with its reason. It produces no report.
-- **The market-data provider is rate-limited or slow**: fetching slows down or stops at a deadline, and the run continues with what it has, so it always finishes inside the orchestrator's 10-minute timeout and leaves a report. Names it couldn't fetch count as skipped.
+- **The market-data provider is rate-limited or slow**: fetching slows down or stops at a deadline, and the run continues with what it has, so it always finishes inside the orchestrator's 15-minute timeout and leaves a report. Names it couldn't fetch count as skipped.
 - **Fewer eligible names than the shortlist size**: the model sees all of them. With none, no model call is made, and one `no_action` report says the shortlist was empty.
 - **A shared market-data account**: the OI's pace leaves room for the other components that may share one Finnhub account ([ADR 0016](../../docs/adr/0016-market-data-for-the-llm-agents.md) §5).
 - **A run starts before 10:00 ET, after the close, or on a closed day** (started by hand): it does nothing and says so, except in dry-run mode. A 15:00 slot that starts late still runs until the close.
@@ -136,7 +140,7 @@ Before the OI is enabled in the schedule, the owner runs it in a dry-run mode th
 **Running**
 - **FR-001**: The OI MUST be started by the orchestrator on its configured schedule (hourly, 10:00–15:00 ET, trading days). It MUST NOT schedule itself.
 - **FR-002**: The OI MUST offer a dry-run mode that does everything except write to the database, and prints the shortlist, would-be rows, drops and token counts. The dry-run mode needs no database login.
-- **FR-003**: Every run MUST finish within the orchestrator's timeout for the OI (10 minutes), stopping fetches at a deadline and carrying on with what it has.
+- **FR-003**: Every run MUST finish within the orchestrator's timeout for the OI (15 minutes), stopping fetches at a deadline and carrying on with what it has.
 
 **Choosing what to look at (deterministic, no model)**
 - **FR-004**: The scan universe MUST be an owner-maintained list of symbols in the OI's own version-controlled configuration, changed only through code review. It ships empty: the owner fills it, and no tickers are invented. With an empty list, a run makes no fetches and no model call and writes one `no_action` report saying the scan universe is empty.
@@ -181,14 +185,14 @@ Before the OI is enabled in the schedule, the owner runs it in a dry-run mode th
 
 - **SC-001**: Every OI run that the orchestrator records as started leaves at least one report row, or exits with the distinct can't-write status. Zero runs end with no trace.
 - **SC-002**: Zero written reports name a symbol that wasn't on that run's shortlist, or cite a source not fetched in that run, across the test suite's fake model answers, including deliberately malicious ones.
-- **SC-003**: Every name in the scan universe is fetched at least once within a fixed, documented number of trading days, computable from the universe size and the per-run slice.
-- **SC-004**: 100% of runs finish inside the 10-minute timeout, including when the market-data provider is slow or rate-limited.
+- **SC-003**: Every name in the scan universe is fetched once in any run of `B` consecutive scheduled slots, where `B` is the number of batches (the universe size divided by the per-run slice, rounded up). On normal days that is within `ceil(B / 6)` trading days; early closes have fewer slots and stretch it accordingly.
+- **SC-004**: 100% of runs finish inside the orchestrator's timeout for the OI (15 minutes), including when the market-data provider is slow or rate-limited.
 - **SC-005**: Before the OI is enabled, the owner has measured input and output token counts from at least one real dry run, and every scheduled run afterwards logs its counts.
 - **SC-006**: The PM's run after an OI report sees that report and records it in `decision_reports` when it draws on it, so the OI's track record is measurable on its own.
 
 ## Assumptions
 
-- **The schedule is already set**: the disabled `opportunistic_identifier` entry in `config/schedule.yaml` (hourly, 10:00–15:00 ET, 10-minute timeout) is the cadence. This feature enables it and fills its `env` list. The orchestrator's only change is FR-023's narrower read of report times.
+- **The schedule is already set**: the disabled `opportunistic_identifier` entry in `config/schedule.yaml` (hourly, 10:00–15:00 ET) is the cadence. This feature raises its timeout from 10 to 15 minutes (plan, after `/speckit-analyze`), fills its `env` list, and leaves it disabled until the owner's dry run. The orchestrator's only change is FR-023's narrower read of report times.
 - **The database role and its row-level insert rule already exist** (feature 001). Only a login is new.
 - **Market data comes from Finnhub's free endpoints** with the OI's own key, `OPPORTUNISTIC_IDENTIFIER_FINNHUB_API_KEY` ([ADR 0016](../../docs/adr/0016-market-data-for-the-llm-agents.md)). The free tier's rate limit bounds how many names a run can fetch, which is why the rotation exists.
 - **No new table**: the rotation is derived, not stored, so the OI needs no write beyond `reports` (Constitution III).

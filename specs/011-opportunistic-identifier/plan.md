@@ -38,7 +38,7 @@
 
 **Project Type**: an LLM agent in the existing `trading_agent` package; one run per process.
 
-**Performance Goals**: fits the orchestrator's 10-minute timeout by construction. The loader refuses configs whose worst case exceeds it (O10); the defaults take about 549 s at worst. A runtime deadline is the backstop.
+**Performance Goals**: fits the orchestrator's timeout for the OI, raised to 15 minutes (owner, after `/speckit-analyze`). The guarantee is a fetch deadline that leaves room for the configured provider's model attempts; the loader checks that a normally paced slice fits that window (O10). The default 40 names take about 369 s of a 650 s window on Qwen.
 
 **Constraints**:
 - **No portfolio, decisions, verdicts, orders or journal.** The only write is its own `reports` rows.
@@ -52,7 +52,7 @@
 | Item | Size |
 |---|---|
 | Runs | 6 a day |
-| Fetched per run | up to 40 names (~123 Finnhub calls at 20 a minute, on a shared account) |
+| Fetched per run | up to 40 names (~123 Finnhub calls at 20 a minute, on a shared account); ETFs, OTC and share-class names cost no call |
 | Sent to the model | 20 names, ~6k tokens in |
 | Written | 0–20 reports out |
 | Scan list | up to 1000 names |
@@ -107,13 +107,14 @@ src/trading_agent/
 │   ├── screen.py        # pure: freshness, eligibility, ranking, shortlist (O4–O6)
 │   ├── prompt.py        # PROMPT_VERSION, system prompt, user document (O7)
 │   ├── answer.py        # pure: ANSWER_SCHEMA, check, drops, rows and sources (O8, O9)
+│   ├── text.py          # pure: copy of research/text.py's clean (O8)
 │   └── service.py       # one run: fetch with pacing and deadline, store protocol, Postgres store
 ├── storage/
 │   ├── logins.py                                # + ta_opportunistic_identifier_login
 │   └── migrations/0014_latest_argued_report.sql # O13
 
 config/opportunistic_identifier.yaml   # new; scan_universe empty
-config/schedule.yaml                   # env list filled in; stays enabled: false
+config/schedule.yaml                   # env list filled in, timeout 15 minutes; stays enabled: false
 pyproject.toml                         # opportunistic_identifier in the top layer
 .env.example, .railway/railway.ts      # the five variables
 
@@ -138,14 +139,16 @@ docs/architecture/overview.md, specs/005-orchestrator (note), specs/010-observe-
 1. **The Finnhub account (owner, 2026-10-07: shared, OI slowed).** The OI shares one Finnhub account with the other components and paces at 20 calls a minute. The budget allows a `slice_size` of up to 45; the default is 40, for headroom (O10, O11).
 2. **Ship disabled, enable separately (owner, 2026-10-07: agreed, O14).** This feature merges with `enabled: false`, so a release deploys nothing that runs. Enabling is a one-line PR after your `--check` and real dry run (quickstart steps 2–3) and once your scan list is filled in.
 3. **The scan list ships empty.** You fill `config/opportunistic_identifier.yaml`'s `scan_universe`; I won't invent tickers. A list of up to ~240 names is covered every day at the defaults.
-4. **The orchestrator's PM trigger changes (FR-023, migration 0014).** A view definition only. No grant, and no orchestrator code. It needs the usual open, migrate, close step at release.
-5. **The universe check is a copy, not a shared function (owner, 2026-10-07: agreed, O4).** I've left `risk/gate.py` untouched. A property test pins the OI's copy to `gate._universe_stop`. The alternative, making the gate's function public, is a small refactor of Risk Gate code, which I'd rather not do inside this feature.
-6. **The OI loads `config/risk.yaml`** with the gate's loader, for the universe floors only (O4). Not a limit change, and not a new reader of the limits that matter to the PM.
-7. **Not yet confirmed, settled by your runs:**
+4. **The OI's timeout rises to 15 minutes** in `config/schedule.yaml` (owner, 2026-10-07, after `/speckit-analyze` B1). Allowed by the schedule's rules (under the 60-minute interval and the 30-minute before-close).
+5. **The orchestrator's PM trigger changes (FR-023, migration 0014).** A view definition only. No grant, and no orchestrator code. It needs the usual open, migrate, close step at release.
+6. **The universe check is a copy, not a shared function (owner, 2026-10-07: agreed, O4).** I've left `risk/gate.py` untouched. A property test pins the OI's copy to `gate._universe_stop`. The alternative, making the gate's function public, is a small refactor of Risk Gate code, which I'd rather not do inside this feature.
+7. **The OI loads `config/risk.yaml`** with the gate's loader, for the universe floors only (O4). Not a limit change, and not a new reader of the limits that matter to the PM.
+8. **Not yet confirmed, settled by your runs:**
    - the metric key names (step 2);
    - the token and cost estimate, ~$0.90 a month on Qwen at list price (step 3).
-8. **Screening strategy (yours, recorded):** buy-the-dip ranking, with no news. The PM sees Research's news only for watchlist names.
-9. **No change to risk limits, sizing or order logic.**
+9. **Screening strategy (yours, recorded):** buy-the-dip ranking, with no news. The PM sees Research's news only for watchlist names.
+10. **A late-started slot can repeat a batch** (research O3, accepted): rare and harmless.
+11. **No change to risk limits, sizing or order logic.**
 
 ## Complexity Tracking
 

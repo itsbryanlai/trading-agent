@@ -42,15 +42,15 @@ If the quote is already stale (O5), the other two calls are skipped, so a halted
 **Decision**: pure code in `rotation.py`. It uses no state, no database and no memory between runs.
 1. **Scan order:** the scan list, sorted alphabetically.
 2. **Batches:** consecutive slices of `slice_size` names, `B = ceil(U / slice_size)` batches for a universe of `U` names.
-3. **Run index:** `k = session_index(today) × S + slot`, where:
-   - `S` is the number of slots a day (`slots.count`, default 6);
-   - `slot` is `floor((now_ET − slots.first) / slots.every_minutes)`, clamped to `0…S−1`;
-   - `session_index` counts XNYS sessions from a fixed epoch, 2026-01-02, using `risk.calendar.is_session`.
-4. **Batch fetched:** `k mod B`.
+3. **A day's slots** are the times from `slots.first`, every `slots.every_minutes`, up to `min(slots.last, close − slots.before_close_minutes)`: exactly the orchestrator's `oi_slots` rule (`orchestrator/planner.py`). A normal day has 6 (10:00–15:00); an early close at 13:00 has 3 (10:00–12:00, the cap being 12:30). This fixes `/speckit-analyze` C1: counting a fixed 6 a day would skip the same batches on every early close.
+4. **Run index:** `k = (slots on every XNYS session from the epoch, 2026-01-02, up to yesterday) + today's slot number`. Today's slot number is the latest of today's slots at or before `now`, or 0 before the first.
+5. **Batch fetched:** `k mod B`.
 
-Consecutive run indices cover every batch once in `B` runs, so every name is fetched within `ceil(B / S)` trading days when no slot is missed (SC-003). A missed slot is never backfilled, the same as the orchestrator. That batch's turn simply passes.
+Every slot that exists gets its own run index, so every batch is fetched once in any `B` consecutive slots, and every name within the number of trading days it takes the calendar to provide `B` slots (6 a normal day; SC-003). A missed slot is never backfilled, the same as the orchestrator. That batch's turn simply passes.
 
-The `slots` block in the OI's config must match the orchestrator's schedule entry (`window_start`, `interval_minutes`, and the number of slots in the window). A unit test asserts this, the same way `reference/finnhub.py`'s `SYMBOL_LIST_MICS` is kept equal to the gate's list. The OI reads nothing from `config/schedule.yaml` at runtime.
+**A late start (accepted, `/speckit-analyze` C2)**: the OI computes its slot from its own clock. The orchestrator starts a slot only within that slot's interval, but if it starts one in its last seconds, the OI may read the next slot: that batch is fetched twice that day and one batch waits a day. It is rare and harmless, and fixing it would mean the orchestrator passing the slot to the agent, a change to how it launches agents. Documented in `rotation.py`.
+
+The `slots` block in the OI's config (`first`, `last`, `every_minutes`, `before_close_minutes`) must match the orchestrator's schedule (`window_start`, `window_end`, `interval_minutes`, and the PM's `before_close_minutes`). A unit test asserts this, the same way `reference/finnhub.py`'s `SYMBOL_LIST_MICS` is kept equal to the gate's list. The OI reads nothing from `config/schedule.yaml` at runtime.
 
 **Rationale**: the behavior spec requires an even, documented rule "not left to run order". A stateless rule needs no table, which would otherwise be a write beyond `reports` (Constitution III).
 
@@ -59,7 +59,7 @@ The `slots` block in the OI's config must match the orchestrator's schedule entr
 - **A "last scanned" table:** a new write and a new grant.
 - **Reading `config/schedule.yaml` at runtime:** it would duplicate the orchestrator's parser, or import a sibling.
 
-**Edge**: when the scan list is no bigger than `slice_size`, `B = 1` and every run fetches the whole list.
+**Edge**: when the scan list is no bigger than `slice_size`, `B = 1` and every run fetches the whole list. The slot count is a sum over a few hundred sessions a year: computed directly, no state.
 
 ## O4. Eligibility: the gate's rule on the reference job's derivation
 
@@ -75,7 +75,11 @@ The gate's own check, `risk/gate.py:_universe_stop`, is private, and the gate is
 
 ## O5. Freshness, completeness and plausibility
 
-**Decision**: a name is skipped (never sent to the model) when any of these holds:
+**Decision**: checks run in this order, cheapest first (`/speckit-analyze` P1):
+1. **From the symbol list, before any per-name call:** `reference.normalize.listing_failure` (not listed, share class, conflicting, missing type or exchange) and the listing half of the universe rule (`universe_listing`: not `common_stock`, or not on `US_LISTED_MICS`). An ETF or an OTC name costs no call.
+2. **The quote**, then (only if fresh) the profile and fundamentals.
+
+A name is skipped (never sent to the model) when any of these holds:
 - **`stale_quote`:** the quote's `t` isn't on today's trading day, or is more than `quote_max_age_minutes` (15) before the fetch. Checked first, before the other two calls (O2);
 - **`missing_price`:** `c` or `pc` is missing or zero;
 - any `reference.normalize` failure (O4), such as `share_class_unverified` or `non_usd_market_cap`;
@@ -129,11 +133,13 @@ A proposal is dropped, with its reason logged, as one of:
 - `not_shortlisted`: a symbol not on this run's shortlist, checked by exact string match. A symbol off the shortlist can't pass, whatever else is true of it;
 - `invalid_direction`: anything but `buy`;
 - `invalid_conviction`: not an integer 1–5;
-- `invalid_size`: not above 0, or above 100;
+- `invalid_size`: not a number, above 100, or 0 or below once rounded **down** to 3 decimal places (the column is `numeric(6,3)`). Research's `_size` rule, buy branch, copied: 0.0004 is dropped rather than rounding to 0 and failing the insert (`/speckit-analyze` S2);
 - `duplicate_symbol`: a second proposal for the same symbol in this run;
 - `already_open`: a backstop, since open names were never shortlisted.
 
 An answer that isn't JSON, or isn't the top-level shape, is `unusable_answer` (a failure).
+
+**Text cleaning** (`/speckit-analyze` S1): every piece of outside text that can reach a row or the prompt (the rationale, the provider's company name and industry) passes through `opportunistic_identifier/text.py`, a copy of `research/text.py`'s `clean` (siblings can't import each other). It removes NUL and other C0 controls except newline and tab, DEL, and lone surrogates, which Postgres would refuse, losing the run's whole write. Cleaning happens before the length cut.
 
 ## O9. Sources, built by code
 
@@ -155,13 +161,28 @@ A unit test asserts that no source field ever contains the key (the FR-013 crede
 
 ## O10. Run budget
 
-**Decision**: the orchestrator's timeout for the OI is 10 minutes (600 s). The OI's config loader refuses any combination whose worst case doesn't fit:
+**Decision** (after `/speckit-analyze` B1; owner, 2026-10-07): the orchestrator's timeout for the OI rises from 10 to **15 minutes** (`config/schedule.yaml` `opportunistic_identifier.timeout_minutes: 15`; `RUN_BUDGET_SECONDS = 900`). That is allowed by the schedule's own rules: shorter than the 60-minute interval and than the PM's 30-minute `before_close`.
 
-`(3 + 3 × slice_size) / finnhub_calls_per_minute × 60 + model.timeout_seconds + 60 ≤ 600`
+**The guarantee is a runtime deadline**, not a worst-case sum. Fetching stops at:
 
-Here 60 s is the margin for startup, the symbol list's slow path and the write. With the defaults (40 names, 20 calls a minute, 120 s for the model), that's 369 + 120 + 60 = 549 s. At 20 calls a minute the largest slice that fits is 45.
+`fetch_deadline = start + 900 − margin (60) − slack (60) − attempts × model.timeout_seconds − one Finnhub socket timeout (10)`
 
-At runtime, a deadline of `start + 600 − model.timeout_seconds − 60` s also stops fetching, even under 429s or slow responses. Unfetched names count as `not_fetched`, and the run carries on with what it has (FR-003, FR-018). A unit test asserts that the 600 equals `config/schedule.yaml`'s `opportunistic_identifier.timeout_minutes`.
+- `attempts` is 1 on Qwen (`llm/qwen.py` makes one request, no retry) and 2 on Anthropic (the SDK retries once, `llm/anthropic_client.py` `MAX_RETRIES = 1`). A test keeps `MODEL_ATTEMPTS["anthropic"] == MAX_RETRIES + 1` without importing the SDK module at runtime.
+- No call starts after the deadline, and a started call is bounded by its 10 s socket timeout, so the run ends within the budget whatever Finnhub does. Unfetched names count as `not_fetched` (FR-003, FR-018).
+- **Slack** covers the symbol list, screening and the write; **margin** covers startup, the database connect and the SDK's wait before its retry (Research's review M3).
+
+**The loader's check** only makes sure a *normally paced* slice fits in that window, so a healthy run fetches its whole slice:
+
+`(3 + 3 × slice_size) × 60 / finnhub_calls_per_minute ≤ fetch window`
+
+| Provider | Fetch window | Largest slice at 20 calls/min | Default 40 names |
+|---|---|---|---|
+| Qwen (default) | 900 − 60 − 60 − 120 − 10 = 650 s | 71 | 369 s |
+| Anthropic | 900 − 60 − 60 − 240 − 10 = 530 s | 57 | 369 s |
+
+A unit test asserts that 900 equals `60 × config/schedule.yaml`'s `opportunistic_identifier.timeout_minutes`.
+
+**Alternatives considered**: Research's worst-case formula (every call assumed to hit its socket timeout) leaves about 5 names a run at 10 minutes and about 12 at 15: not viable for a scanner. Keeping 10 minutes with a 90 s model timeout gives about 25 names a run.
 
 ## O11. Pacing and a shared Finnhub account
 
@@ -176,7 +197,8 @@ At runtime, a deadline of `start + 600 − model.timeout_seconds − 60` s also 
 | Code | Meaning |
 |---|---|
 | 0 | Reports written, or a quiet `no_action` (`empty_scan_universe`, `empty_shortlist`, `nothing_argued`, `all_dropped`), or outside the window with nothing done |
-| 1 | A failure `no_action` was written, or the close passed mid-run (`window_closed`) |
+| 1 | A failure `no_action` was written |
+| 5 | The close passed mid-run, so no row could be written (`window_closed`; `reports_expires_after_generated` forbids a row after the close). Distinct, so it's never read as a recorded failure (`/speckit-analyze` E1) |
 | 2 | Refused to start |
 | 3 | A database error |
 | 4 | Crashed with nothing written |

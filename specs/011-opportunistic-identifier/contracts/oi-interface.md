@@ -15,10 +15,11 @@ Any other argument means exit 2.
 | Code | Meaning |
 |---|---|
 | 0 | Reports written; or a quiet `no_action` (`empty_scan_universe`, `empty_shortlist`, `nothing_argued`, `all_dropped`); or outside the window, with nothing done |
-| 1 | A failure `no_action` was written; or the close passed during the run, so nothing could be written (`window_closed`, logged) |
+| 1 | A failure `no_action` was written |
 | 2 | Refused to start: config, a missing or invalid variable, or an unknown argument |
 | 3 | The database was unreachable, or the read or write failed |
 | 4 | Crashed: an unexpected exception escaped, and no report could be written |
+| 5 | The close passed during the run, so no row could be written (`window_closed`, logged) |
 
 **Window**: a non-dry run does nothing (exit 0, logged) unless today is an XNYS session, the market is open, and it is at or after `slots.first` ET.
 
@@ -40,16 +41,17 @@ Every key is required, unknown keys are rejected, and any error means exit 2.
 
 ```yaml
 scan_universe: []              # tickers; the owner fills this in. Sorted and de-duplicated at load.
-slice_size: 40                 # names fetched per run, 1–200; the budget check caps it (45 at 20 calls a minute)
+slice_size: 40                 # names fetched per run, 1–200; the budget check caps it (71 on Qwen, 57 on Anthropic, at 20 calls a minute)
 shortlist_size: 20             # names sent to the model, 1–40
 quote_max_age_minutes: 15      # 1–60
 finnhub_calls_per_minute: 20   # 1–60; 20 leaves room on a shared Finnhub account (research O11)
 rationale_max_chars: 2000      # 200–10000
 max_input_chars: 60000         # 5000–300000
-slots:                         # must match config/schedule.yaml's opportunistic_identifier entry (tested)
-  first: "10:00"
-  every_minutes: 60
-  count: 6
+slots:                         # must match config/schedule.yaml (tested; research O3)
+  first: "10:00"               # opportunistic_identifier.window_start
+  last: "15:00"                # opportunistic_identifier.window_end
+  every_minutes: 60            # opportunistic_identifier.interval_minutes
+  before_close_minutes: 30     # portfolio_manager.before_close_minutes (caps an early close's slots)
 model:
   provider: qwen               # qwen | anthropic
   name: qwen3.7-plus
@@ -61,7 +63,7 @@ model:
 **Loader rules**:
 - Each `scan_universe` entry must pass `reference.symbols.is_plausible_ticker`, and must not be a share-class ticker (it can contain no `.` or `-`, since it could never pass eligibility). At most 1000 entries.
 - `shortlist_size` must be ≤ `slice_size`.
-- The budget check from research O10 must hold.
+- The budget check from research O10 must hold for the configured provider: `(3 + 3 × slice_size) × 60 / finnhub_calls_per_minute ≤ 900 − 60 − 60 − attempts × model.timeout_seconds − 10`, with `attempts` 1 on Qwen and 2 on Anthropic.
 - `config/risk.yaml` must load with `risk.config.load_config`.
 
 ## The model's answer
@@ -73,8 +75,8 @@ One JSON object with exactly one key, `{"proposals": [...]}`. Each item has exac
 | `symbol` | string | exactly a symbol on this run's shortlist |
 | `direction` | string | `buy` |
 | `conviction` | integer | 1–5 |
-| `suggested_size_pct` | number | above 0, at most 100 |
-| `rationale` | string | cut to `rationale_max_chars` |
+| `suggested_size_pct` | number | at most 100, and above 0 once rounded down to 3 decimal places |
+| `rationale` | string | cleaned of characters Postgres refuses, then cut to `rationale_max_chars` |
 
 The JSON Schema is generated from this table in code (`answer.ANSWER_SCHEMA`).
 
