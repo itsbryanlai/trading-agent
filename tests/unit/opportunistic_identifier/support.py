@@ -114,3 +114,47 @@ def messages(caplog) -> list[str]:
     return [
         r.getMessage() for r in caplog.records if r.name == "trading_agent.opportunistic_identifier"
     ]
+
+
+class FakeConn:
+    """Just enough of a psycopg autocommit connection for PgOIStore: `execute(...)` answers
+    the open-symbols read, and `transaction()`/`cursor()` collect what is written."""
+
+    autocommit = True
+
+    def __init__(self, open_rows=(), fail_read=False, fail_write=False):
+        self.open_rows = list(open_rows)
+        self.fail_read, self.fail_write = fail_read, fail_write
+        self.written: list = []
+        self.closed = False
+
+    def execute(self, statement, params=None):
+        import psycopg
+
+        if self.fail_read:
+            raise psycopg.OperationalError("lost")
+        rows = self.open_rows
+        return type("Result", (), {"fetchall": lambda self: rows})()
+
+    def transaction(self):
+        import contextlib
+
+        return contextlib.nullcontext()
+
+    def cursor(self):
+        import contextlib
+
+        import psycopg
+
+        conn = self
+
+        class Cursor:
+            def executemany(self, statement, rows):
+                if conn.fail_write:
+                    raise psycopg.OperationalError("lost")
+                conn.written.extend(rows)
+
+        return contextlib.nullcontext(Cursor())
+
+    def close(self):
+        self.closed = True

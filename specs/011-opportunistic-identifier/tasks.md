@@ -185,7 +185,7 @@ description: "Task list for the Opportunistic Identifier agent (feature 011)"
   7. checks the answer and writes the rows or one `no_action`, with counts in the rationale.
 
   Make T019 pass. Keep `service.py` under 450 lines, splitting the fetch loop into `fetch.py` if needed.
-- [ ] T025 [US1] `src/trading_agent/opportunistic_identifier/__main__.py`:
+- [x] T025 [US1] `src/trading_agent/opportunistic_identifier/__main__.py`:
   - reads only the contract's variables, named and never echoed;
   - loads the config;
   - `build_model(...)` as in `research/__main__.py`, with `require_https_base_url` for the Qwen URL;
