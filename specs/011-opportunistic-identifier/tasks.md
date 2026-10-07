@@ -143,7 +143,7 @@ description: "Task list for the Opportunistic Identifier agent (feature 011)"
   - `implausible_move`: +51% and −51%, while ±50% passes.
 
   An eligible name returns a `Candidate` with `move_today = (c − pc) / pc` and `below_high = (52WeekHigh − c) / 52WeekHigh`, which is negative when `c` is above the high.
-- [ ] T015 [P] [US1] `tests/unit/opportunistic_identifier/test_screen_gate_equivalence.py`, a **Hypothesis property**. For generated `reference.normalize.ReferenceRow`-shaped values and generated `UniverseConfig` floors, `screen.universe_stop(row, universe)` equals `risk.gate._universe_stop(risk.model.Reference(...), RiskConfig-with-that-universe)`. This pins the OI's copy to the gate (research O4). It imports the gate's private function in the test only.
+- [x] T015 [P] [US1] `tests/unit/opportunistic_identifier/test_screen_gate_equivalence.py`, a **Hypothesis property**. For generated `reference.normalize.ReferenceRow`-shaped values and generated `UniverseConfig` floors, `screen.universe_stop(row, universe)` equals `risk.gate._universe_stop(risk.model.Reference(...), RiskConfig-with-that-universe)`. This pins the OI's copy to the gate (research O4). It imports the gate's private function in the test only.
 - [x] T016 [P] [US1] `tests/unit/opportunistic_identifier/test_screen_ranking.py`, testing `screen.shortlist(candidates, open_symbols, size)`:
   - names in `open_symbols` are left out first and counted as `already_open`;
   - a hand-computed 6-name example: ranks by `move_today` ascending and by `below_high` descending (1-based ordinals, equal values ordered by symbol), averaged, and the lowest `size` kept, with ties broken by symbol;
