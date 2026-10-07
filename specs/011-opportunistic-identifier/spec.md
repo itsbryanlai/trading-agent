@@ -124,7 +124,7 @@ Before the OI is enabled in the schedule, the owner runs it in a dry-run mode th
 - **The market-data provider is rate-limited or slow**: fetching slows down or stops at a deadline, and the run continues with what it has, so it always finishes inside the orchestrator's 10-minute timeout and leaves a report. Names it couldn't fetch count as skipped.
 - **Fewer eligible names than the shortlist size**: the model sees all of them. With none, no model call is made, and one `no_action` report says the shortlist was empty.
 - **A shared market-data account**: the OI's pace leaves room for the other components that may share one Finnhub account ([ADR 0016](../../docs/adr/0016-market-data-for-the-llm-agents.md) §5).
-- **A run starts outside 10:00–15:00 ET or on a closed day** (started by hand): it refuses, except in dry-run mode.
+- **A run starts before 10:00 ET, after the close, or on a closed day** (started by hand): it does nothing and says so, except in dry-run mode. A 15:00 slot that starts late still runs until the close.
 - **A report written after 15:30 ET**: it expires unused, by design ([ADR 0011](../../docs/adr/0011-event-driven-portfolio-manager-runs.md)). The schedule's last slot is 15:00.
 - **A quiet run**: its `no_action` row doesn't wake the PM (FR-023), so six quiet runs cost no PM calls.
 - **The OI flags a name the reference-data job hasn't recorded today**: nothing special is needed. Symbols named in reports are picked up by that job within minutes ([`docs/specs/reference-data.md`](../../docs/specs/reference-data.md)), and the gate rejects a buy until they are.
