@@ -17,6 +17,7 @@ from collections.abc import Collection, Sequence
 from dataclasses import dataclass, replace
 from datetime import datetime, timedelta
 from decimal import Decimal
+from typing import Protocol
 
 from trading_agent.opportunistic_identifier import text
 from trading_agent.opportunistic_identifier.ports import (
@@ -34,7 +35,6 @@ from trading_agent.reference.normalize import (
     security_type,
 )
 from trading_agent.risk import calendar, rules
-from trading_agent.risk.config import UniverseConfig
 
 STALE_QUOTE = "stale_quote"
 MISSING_PRICE = "missing_price"
@@ -44,6 +44,15 @@ IMPLAUSIBLE_MOVE = "implausible_move"
 
 MAX_MOVE = Decimal("0.5")  # beyond this a split or a bad print is likelier than a price
 NAME_MAX_CHARS = 100
+
+
+class UniverseFloors(Protocol):
+    """The universe floors of `risk.config.UniverseConfig`, by shape: only the OI's config
+    loader reads the risk file, so this module doesn't import its loader module."""
+
+    min_market_cap_usd: Decimal
+    min_avg_daily_dollar_volume_usd: Decimal
+    min_share_price_usd: Decimal
 
 
 @dataclass(frozen=True)
@@ -100,7 +109,7 @@ def listing_stop(symbol: str, listing: Listing | None) -> Skip | None:
     return None
 
 
-def universe_stop(row: ReferenceRow, universe: UniverseConfig) -> str | None:
+def universe_stop(row: ReferenceRow, universe: UniverseFloors) -> str | None:
     """A copy of the gate's universe comparisons, with its rule names
     (`risk/gate.py:_universe_stop`; a property test keeps the two equal). The gate's own
     check is private and the gate is not touched by this feature."""
@@ -122,7 +131,7 @@ def assess(
     quote: Quote,
     fundamentals: Fundamentals,
     now: datetime,
-    universe: UniverseConfig,
+    universe: UniverseFloors,
     quote_max_age: timedelta,
 ) -> Candidate | Skip:
     stop = listing_stop(symbol, listing)
