@@ -94,7 +94,7 @@ description: "Task list for the Opportunistic Identifier agent (feature 011)"
   - `tests/unit/orchestrator/test_logging.py` (around line 60): the comment says "past its 15 minutes", and the tick moves to `et("10:16")` so the run is genuinely past its timeout.
 
   Run `pytest tests/unit/orchestrator tests/unit/deploy`. **Never revert the timeout to make a test pass**: the OI's run budget depends on it.
-- [ ] T008 Tests first, in `tests/unit/opportunistic_identifier/test_config.py`, for `config.load_config(path, risk_path)`:
+- [x] T008 Tests first, in `tests/unit/opportunistic_identifier/test_config.py`, for `config.load_config(path, risk_path)`:
   - every key is required and unknown keys are rejected, including in `slots` and `model` (via `llm.settings.parse_model_settings` with `timeout_bounds=(30, 300)`);
   - bounds: `slice_size` 1–200, `shortlist_size` 1–40 and ≤ `slice_size`, `quote_max_age_minutes` 1–60, `finnhub_calls_per_minute` 1–60, `rationale_max_chars` 200–10000, `max_input_chars` 5000–300000, `slots.every_minutes` 15–240, `slots.before_close_minutes` 0–120, and `slots.first` and `slots.last` as `HH:MM` with `first ≤ last`;
   - `scan_universe`: each entry passes `reference.symbols.is_plausible_ticker` and contains no `.` or `-`, with at most 1000 entries. Duplicates are de-duplicated, and the result is sorted;
@@ -104,7 +104,7 @@ description: "Task list for the Opportunistic Identifier agent (feature 011)"
   - the shipped `config/opportunistic_identifier.yaml` loads;
   - **the schedule guard**: `RUN_BUDGET_SECONDS (900) == 60 × config/schedule.yaml["opportunistic_identifier"]["timeout_minutes"]`, `slots.first == window_start`, `slots.last == window_end`, `slots.every_minutes == interval_minutes`, and `slots.before_close_minutes == portfolio_manager.before_close_minutes`. Read the YAML directly; never import `orchestrator`;
   - `fetch_deadline(start)` returns `start + fetch_window` seconds.
-- [ ] T009 Implement `src/trading_agent/opportunistic_identifier/config.py` (`OIConfig`, `Slots`, `OIConfigError`, `RUN_BUDGET_SECONDS = 900`, `RUN_MARGIN_SECONDS`, `RUN_SLACK_SECONDS`, `FINNHUB_CALL_TIMEOUT_SECONDS`, `MODEL_ATTEMPTS`, `OIConfig.fetch_window_seconds`, `OIConfig.fetch_deadline(start)`, `load_config`), so T008 passes. Error messages name the key, never echo a credential.
+- [x] T009 Implement `src/trading_agent/opportunistic_identifier/config.py` (`OIConfig`, `Slots`, `OIConfigError`, `RUN_BUDGET_SECONDS = 900`, `RUN_MARGIN_SECONDS`, `RUN_SLACK_SECONDS`, `FINNHUB_CALL_TIMEOUT_SECONDS`, `MODEL_ATTEMPTS`, `OIConfig.fetch_window_seconds`, `OIConfig.fetch_deadline(start)`, `load_config`), so T008 passes. Error messages name the key, never echo a credential.
 - [ ] T010 [P] Tests first, in `tests/unit/opportunistic_identifier/test_rotation.py`:
   - `day_slots(day, slots)`: the times from `first`, every `every_minutes`, up to `min(last, close − before_close_minutes)`, exactly the orchestrator's `oi_slots` rule. A normal day gives 6 (10:00–15:00); 2026-11-27 (close 13:00) gives 3 (10:00, 11:00, 12:00); a non-session day gives none. An extra test compares `day_slots` with `orchestrator.planner.oi_slots` times for 20 sample days, including early closes (tests may import `orchestrator`; the package may not);
   - `slot_number(now, slots)`: the index of the latest of today's slots at or before `now`; 09:45 → 0; 15:59 → 5;
