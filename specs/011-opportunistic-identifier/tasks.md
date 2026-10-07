@@ -113,12 +113,12 @@ description: "Task list for the Opportunistic Identifier agent (feature 011)"
   - `slice_for(universe, today, now, slots, slice_size)` returns `ScanSlice(run_index, batch, batches, symbols)`, with `batches = ceil(U / slice_size)`, `batch = run_index mod batches`, and symbols the batch's consecutive slice of the sorted universe. An empty universe gives `batches = 0` and no symbols;
   - **Hypothesis property (SC-003)**: for any universe of 1–1000 symbols, `slice_size` 1–200 and any start date in 2026–2027, running every slot that exists for `batches` consecutive slots covers every symbol exactly once.
 - [x] T011 Implement `src/trading_agent/opportunistic_identifier/rotation.py` (pure; epoch `date(2026, 1, 2)`; the module docstring documents the rule and the accepted late-start case as research O3 states them), so T010 passes. Counting slots per past session is a loop over a few hundred days: no caching, no state.
-- [ ] T012 [P] Integration tests first, in `tests/integration/opportunistic_identifier/test_store.py`, as `ta_opportunistic_identifier` via `as_role`:
+- [x] T012 [P] Integration tests first, in `tests/integration/opportunistic_identifier/test_store.py`, as `ta_opportunistic_identifier` via `as_role`:
   - `open_symbols(now)` returns only this agent's non-`no_action` symbols with `expires_at > now`;
   - `write(rows)` inserts all rows with `agent = 'opportunistic_identifier'` in one transaction, and a failing row leaves none;
   - inserting `agent = 'research'` is refused by row-level security;
   - `SELECT` on `positions`, `decisions`, `orders`, `risk_verdicts`, `account_snapshots` and `journal` each raises `InsufficientPrivilege`.
-- [ ] T013 Implement, in `src/trading_agent/opportunistic_identifier/service.py`: `OIStore` protocol, `ReportRow`, `NotAutocommit`, and `PgOIStore(conn, *, _allow_savepoints=False)` with `open_symbols` and `write`, built like `research/service.py`'s `PgResearchStore`, so T012 passes.
+- [x] T013 Implement, in `src/trading_agent/opportunistic_identifier/service.py`: `OIStore` protocol, `ReportRow`, `NotAutocommit`, and `PgOIStore(conn, *, _allow_savepoints=False)` with `open_symbols` and `write`, built like `research/service.py`'s `PgResearchStore`, so T012 passes.
 
 **Checkpoint**: adapter, config, rotation and store are done. Commit each pair (T006–T007, T008–T009, T010–T011, T012–T013) separately.
 
