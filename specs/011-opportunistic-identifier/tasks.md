@@ -168,7 +168,7 @@ description: "Task list for the Opportunistic Identifier agent (feature 011)"
   - an all-skipped slice gives `empty_shortlist` with no model call.
 - [x] T020a [P] [US1] `tests/unit/opportunistic_identifier/test_text.py`: `clean` removes NUL, other C0 controls except `\n` and `\t`, DEL and lone surrogates, and keeps everything else; identical behavior to `research.text.clean` on a Hypothesis-generated string (the test may import both).
 - [ ] T020b [P] [US1] `tests/integration/portfolio_manager/test_reads_oi_reports.py` (SC-006): an open OI buy report inserted as `ta_opportunistic_identifier` is returned by the PM's `PostgresStore.read_inputs` with `agent = 'opportunistic_identifier'`.
-- [ ] T020 [P] [US1] `tests/integration/orchestrator/test_latest_argued_report.py`, migration 0014: as the migration admin, insert a research buy report at T1 and then an OI `no_action` at T2 > T1. `SELECT generated_at FROM latest_report_time` as `ta_orchestrator` returns T1. A later OI buy at T3 returns T3. A future-dated report is still ignored. `ta_assistant` and `ta_dashboard` can still read the view.
+- [x] T020 [P] [US1] `tests/integration/orchestrator/test_latest_argued_report.py`, migration 0014: as the migration admin, insert a research buy report at T1 and then an OI `no_action` at T2 > T1. `SELECT generated_at FROM latest_report_time` as `ta_orchestrator` returns T1. A later OI buy at T3 returns T3. A future-dated report is still ignored. `ta_assistant` and `ta_dashboard` can still read the view.
 
 ### Implementation for User Story 1
 
@@ -194,7 +194,7 @@ description: "Task list for the Opportunistic Identifier agent (feature 011)"
   - maps outcomes to the contract's exit codes.
 
   Tests in `tests/unit/opportunistic_identifier/test_main.py`: missing or invalid variables → exit 2, naming the variable without its value; unknown argument → exit 2; a happy run → exit 0; with `ANTHROPIC_API_KEY`, `RESEARCH_DASHSCOPE_API_KEY` and `FINNHUB_API_KEY` set but the OI's own unset → exit 2 (FR-020: non-prefixed and other agents' variables are never used).
-- [ ] T026 [US1] `src/trading_agent/storage/migrations/0014_latest_argued_report.sql`: `CREATE OR REPLACE VIEW latest_report_time AS SELECT max(generated_at) AS generated_at FROM reports WHERE generated_at <= now() AND direction <> 'no_action';`, with a header comment citing spec FR-023, research O13 and ADR 0011, and saying the grants are unchanged. Make T020 pass, and run the full `tests/integration/orchestrator` suite.
+- [x] T026 [US1] `src/trading_agent/storage/migrations/0014_latest_argued_report.sql`: `CREATE OR REPLACE VIEW latest_report_time AS SELECT max(generated_at) AS generated_at FROM reports WHERE generated_at <= now() AND direction <> 'no_action';`, with a header comment citing spec FR-023, research O13 and ADR 0011, and saying the grants are unchanged. Make T020 pass, and run the full `tests/integration/orchestrator` suite.
 - [ ] T027 [US1] Docs for FR-023:
   - one line in `docs/specs/orchestrator.md` Inputs: "a `no_action` report doesn't count as new (`specs/011-opportunistic-identifier` FR-023)";
   - a dated amendment note, `Amended 2026-10-07 by feature 011`, at the end of `specs/005-orchestrator/spec.md`, stating the same, without changing its accepted requirements' text;
