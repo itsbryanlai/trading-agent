@@ -41,15 +41,36 @@ def _module_name(path: Path) -> str:
     return ".".join(path.relative_to(SRC.parent).with_suffix("").parts)
 
 
+# The one other reader: the Opportunistic Identifier's config loader takes `universe` from
+# config/risk.yaml so it pre-filters with the gate's own floors (specs/011-opportunistic-
+# identifier research O4; its behavior spec requires it). Never the PM, which is judged
+# against the limits; test_oi_config_keeps_only_the_universe pins what the loader keeps.
+OI_CONFIG_LOADER = "trading_agent.opportunistic_identifier.config"
+
+
 def test_only_risk_and_execution_import_the_config_loader():
     offenders = [
         _module_name(path)
         for path in SRC.rglob("*.py")
         if RISK not in path.parents
         and EXECUTION not in path.parents
+        and _module_name(path) != OI_CONFIG_LOADER
         and any(name.startswith("trading_agent.risk.config") for name in _imports(path))
     ]
     assert offenders == []
+
+
+def test_oi_config_keeps_only_the_universe():
+    # It may import the loader, but only to read `.universe` off the result.
+    tree = ast.parse((SRC / "opportunistic_identifier" / "config.py").read_text())
+    uses = {
+        node.attr
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Attribute)
+        and isinstance(node.value, ast.Call)
+        and getattr(node.value.func, "id", "") == "load_risk_config"
+    }
+    assert uses == {"universe"}
 
 
 def test_pure_core_has_no_io_imports():
