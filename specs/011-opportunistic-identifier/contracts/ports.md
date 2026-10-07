@@ -1,6 +1,6 @@
 # Contract: the Opportunistic Identifier's ports
 
-Two ports are the only way the OI reaches the network. Tests replace them with fakes (`tests/fakes/market_data.py`, new; `tests/fakes/model.py`, existing). Neither port can write anything or reach a broker.
+Two ports are the only way the OI reaches the network. Tests replace them with fakes (`tests/fakes/oi_market_data.py`, new; `tests/fakes/market_data.py` is feature 004's; `tests/fakes/model.py`, existing). Neither port can write anything or reach a broker.
 
 ## `MarketData` (`opportunistic_identifier/finnhub.py` implements it)
 
