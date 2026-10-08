@@ -241,7 +241,7 @@ def test_an_unpriced_exit_leaves_at_its_last_price():
     assert r.unpriced == ("A",)
 
 
-def test_late_reports_are_counted_from_their_flag():
+def test_only_late_reports_that_were_applied_are_counted():
     r = run(
         new_book("research", DAY),
         [
@@ -251,7 +251,49 @@ def test_late_reports_are_counted_from_their_flag():
         ],
         px(A=1, B=1),
     )
-    assert r.late_reports == 2
+    assert r.late_reports == 1  # the late no_action report changed nothing
+
+
+def test_a_late_buy_for_an_unpriced_new_symbol_is_skipped_and_not_counted():
+    r = run(new_book("research", DAY), [report("A", late=True)], px(A=None))
+    assert (r.late_reports, r.skipped_targets) == (0, ("A",))
+
+
+def test_a_late_sell_counts_only_when_it_lowers_a_weight():
+    held = book(hold("A", 5, 10), hold("B", 5, 10))
+    lowers = run(held, [report("A", "sell", 2, late=True)], px(A=10, B=10))
+    assert lowers.late_reports == 1
+    same = run(held, [report("A", "sell", 9, late=True)], px(A=10, B=10))
+    assert same.late_reports == 0
+    unheld = run(held, [report("Z", "sell", 0, late=True)], px(A=10, B=10))
+    assert unheld.late_reports == 0
+
+
+def test_a_partial_sell_is_not_an_exit_and_a_full_sell_is():
+    held = book(hold("A", 5, 10), hold("B", 5, 10))
+    r = run(held, [report("A", "sell", 2), report("B", "sell", 0)], px(A=10, B=10))
+    assert (r.exited_sell, weights(r)) == (("B",), {"A": D(2)})
+
+
+def test_a_holding_whose_weight_is_zero_without_a_sell_is_not_called_a_sell():
+    r = run(book(hold("A", 0, 10), hold("B", 5, 10)), [], px(A=10, B=10))
+    assert r.exited_sell == ()
+    assert set(r.book.holdings) == {"A", "B"}
+
+
+def test_a_zero_weight_holding_still_ages_out_at_the_limit():
+    old = date(2026, 10, 2)  # 5 sessions before DAY
+    r = run(book(hold("A", 0, 10, old)), [], px(A=10))
+    assert (r.exited_sell, r.exited_holding_limit) == ((), ("A",))
+
+
+def test_a_sell_followed_by_a_buy_the_same_day_is_not_an_exit():
+    r = run(
+        book(hold("A", 5, 10)),
+        [report("A", "sell", 0, minute=1), report("A", "buy", 4, minute=2)],
+        px(A=10),
+    )
+    assert (r.exited_sell, weights(r)) == ((), {"A": D(4)})
 
 
 # --- sessions_since ------------------------------------------------------------------

@@ -91,13 +91,8 @@ def run(
 
     held = {s for b in previous_books.values() for s in b.holdings}
     targets = {r.symbol for r in reports if r.direction in ("buy", "hold")}
-    symbols = sorted(held | targets)
     try:
-        prices = (
-            fetch_closes(market, symbols, day, cfg, sleep=sleep, monotonic=monotonic)
-            if symbols
-            else {}
-        )
+        prices = fetch_closes(market, held, targets, day, cfg, sleep=sleep, monotonic=monotonic)
     except KeyRejected:
         return _failed("market_data_key_rejected")
     if _systemic_failure(prices):

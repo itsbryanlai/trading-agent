@@ -46,13 +46,13 @@ def advance(
     """Value the book at `day`'s close, drift its weights, apply the reports in order, exit
     stale holdings and scale to 100% (research J5 steps 1 to 6)."""
     holdings, day_return, unpriced = _value_and_drift(book.holdings, prices)
-    holdings, skipped = _apply(holdings, reports, prices)
-    exited_sell = tuple(sorted(s for s, h in holdings.items() if h.weight_pct == 0))
+    holdings, skipped, sold, applied_late = _apply(holdings, reports, prices)
+    exited_sell = tuple(sorted(sold))
     stale = tuple(
         sorted(
             s
             for s, h in holdings.items()
-            if h.weight_pct != 0
+            if s not in sold
             and sessions_since(h.support_session, day, previous_session, holding_sessions)
             >= holding_sessions
         )
@@ -63,7 +63,7 @@ def advance(
         book=Book(book.agent, book.started_on, book.index * (1 + day_return), kept),
         day_return=day_return,
         scaled_by=scaled_by,
-        late_reports=sum(1 for r in reports if r.late),
+        late_reports=applied_late,
         unpriced=unpriced,
         skipped_targets=skipped,
         exited_sell=exited_sell,
@@ -100,9 +100,13 @@ def _value_and_drift(
 
 def _apply(
     holdings: dict[str, Holding], reports: Sequence[ReportRow], prices: Mapping[str, Price]
-) -> tuple[dict[str, Holding], tuple[str, ...]]:
+) -> tuple[dict[str, Holding], tuple[str, ...], set[str], int]:
+    """The reports in order. Also the symbols a sell set to 0 today (and nothing since
+    re-entered) and the number of late reports that changed something."""
     held = dict(holdings)
     skipped: set[str] = set()
+    sold: set[str] = set()
+    applied_late = 0
     for report in sorted(reports, key=lambda r: (r.generated_at, r.id)):
         symbol, size = report.symbol, report.suggested_size_pct
         if report.direction in ("buy", "hold") and size is not None:
@@ -113,10 +117,17 @@ def _apply(
                 continue
             held[symbol] = Holding(symbol, size, close or current.ref_price, report.support_session)
             skipped.discard(symbol)
+            sold.discard(symbol)
+            applied_late += report.late
         elif report.direction == "sell" and size is not None and symbol in held:
             current = held[symbol]
-            held[symbol] = replace(current, weight_pct=min(current.weight_pct, size))
-    return held, tuple(sorted(skipped))
+            lowered = min(current.weight_pct, size)
+            if lowered < current.weight_pct:
+                applied_late += report.late
+            held[symbol] = replace(current, weight_pct=lowered)
+            if size == 0:
+                sold.add(symbol)
+    return held, tuple(sorted(skipped)), sold, applied_late
 
 
 def _scale(holdings: dict[str, Holding]) -> tuple[dict[str, Holding], Decimal | None]:

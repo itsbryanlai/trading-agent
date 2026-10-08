@@ -1,6 +1,6 @@
 """Fetch each symbol's closing price (research J2, J8).
 
-One `/quote` per symbol, in symbol order, paced at `finnhub_calls_per_minute`. A quote is
+One `/quote` per symbol, held symbols first, paced at `finnhub_calls_per_minute`. A quote is
 today's close only when its price is usable and its own trade time falls inside today's
 session plus a short grace for the closing auction; anything else is unpriced for the day.
 `RateLimited` and `ProviderUnavailable` are retried at most twice, one pacing interval apart;
@@ -10,7 +10,7 @@ reached before the deadline are unpriced as `deadline`. Time is injected, never 
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
 from datetime import date, timedelta
 from decimal import Decimal
 
@@ -30,21 +30,26 @@ RETRIES = 2
 
 def fetch_closes(
     provider: MarketDataProvider,
-    symbols: list[str] | tuple[str, ...] | set[str],
+    held: Iterable[str],
+    targets: Iterable[str],
     day: date,
     cfg: JournalConfig,
     *,
     sleep: Callable[[float], None],
     monotonic: Callable[[], float],
 ) -> dict[str, Price]:
-    """`symbol -> Price` for every distinct symbol asked about, in symbol order."""
+    """`symbol -> Price` for every distinct symbol asked about: the held ones first, then
+    the new targets, each group in symbol order, so the deadline never starves the same held
+    symbols for the sake of new ones (research J8)."""
     window = session_window(day, cfg)
     pace = 60 / cfg.finnhub_calls_per_minute
     started = monotonic()
     fetcher = _Fetcher(
         provider, window, pace, started + cfg.fetch_deadline_seconds, sleep, monotonic
     )
-    return {symbol: fetcher.price(symbol) for symbol in sorted(set(symbols))}
+    first = sorted(set(held))
+    second = sorted(set(targets) - set(first))
+    return {symbol: fetcher.price(symbol) for symbol in (*first, *second)}
 
 
 def session_window(day: date, cfg: JournalConfig) -> _Window:

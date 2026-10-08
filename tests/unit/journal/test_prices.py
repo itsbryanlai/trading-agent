@@ -57,8 +57,11 @@ def market(clock):
     return FakeMarketData(clock=clock.monotonic, quote_time=at(19, 59))
 
 
-def fetch(market, clock, symbols, day=DAY, cfg=CFG):
-    return fetch_closes(market, symbols, day, cfg, sleep=clock.sleep, monotonic=clock.monotonic)
+def fetch(market, clock, symbols, day=DAY, cfg=CFG, held=()):
+    """`symbols` are new targets; `held` are symbols in a book already."""
+    return fetch_closes(
+        market, held, symbols, day, cfg, sleep=clock.sleep, monotonic=clock.monotonic
+    )
 
 
 def test_a_quote_inside_the_session_is_the_close(market, clock):
@@ -125,6 +128,24 @@ def test_results_are_in_symbol_order_and_each_symbol_is_fetched_once(market, clo
     got = fetch(market, clock, ["NVDA", "MSFT", "AAPL", "MSFT"])
     assert list(got) == ["AAPL", "MSFT", "NVDA"]
     assert [s for _, _, s in market.calls] == ["AAPL", "MSFT", "NVDA"]
+
+
+def test_held_symbols_are_fetched_first_then_new_targets_each_in_symbol_order(market, clock):
+    for symbol in ("AAPL", "MSFT", "NVDA", "TSLA", "AMD"):
+        market.add(symbol)
+    got = fetch(market, clock, ["AAPL", "AMD", "NVDA"], held=["TSLA", "MSFT", "NVDA"])
+    order = ["MSFT", "NVDA", "TSLA", "AAPL", "AMD"]  # a symbol both held and targeted is held
+    assert [s for _, _, s in market.calls] == order
+    assert list(got) == order
+
+
+def test_the_deadline_never_starves_held_symbols_for_new_targets(market, clock):
+    cfg = JournalConfig(5, 20, 4, 5)  # 3 s pacing: the second call is the last before the deadline
+    for symbol in ("AAPL", "MSFT", "ZZZ"):
+        market.add(symbol)
+    got = fetch(market, clock, ["AAPL"], cfg=cfg, held=["MSFT", "ZZZ"])
+    assert got["MSFT"].close is not None and got["ZZZ"].close is not None
+    assert got["AAPL"].reason == "deadline"
 
 
 def test_calls_are_paced_at_the_configured_rate(market, clock):
