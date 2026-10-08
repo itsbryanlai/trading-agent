@@ -79,7 +79,7 @@ description: "Task list for the journal writer (feature 012)"
   - `Price(symbol, close: Decimal | None, reason: str | None)`, where the reason is one of `not_today`, `no_price`, `not_permitted`, `rate_limited`, `unavailable`, `deadline`, `malformed`;
   - `BookResult` (per agent: the new book, `day_return`, `scaled_by`, `late_reports`, `unpriced`, `skipped_targets`, `exited_sell`, `exited_holding_limit`);
   - `DayFacts` (the summary's inputs, research J10) and `RunOutcome` (contracts/journal-interface.md).
-- [ ] T004 [P] `src/trading_agent/journal/state.py` (research J11, contracts/attribution.md), test first in `tests/unit/journal/test_state.py`:
+- [x] T004 [P] `src/trading_agent/journal/state.py` (research J11, contracts/attribution.md), test first in `tests/unit/journal/test_state.py`:
   - `decode_books(attribution: dict) -> dict[str, Book]`, refusing any `schema_version` other than `1` with `UnknownSchema`;
   - `encode(...) -> dict`, producing exactly the documented object, with numbers as strings rounded per the conventions, symbols sorted, and `missed_sessions` capped at 30;
   - the tests: a round trip; the documented example decodes; the unknown version is refused; and a Hypothesis property that `decode(encode(x))` re-encodes identically, which is what makes a re-run identical (SC-004).
