@@ -13,7 +13,7 @@
 // Build: Railpack, Python 3.12 from .python-version. requirements.txt installs nothing:
 // Railpack runs it before copying src/, so the editable install is the buildCommand.
 // Every service starts from the repository root, on one replica, with Railway's
-// default on-failure restart.
+// default on-failure restart, except the journal: a daily cron job, never restarted.
 
 import { defineRailway, github, postgres, preserve, project, service } from "railway/iac";
 
@@ -81,7 +81,22 @@ export default defineRailway(() => {
     },
   });
 
+  // Runs once a weekday after the close and exits (ADR 0022). 22:30 UTC is 18:30 ET in
+  // summer and 17:30 in winter, both after the close. Never restarted: a failed run is
+  // re-run by hand the same evening.
+  const journal = service("journal", {
+    source: github("itsbryanlai/trading-agent", { branch: "release/prod" }),
+    build: { builder: "RAILPACK", buildCommand: "/app/.venv/bin/pip install -e ." },
+    start: "python -m trading_agent.journal",
+    deploy: { cronSchedule: "30 22 * * 1-5", restartPolicyType: "NEVER" },
+    replicas: 1,
+    env: {
+      JOURNAL_DATABASE_URL: preserve(),
+      JOURNAL_FINNHUB_API_KEY: preserve(),
+    },
+  });
+
   return project("trading-agent", {
-    resources: [db, orchestrator, riskGate, referenceData, execution],
+    resources: [db, orchestrator, riskGate, referenceData, execution, journal],
   });
 });

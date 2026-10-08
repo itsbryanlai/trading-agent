@@ -32,6 +32,11 @@ SOURCE = 'github("itsbryanlai/trading-agent", { branch: "release/prod" })'
 # run in the build step, once the source is there (fix after the first deploy, 2026-10-07).
 BUILD = 'build: { builder: "RAILPACK", buildCommand: "/app/.venv/bin/pip install -e ." }'
 
+# ADR 0022: the journal alone runs on a schedule, once a weekday at 22:30 UTC (18:30 ET in
+# summer, 17:30 in winter), and is never restarted: a failed run is re-run by hand.
+JOURNAL_DEPLOY = 'deploy: { cronSchedule: "30 22 * * 1-5", restartPolicyType: "NEVER" }'
+SCHEDULED_ONLY = ("cronSchedule", "restartPolicyType")
+
 # contracts/service-layout.md, as data: service -> (start command, variable names).
 CONTRACT: dict[str, tuple[str, set[str]]] = {
     "orchestrator": (
@@ -63,6 +68,10 @@ CONTRACT: dict[str, tuple[str, set[str]]] = {
     "execution": (
         "python -m trading_agent.execution",
         {"EXECUTION_DATABASE_URL", "ALPACA_API_KEY_ID", "ALPACA_API_SECRET_KEY", "ALPACA_BASE_URL"},
+    ),
+    "journal": (
+        "python -m trading_agent.journal",
+        {"JOURNAL_DATABASE_URL", "JOURNAL_FINNHUB_API_KEY"},
     ),
 }
 
@@ -194,6 +203,8 @@ def _whole_file(text: str, blocks: dict[str, str]) -> list[str]:
             found.append(f"{prefix}* appears outside the execution service")
     if len(re.findall(r"\bgithub\(", text)) != len(re.findall(re.escape(SOURCE), text)):
         found.append('every github() source must be exactly branch: "release/prod"')
+    if len(re.findall(r"\bcronSchedule\b", text)) != 1:
+        found.append("exactly one service (the journal) may have a cronSchedule")
     return found
 
 
@@ -238,7 +249,16 @@ def _one_service(name: str, block: str) -> tuple[list[str], set[str]]:
         found.append(f"{name}: start command is not {start!r}")
     if not re.search(r"\breplicas\s*:\s*1\b", block):
         found.append(f"{name}: must run one replica")
+    found += _schedule_rules(name, block)
     return found, set(entries)
+
+
+def _schedule_rules(name: str, block: str) -> list[str]:
+    """Only the journal has a cron schedule and a restart policy (ADR 0022)."""
+    squashed = re.sub(r"\s+", " ", block)
+    if name == "journal":
+        return [] if JOURNAL_DEPLOY in squashed else [f"{name}: deploy is not {JOURNAL_DEPLOY}"]
+    return [f"{name}: {word} is for the journal only" for word in SCHEDULED_ONLY if word in block]
 
 
 def _repeats(keys: list[str]) -> list[str]:
@@ -413,3 +433,48 @@ def test_a_second_env_block_is_caught(shipped):
 )
 def test_project_may_hold_only_resources(shipped, old, new):
     assert _broken(shipped, old, new)
+
+
+def test_the_journal_alone_has_a_cron_schedule_and_never_restarts(shipped):
+    raw = strip_comments(shipped[0])
+    blocks = service_blocks(raw)
+    assert [n for n, b in blocks.items() if "cronSchedule" in b] == ["journal"]
+    assert [n for n, b in blocks.items() if "restartPolicyType" in b] == ["journal"]
+    assert 'cronSchedule: "30 22 * * 1-5"' in blocks["journal"]
+    assert 'restartPolicyType: "NEVER"' in blocks["journal"]
+
+
+@pytest.mark.parametrize(
+    ("old", "new"),
+    [
+        ('cronSchedule: "30 22 * * 1-5"', 'cronSchedule: "0 22 * * 1-5"'),
+        ('restartPolicyType: "NEVER"', 'restartPolicyType: "ON_FAILURE"'),
+        (JOURNAL_DEPLOY + ",", ""),
+    ],
+    ids=["other schedule", "restarting", "no schedule"],
+)
+def test_a_changed_journal_schedule_is_caught(shipped, old, new):
+    assert _broken(shipped, old, new)
+
+
+@pytest.mark.parametrize("other", ["risk", "reference", "execution"])
+def test_a_cron_schedule_on_another_service_is_caught(shipped, other):
+    start = f'start: "python -m trading_agent.{other}",'
+    assert _broken(shipped, start, start + "\n    " + JOURNAL_DEPLOY + ",")
+
+
+def test_a_restart_policy_on_another_service_is_caught(shipped):
+    start = 'start: "python -m trading_agent.risk",'
+    assert _broken(shipped, start, start + '\n    deploy: { restartPolicyType: "NEVER" },')
+
+
+def test_a_journal_variable_on_another_service_is_caught(shipped):
+    assert _broken(
+        shipped,
+        "RISK_GATE_DATABASE_URL: preserve(),",
+        "RISK_GATE_DATABASE_URL: preserve(),\n      JOURNAL_DATABASE_URL: preserve(),",
+    )
+
+
+def test_a_journal_service_without_its_key_is_caught(shipped):
+    assert _broken(shipped, "      JOURNAL_FINNHUB_API_KEY: preserve(),\n", "")
