@@ -1,8 +1,14 @@
 # 0022. The journal writer is a deterministic job, run after the close, with its own Finnhub key
 
-Status: proposed
+Status: accepted
 
-Proposed 2026-10-08. The owner chose every decision below in the session that opened `specs/012-journal-writer`.
+Accepted by the owner on 2026-10-09, with the plan for `specs/012-journal-writer`. The owner chose every decision below during that feature's specify and clarify steps.
+
+The plan settled one open item and guarded the other:
+- **Cron is expressible:** the pinned SDK, `railway@3.12.0`, declares `deploy.cronSchedule` and `restartPolicyType` (research J1).
+- **`/quote` after the close is unverified:** a quote stamped after the close is refused rather than used (research J2), and the owner's `--check` after a close confirms the behavior before release.
+
+The owner also accepted that `equity_close` is the last snapshot Execution recorded, up to about 30 minutes before the close (research J7).
 
 ## Context
 
@@ -32,9 +38,7 @@ The `journal` table, its `ta_journal` role and its grants have existed since `sp
 ## Consequences
 
 - **A fifth worker service.** `.railway/railway.ts`, `tests/unit/deploy/test_deployed_shape.py` and `specs/010-observe-only-deployment/contracts/service-layout.md` gain a `journal` entry holding only `JOURNAL_*` variables.
-- **Not yet verified, checked in the plan:**
-  - that `railway/iac` can express a cron schedule. If it cannot, the fallback is decided by a new ADR, not quietly in code;
-  - that Finnhub's `/quote` after the close returns the session's closing price.
+- **Checked in the plan** (see Status): that `railway/iac` can express a cron schedule, and how a quote stamped after the close is treated.
 - **Only today can be valued**, because `/quote` gives only the current and previous close. Finnhub's free tier may also offer historical candles, but reports conflict, so nothing depends on them.
 - **The Finnhub account's rate limit may be shared** with the other keys (0016 §5). The journal runs after the close, when the others are mostly idle.
 - **`equity_open` and `equity_close` stay flat during observe-only**, because there are no fills.
