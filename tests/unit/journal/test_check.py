@@ -46,7 +46,7 @@ def test_a_quote_stamped_after_the_close_plus_grace_is_refused_with_the_reason()
     market = FakeMarketData(quote_time=utc(9, 20, 6))
     market.add("AAPL", current="229.15")
     _, (line,), _ = check(["AAPL"], market)
-    assert (line["accepted"], line["reason"]) == (False, "not_today")
+    assert (line["accepted"], line["reason"]) == (False, "after_close")
 
 
 def test_a_symbol_with_no_price_is_refused_as_no_price():

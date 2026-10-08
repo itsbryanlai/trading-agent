@@ -58,21 +58,23 @@ def session_window(day: date, cfg: JournalConfig) -> _Window:
 
 
 def judge(symbol: str, quote: Quote, window: _Window) -> Price:
-    """Whether a quote is today's close: a usable price, stamped inside the window."""
+    """Whether a quote is today's close: a usable price, stamped inside the window. Stamped
+    missing or before the open is `stale` (permanent); after the grace is `after_close`
+    (systemic: the provider reports after-hours prices)."""
     current: Decimal | None = quote.current
     if current is None or current <= 0:
         return Price(symbol, None, "no_price")
-    if not window.accepts(quote):
-        return Price(symbol, None, "not_today")
+    stamp = quote.timestamp
+    if stamp is None or stamp < window.start:
+        return Price(symbol, None, "stale")
+    if stamp > window.end:
+        return Price(symbol, None, "after_close")
     return Price(symbol, current, None)
 
 
 class _Window:
     def __init__(self, start, end) -> None:
         self.start, self.end = start, end
-
-    def accepts(self, quote: Quote) -> bool:
-        return quote.timestamp is not None and self.start <= quote.timestamp <= self.end
 
 
 class _Fetcher:

@@ -19,7 +19,8 @@ def test_values_are_frozen():
 
 def test_the_unpriced_reasons_are_the_contracts():
     assert set(UNPRICED_REASONS) == {
-        "not_today",
+        "stale",
+        "after_close",
         "no_price",
         "not_permitted",
         "rate_limited",

@@ -12,7 +12,8 @@ from typing import Any
 
 # Why a symbol has no price for the day (research J2, J8).
 UNPRICED_REASONS = (
-    "not_today",
+    "stale",
+    "after_close",
     "no_price",
     "not_permitted",
     "rate_limited",

@@ -93,7 +93,7 @@ def run(
         )
     except KeyRejected:
         return _failed("market_data_key_rejected")
-    if symbols and all(p.close is None for p in prices.values()):
+    if _systemic_failure(prices):
         return _failed("no_prices")
     unpriced = _log_unpriced(prices)
 
@@ -114,6 +114,17 @@ def run(
         len(missed) + 1,
     )
     return RunOutcome("wrote", None, row)
+
+
+SYSTEMIC = frozenset({"rate_limited", "unavailable", "deadline", "after_close"})
+
+
+def _systemic_failure(prices: dict[str, Price]) -> bool:
+    """Nothing was priced and at least one reason is systemic (spec FR-019, research J2).
+    Permanent failures leave a symbol unpriced and the holding limit ages it out."""
+    return bool(prices) and all(p.close is None for p in prices.values()) and any(
+        p.reason in SYSTEMIC for p in prices.values()
+    )
 
 
 def _row(reads, day, previous_day, missed, cfg, results, unpriced, prices) -> JournalRow:

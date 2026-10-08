@@ -83,7 +83,8 @@ def test_the_trade_time_must_fall_in_the_session_plus_grace(market, clock, when,
     market.add("AAPL", quote_time=when)
     price = fetch(market, clock, ["AAPL"])["AAPL"]
     assert (price.close is not None) is ok
-    assert price.reason == (None if ok else "not_today")
+    expected = None if ok else ("stale" if when < at(13, 30) else "after_close")
+    assert price.reason == expected
 
 
 def test_the_early_close_day_uses_the_early_close(market, clock):
@@ -91,13 +92,13 @@ def test_the_early_close_day_uses_the_early_close(market, clock):
     market.add("MSFT", quote_time=at(19, 0, EARLY))  # a normal day's afternoon: after-hours
     got = fetch(market, clock, ["AAPL", "MSFT"], day=EARLY)
     assert got["AAPL"].close is not None
-    assert got["MSFT"] == Price("MSFT", None, "not_today")
+    assert got["MSFT"] == Price("MSFT", None, "after_close")
 
 
 def test_the_grace_is_configurable(market, clock):
     cfg = JournalConfig(5, 20, 480, 0)
     market.add("AAPL", quote_time=at(20, 1))
-    assert fetch(market, clock, ["AAPL"], cfg=cfg)["AAPL"].reason == "not_today"
+    assert fetch(market, clock, ["AAPL"], cfg=cfg)["AAPL"].reason == "after_close"
 
 
 def test_no_current_price_is_no_price(market, clock):
@@ -105,9 +106,9 @@ def test_no_current_price_is_no_price(market, clock):
     assert fetch(market, clock, ["AAPL"])["AAPL"] == Price("AAPL", None, "no_price")
 
 
-def test_a_price_with_no_trade_time_is_not_today(market, clock):
+def test_a_price_with_no_trade_time_is_stale(market, clock):
     market.add("AAPL", quote_time=None)
-    assert fetch(market, clock, ["AAPL"])["AAPL"] == Price("AAPL", None, "not_today")
+    assert fetch(market, clock, ["AAPL"])["AAPL"] == Price("AAPL", None, "stale")
 
 
 def test_a_zero_or_negative_price_is_unusable(market, clock):

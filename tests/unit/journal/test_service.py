@@ -14,7 +14,7 @@ from trading_agent.journal.config import JournalConfig
 from trading_agent.journal.model import Book, BookResult, Holding
 from trading_agent.journal.service import run
 from trading_agent.journal.state import encode
-from trading_agent.reference.provider import KeyRejected
+from trading_agent.reference.provider import KeyRejected, NotPermitted
 from trading_agent.risk import calendar
 
 D = Decimal
@@ -455,10 +455,47 @@ def test_a_day_with_no_account_snapshot_fails_before_any_quote_is_fetched():
     failed(only_open, market, clock, "no_account_snapshot")
 
 
-def test_a_run_that_needs_prices_and_gets_none_fails():
-    market, clock = market_for()  # AAPL has no quote at all
+def test_a_run_whose_every_quote_is_stamped_after_the_close_fails():
+    market, clock = market_for()
+    market.add("AAPL", current=100, quote_time=utc(10, 9, 23, 0))
     reads = empty_reads(reports=[report(1, "research", "AAPL")], **snapshots())
     failed(reads, market, clock, "no_prices")
+
+
+def test_a_run_whose_deadline_passes_before_any_quote_fails():
+    market, clock = market_for(AAPL=100)
+    reads = empty_reads(reports=[report(1, "research", "AAPL")], **snapshots())
+    outcome, _ = go(reads, market, clock, cfg=JournalConfig(5, 20, 0, 5))
+    assert (outcome.status, outcome.reason) == ("failed", "no_prices")
+    assert market.calls == []
+
+
+@pytest.mark.parametrize("fault", ["stale", "no_price", "not_permitted"])
+def test_permanent_failures_do_not_fail_the_run_and_the_holding_limit_ages_the_holding_out(fault):
+    market, clock = market_for()
+    if fault == "stale":
+        market.add("AAPL", current=100, quote_time=utc(10, 8, 19, 59))
+    elif fault == "no_price":
+        market.add("AAPL", current=None)
+    else:
+        market.fail("get_quote", "AAPL", error=NotPermitted())
+    prev = previous(
+        date(2026, 10, 8),
+        research=("100", date(2026, 9, 1), {"AAPL": ("5", "100", date(2026, 10, 2))}),
+    )
+    outcome, store = go(empty_reads(previous=prev, **snapshots()), market, clock)
+    assert outcome.status == "wrote"
+    assert len(store.upserts) == 1
+    research = outcome.row.per_agent_attribution["agents"]["research"]
+    assert research["holdings"] == {}
+    assert research["exited"]["holding_limit"] == ["AAPL"]
+
+
+def test_a_malformed_only_book_writes_a_row():
+    market, clock = market_for()
+    reads = empty_reads(reports=[report(1, "research", "x; DROP")], **snapshots())
+    outcome, _ = go(reads, market, clock)
+    assert outcome.status == "wrote"
 
 
 def test_a_rejected_key_fails_the_run():
@@ -494,7 +531,7 @@ def test_some_unpriced_symbols_are_not_a_failure_and_are_logged_by_reason(caplog
         outcome, _ = go(reads, market, clock)
     assert outcome.status == "wrote"
     warnings = [r.getMessage() for r in caplog.records if r.levelno == logging.WARNING]
-    assert warnings == ["journal: unpriced MSFT: not_today"]
+    assert warnings == ["journal: unpriced MSFT: after_close"]
     assert "agents=1 symbols_priced=1/2 sessions_covered=1" in caplog.text
 
 
