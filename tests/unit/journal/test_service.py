@@ -516,3 +516,20 @@ def test_a_rerun_computes_from_the_previous_days_row_so_the_result_is_identical(
         reads = empty_reads(previous=prev, reports=[report(1, "research", "AAPL")], **snapshots())
         rows.append(go(reads, market, clock)[0].row)
     assert rows[0] == rows[1]
+
+
+# --- a dry run (T018) --------------------------------------------------------------------
+
+
+def test_a_dry_run_does_everything_but_the_write_and_returns_the_row():
+    market, clock = market_for(AAPL=100)
+    reads = empty_reads(reports=[report(1, "research", "AAPL")], **snapshots())
+    store = FakeJournalStore(reads)
+    outcome = run(
+        store, market, CFG, now=NOW, sleep=clock.sleep, monotonic=clock.monotonic, dry_run=True
+    )
+    assert outcome.status == "dry_run" and outcome.row is not None
+    assert store.upserts == []
+    assert len(market.calls) == 1
+    wrote, _ = go(reads, market_for(AAPL=100)[0], clock)
+    assert outcome.row == wrote.row

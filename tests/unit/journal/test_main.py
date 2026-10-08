@@ -156,3 +156,33 @@ def test_no_variable_value_appears_in_any_log_record(env, caplog):
     assert caplog.records
     assert DATABASE not in caplog.text and KEY not in caplog.text
     assert "fake-password-not-real" not in caplog.text
+
+
+# --- --dry-run (T018) ----------------------------------------------------------------------
+
+
+def test_a_dry_run_prints_the_would_be_row_as_json_lines_and_writes_nothing(env):
+    import json
+
+    code, store, conn, lines = go(["--dry-run"])
+    assert code == 0 and store.upserts == [] and conn.closed
+    parsed = [json.loads(line) for line in lines]
+    assert parsed[0] == {"trading_day": "2026-10-09", "equity_open": "1", "equity_close": "1"}
+    assert parsed[1]["summary_md"].startswith("## 2026-10-09\n")
+    assert parsed[2]["per_agent_attribution"]["schema_version"] == 1
+
+
+def test_a_dry_run_that_fails_prints_nothing_and_is_exit_1(env):
+    code, store, _, lines = go(["--dry-run"], store=FakeJournalStore(empty_reads()))
+    assert code == 1 and lines == []
+
+
+def test_a_dry_run_on_a_day_with_nothing_to_do_prints_nothing(env):
+    code, _, _, lines = go(["--dry-run"], now=datetime(2026, 10, 10, 22, 30, tzinfo=UTC))
+    assert code == 0 and lines == []
+
+
+def test_a_dry_run_still_needs_the_database_url(env, monkeypatch):
+    monkeypatch.delenv("JOURNAL_DATABASE_URL")
+    code, *_ = go(["--dry-run"])
+    assert code == 2

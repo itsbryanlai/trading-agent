@@ -10,6 +10,7 @@ so a crash isn't mistaken for a named failure).
 
 from __future__ import annotations
 
+import json
 import logging
 import sys
 import time
@@ -72,8 +73,8 @@ def main(
 
 
 def _main(args, market_factory, connect, store_factory, config_path, clocks, out) -> int:
-    clock, sleep, monotonic = clocks
-    if args:
+    dry_run = args == ["--dry-run"]
+    if args and not dry_run:
         log.critical("journal: unknown or invalid arguments")
         return EXIT_REFUSED
     try:
@@ -95,7 +96,7 @@ def _main(args, market_factory, connect, store_factory, config_path, clocks, out
         log.critical("journal: database unreachable: %s", type(exc).__name__)
         return EXIT_DATABASE
     try:
-        return _run(cfg, market_factory(key), store_factory(conn), clock, sleep, monotonic)
+        return _run(cfg, market_factory(key), store_factory(conn), clocks, dry_run, out)
     except psycopg.Error as exc:
         log.critical("journal: database error: %s", type(exc).__name__)
         return EXIT_DATABASE
@@ -103,8 +104,24 @@ def _main(args, market_factory, connect, store_factory, config_path, clocks, out
         conn.close()
 
 
-def _run(cfg: JournalConfig, market, store, clock, sleep, monotonic) -> int:
-    outcome = service.run(store, market, cfg, now=clock(), sleep=sleep, monotonic=monotonic)
+def _run(cfg: JournalConfig, market, store, clocks, dry_run: bool, out) -> int:
+    clock, sleep, monotonic = clocks
+    outcome = service.run(
+        store, market, cfg, now=clock(), sleep=sleep, monotonic=monotonic, dry_run=dry_run
+    )
+    if outcome.status == "dry_run":
+        row = outcome.row
+        out(
+            json.dumps(
+                {
+                    "trading_day": row.trading_day.isoformat(),
+                    "equity_open": str(row.equity_open),
+                    "equity_close": str(row.equity_close),
+                }
+            )
+        )
+        out(json.dumps({"summary_md": row.summary_md}))
+        out(json.dumps({"per_agent_attribution": row.per_agent_attribution}))
     return EXIT_FAILURE if outcome.status == "failed" else EXIT_OK
 
 

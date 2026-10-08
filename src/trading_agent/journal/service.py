@@ -52,8 +52,10 @@ def run(
     now: datetime,
     sleep: Callable[[float], None],
     monotonic: Callable[[], float],
+    dry_run: bool = False,
 ) -> RunOutcome:
-    """One run. A failure writes nothing and names itself (research J12)."""
+    """One run. A failure writes nothing and names itself (research J12). A dry run does
+    everything but the write and reports `dry_run` with the row it would have written."""
     day = calendar.trading_day(now)
     if not calendar.is_session(day):
         return _nothing_to_do("not_a_session")
@@ -100,6 +102,8 @@ def run(
     if missed:
         log.warning("journal: missed sessions: %s", ", ".join(d.isoformat() for d in missed))
     row = _row(reads, day, previous_day, missed, cfg, results, unpriced, prices)
+    if dry_run:
+        return RunOutcome("dry_run", None, row)
     store.upsert(row)
     log.info(
         "journal: wrote trading_day=%s agents=%d symbols_priced=%d/%d sessions_covered=%d",
