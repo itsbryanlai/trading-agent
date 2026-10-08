@@ -245,3 +245,13 @@ Docs: `docs/specs/orchestrator.md` and `specs/005-orchestrator` (a dated amendme
   - the gate-equivalence property (O4).
 - **Service**: every failure category, quiet reasons, exit codes, the deadline, and `--dry-run` writing nothing.
 - **Integration**: write as `ta_opportunistic_identifier` (all-or-nothing, row-level security, no access to the trading tables), migration 0014's view behavior, and the login command's nine rows.
+
+## O16. Adversarial review (2026-10-08)
+
+No high-severity findings. Resolved in code: M1 (a split-shaped 52-week range is skipped as `inconsistent_52_week_range`), M3 (the prompt no longer claims every name fell; `PROMPT_VERSION` 0.2), M4 (`rationale_max_chars` 800, stated to the model, and a loader check that the shortlist's rationales fit `max_output_tokens`), L4 (a `COMMENT ON VIEW` on `latest_report_time`) and L5 (a database expiry-check failure at the close maps to `window_closed`, exit 5).
+
+Accepted or deferred, with reasons:
+- **M2, each batch tied to the same hour.** When the number of batches equals the slots per day (for example 240 names in 6 batches), batch *i* is always fetched at slot *i*. Accepted: SC-003's exact coverage depends on consecutive indices, and a per-day offset would break it whenever `B` differs from the slot count. The risk is a time-of-day failure starving the same names. The likeliest one, Finnhub contention with the PM's 10:00 session, is bounded by the 20-a-minute pace and backoff, and shows in the per-run skip counts. Revisit if the 10:00 run's `not_fetched` or `rate_limited` counts are persistently higher than other slots'.
+- **L1, socket timeouts aren't total timeouts.** A provider trickling bytes can stretch one call past its 10 s or 120 s, and so the run past 15 minutes, with no row written. Research has the same limit and the same margin. Accepted for now; a per-call wall-clock guard belongs in a change to the shared adapters and `llm/`.
+- **L2, invisible Unicode controls** (C1 controls, bidi overrides, zero-width and line separators) survive `text.clean`. The cleaner is shared in behavior with Research's, so this is a separate change to both, flagged for its own session.
+- **L3, a symbol with an open Research buy can get an OI buy.** Intended: the PM may weigh agreement between analysts as a signal (ADR 0002). Only the OI's own open reports are left out.

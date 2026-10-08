@@ -311,3 +311,13 @@ description: "Task list for the Opportunistic Identifier agent (feature 011)"
 4. **Phase 7** lands the wiring with `enabled: false`. The enable PR is separate (quickstart step 4).
 
 **Subagent handoff** (CLAUDE.local.md): one phase per Sonnet subagent turn, reviewed between phases. Review line by line T015 and T021's `universe_stop` (the copy of the gate's rule), and T026 (the view the orchestrator triggers on).
+
+## Phase 9: Fixes from the adversarial review (2026-10-08)
+
+Findings and decisions: research.md O16.
+
+- [x] T047 Review M1: skip a split-shaped 52-week range as `inconsistent_52_week_range` in `src/trading_agent/opportunistic_identifier/screen.py`, added to the closed set and the contract.
+- [x] T048 Review M3: reword `SYSTEM_PROMPT` in `src/trading_agent/opportunistic_identifier/prompt.py` so it doesn't assert every name fell; `PROMPT_VERSION = "0.2"`.
+- [x] T049 Review M4: `rationale_max_chars: 800` in `config/opportunistic_identifier.yaml`, the limit stated in the prompt, and a loader check `shortlist_size × (rationale_max_chars / 3 + 60) ≤ model.max_output_tokens` in `config.py`.
+- [x] T050 Review L4: `COMMENT ON VIEW latest_report_time` in `src/trading_agent/storage/migrations/0014_latest_argued_report.sql`, asserted by its integration test.
+- [x] T051 Review L5: a `reports_expires_after_generated` check violation at write time maps to `window_closed`, exit 5, in `src/trading_agent/opportunistic_identifier/service.py`.

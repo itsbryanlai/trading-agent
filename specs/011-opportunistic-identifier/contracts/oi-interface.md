@@ -45,7 +45,7 @@ slice_size: 40                 # names fetched per run, 1–200; the budget chec
 shortlist_size: 20             # names sent to the model, 1–40
 quote_max_age_minutes: 15      # 1–60
 finnhub_calls_per_minute: 20   # 1–60; 20 leaves room on a shared Finnhub account (research O11)
-rationale_max_chars: 2000      # 200–10000
+rationale_max_chars: 800       # 200–10000; with shortlist_size, must fit model.max_output_tokens (research O16)
 max_input_chars: 60000         # 5000–300000
 slots:                         # must match config/schedule.yaml (tested; research O3)
   first: "10:00"               # opportunistic_identifier.window_start
