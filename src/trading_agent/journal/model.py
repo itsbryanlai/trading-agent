@@ -117,3 +117,25 @@ class RunOutcome:
     status: str
     reason: str | None = None
     row: JournalRow | None = field(default=None)
+
+
+@dataclass(frozen=True)
+class JournalReads:
+    """One snapshot of everything a run reads (data-model.md "Read").
+
+    Row dicts carry only the columns the store selects: never report rationales, sources,
+    decision reasoning, broker reasons or refusal details.
+    """
+
+    previous: dict[str, Any] | None  # trading_day, equity_close, per_agent_attribution
+    has_future_row: bool
+    window_start: datetime | None  # exclusive; None on the first-ever run
+    reports: list[dict[str, Any]]
+    decision_reports: list[dict[str, Any]]
+    decisions: list[dict[str, Any]]
+    verdicts: list[dict[str, Any]]
+    orders: list[dict[str, Any]]
+    refusals: list[dict[str, Any]]
+    triggers: list[dict[str, Any]]
+    snapshot_open: dict[str, Any] | None  # taken_at, equity
+    snapshot_close: dict[str, Any] | None

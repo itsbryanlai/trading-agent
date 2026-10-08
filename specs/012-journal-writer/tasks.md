@@ -91,7 +91,7 @@ description: "Task list for the journal writer (feature 012)"
   - `KeyRejected` propagates;
   - symbols not reached by `fetch_deadline_seconds` are `deadline`;
   - the tests also cover: a quote stamped after the close plus grace is refused; one stamped mid-afternoon is accepted; the early-close day uses 18:00 UTC; no symbol is fetched twice beyond the retries.
-- [ ] T006 `src/trading_agent/journal/store.py` (data-model.md "Read", research J11), with `tests/integration/journal/test_store.py`:
+- [x] T006 `src/trading_agent/journal/store.py` (data-model.md "Read", research J11), with `tests/integration/journal/test_store.py`:
   - `PgJournalStore(conn).read(day, open_at, close_at, previous_close_of)` returns, in **one** `REPEATABLE READ, READ ONLY` transaction (never two):
     - the previous row (latest with `trading_day < day`) and whether any row has `trading_day > day`;
     - the J4 window, computed inside that transaction from the previous row: `(previous_close_of(previous_day), close_at]`, or, with no previous row, reports whose New York date is `day` and `generated_at ≤ close_at`. `previous_close_of` is `calendar.close_time`, passed in;
