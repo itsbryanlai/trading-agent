@@ -53,7 +53,7 @@ Numbers are JSON strings of decimals, so no reader loses precision to floating p
 | `day_return` | the book's return over `sessions_covered`, as a fraction, 6 decimal places |
 | `holdings` | after today's reports, exits and scaling: what the next run values. `ref_price` is today's close, or the last known price if unpriced. `support_session` is the session of the agent's latest buy or hold report on it. |
 | `scaled_by` | the factor applied when weights summed over 100 (J5 step 6), else null |
-| `late_reports` | reports applied today that were written during an earlier session |
+| `late_reports` | reports applied today whose support session (research J4) is before today |
 | `unpriced` | held symbols carried at their last price |
 | `skipped_targets` | buy or hold targets not entered for want of a price |
 | `exited` | symbols that left today, by cause |

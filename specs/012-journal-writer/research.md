@@ -32,7 +32,7 @@ Decisions for `specs/012-journal-writer`. Each has the decision, why, and what w
 
 **Why**: the same window on a re-run gives the same reports (SC-004). A report written after today's close but before the run lands in tomorrow's window instead of being lost. Reports written on a weekend or during a missed session fall in the next window.
 
-**Late reports**: a report whose `trading_day(generated_at)` is a session before `D` is *late*. It still enters at today's close, and is counted in `late_reports`.
+**Support session and late reports** (owner, after `/speckit-analyze`): a report's *support session* is the first session whose close is at or after `generated_at`. It always lies in `(previous row's day, D]`, because `generated_at > previous_close`. The service finds it by stepping back from `D` with `calendar.previous_session` until a session's close is before `generated_at`, and stores it on the `ReportRow`. A report is *late* when its support session is before `D`. It still enters at today's close, and is counted in `late_reports`. So a report written after Thursday's close counts from Friday, not late; a weekend report followed by a missed Monday counts from Monday, and is late on Tuesday.
 
 ## J5. The book arithmetic
 
@@ -40,14 +40,14 @@ All arithmetic is `Decimal`. Weights are percentages of the book, as in `reports
 
 1. **Value.** For each holding, `r_i = price_D / ref_price - 1`, with `price_D = ref_price` (so `r_i = 0`) if unpriced. The book's return `R = Σ w_i · r_i / 100`. `index_D = index_prev × (1 + R)`.
 2. **Drift.** `w_i ← w_i × (1 + r_i) / (1 + R)`. `ref_price ← price_D` (or unchanged if unpriced).
-3. **Apply reports**, in `generated_at` order, latest per symbol winning:
-   - buy or hold: `w ← suggested_size_pct`; `ref_price ← price_D`; `support ← support session` (J6). Unpriced and not already held: skipped and listed in `skipped_targets`.
+3. **Apply reports** one after another, in `generated_at` order (ties by report id), so a later report on a symbol acts on the result of an earlier one (owner, after `/speckit-analyze`). A buy at 5% then a sell to 2% on an unheld symbol leaves 2%, with the buy's support session:
+   - buy or hold: `w ← suggested_size_pct`; `ref_price ← price_D`; `support ← the report's support session` (J4). Unpriced and not already held: skipped and listed in `skipped_targets`.
    - sell: `w ← min(w, suggested_size_pct)`; a sell never changes `support`. A sell on a symbol not held does nothing.
    - `no_action`: nothing.
 4. **Exit stale holdings.** Any holding with `sessions_since(support, D) ≥ holding_sessions` leaves.
 5. **Drop** holdings whose weight is 0.
 6. **Scale.** If `Σ w > 100`, every `w ← w × 100 / Σ w`, and `scaled_by` records the factor.
-7. **Round** every stored weight to 6 decimal places, the index to 8, prices as received. Rounding happens once, at storage. The next run reads the rounded values, so a run is a function of the previous row and today's inputs.
+7. **Round** every stored weight *down* (`ROUND_DOWN`) to 6 decimal places, so stored weights never sum over 100; the index to 8 (half-even), prices as received. Rounding happens once, at storage. The next run reads the rounded values, so a run is a function of the previous row and today's inputs.
 
 `1 + R` can't be 0 or negative: weights are non-negative and sum to at most 100, and a price can't go below 0, so `R ≥ -1`. `R = -1` (every holding at a price of 0) can't occur either, because a zero price is unusable and unpriced. A test pins this.
 
@@ -57,7 +57,7 @@ All arithmetic is `Decimal`. Weights are percentages of the book, as in `reports
 
 ## J6. Counting sessions for the holding limit
 
-**Decision**: `sessions_since(a, b)` counts the sessions `s` with `a < s ≤ b`, by stepping back from `b` with `calendar.previous_session` at most `holding_sessions` times. A report's *support session* is `trading_day(generated_at)` if that day is a session, otherwise `D`. So a missed run never extends a holding, and a weekend report counts from the session it took effect.
+**Decision**: `sessions_since(a, b)` counts the sessions `s` with `a < s ≤ b`, by stepping back from `b` with `calendar.previous_session` at most `holding_sessions` times. The support session is defined in J4, so a missed run never extends a holding.
 
 **Why not a new calendar function**: `risk.calendar` is Risk Gate code. The loop needs nothing new from it, so the gate's module stays untouched.
 
@@ -74,6 +74,8 @@ All arithmetic is `Decimal`. Weights are percentages of the book, as in `reports
 **Decision**: one `/quote` per symbol in any book or newly targeted, in symbol order. Paced at `finnhub_calls_per_minute` (default 20, as the OI, because the account may be shared, ADR 0016 §5). A `RateLimited` or `ProviderUnavailable` symbol is retried at most twice, after a pause of one pacing interval. Fetching stops at `fetch_deadline_seconds` (default 480), and the rest are unpriced. `NotPermitted` is unpriced at once. `KeyRejected` fails the run (`market_data_key_rejected`).
 
 **Budget**: 480 s at 20 a minute is about 160 calls. The books of two agents with five-session holdings hold far fewer symbols. The deadline plus database work keeps the run under 10 minutes (SC-005). The loader refuses a deadline over 540 s.
+
+**Malformed symbols**: a symbol not matching `^[A-Z][A-Z0-9.\-]{0,9}$` is never sent to the provider. It is unpriced as `malformed` and logged only as a count, never as text.
 
 **Failure**: if at least one symbol needed a price and none got one, the run fails (`no_prices`, exit 1). Otherwise unpriced symbols are listed per agent.
 
@@ -97,10 +99,11 @@ A decision that cites both agents counts once for each. Counts are read at the r
 - tickers matching `^[A-Z][A-Z0-9.\-]{0,9}$`, otherwise counted as malformed.
 
 It never reads `reasoning_md`, `rationale_md`, `sources`, `broker_reason`, refusal `details` or attribution (spec FR-016, FR-017). The day's facts:
-- decisions: `trading_day(generated_at) = D`;
-- verdicts: `trading_day = D`;
-- orders: those for those verdicts;
-- refusals and stop-loss triggers: by their own timestamp's New York date.
+- **decisions**: `trading_day(generated_at) = D`. Their counts, approved and rejected, and the rejection rules come from those decisions' own verdicts. A decision with no verdict yet counts as neither.
+- **stop-loss exits** (owner, after `/speckit-analyze`): the triggers whose `observed_at` has New York date `D`, and the verdicts with a `stop_loss_trigger_id` and `trading_day = D`. These are counted as approved or rejected on the stop-loss line only, never with decisions.
+- **orders**: every order for a verdict with `trading_day = D`, from a decision or a stop-loss trigger alike;
+- **refusals**: by `refused_at`'s New York date.
+- **equity change**: `equity_close - equity_open`, and the percentage `n/a` when `equity_open` is 0.
 
 The breaker line reads "triggered" when any verdict that day is `daily_loss_halt` or any refusal is `daily_loss_line_crossed`.
 

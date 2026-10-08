@@ -33,6 +33,13 @@
 - Q: On the first-ever run, which reports seed the books? → A: Only reports from today's session. Earlier reports are ignored by the books and the usage counts, so every holding is priced on the day it took effect. Rejected: the last five sessions' reports, or every report on record, entering at today's close (weeks-old ideas at today's price).
 - Q: Which real-account figure is recorded for comparison with the books? → A: Close to close: the previous row's `equity_close` to today's, covering the same sessions as the books, gaps included. On the first-ever run, today's open to close. Rejected: open to close only (misses overnight moves and gaps) and both (the open-to-close change is already in the row's own columns).
 
+### Session 2026-10-09 (after `/speckit-analyze`)
+
+- Q: Several reports from one agent on one symbol before the same close: apply them in order, or only the latest? → A: In order. A buy then a sell to a lower figure leaves the lower weight held, and the buy restarts the holding count. Rejected: latest only (the sell would hit an unheld symbol and the buy would be lost).
+- Q: Which session does a report count from? → A: The first session whose close is at or after the report's time. It is late only if that session is before today. So a report written after Thursday's close counts from Friday, and a weekend report followed by a missed Monday counts from Monday.
+- Q: Do stop-loss verdicts count with the PM's decisions in the summary? → A: No. They appear only on the stop-loss line. The Orders line counts every order submitted that day, whatever started it. Decisions are today's PM decisions and their verdicts. With `equity_open` at 0 the percentage change reads `n/a`.
+- Q: May a ticker-shaped symbol the PM chose appear in the summary? → A: Yes, as FR-017 allows: only symbols matching the strict ticker pattern, at most 10 characters.
+
 ## User Scenarios & Testing *(mandatory)*
 
 The users of the journal are:
@@ -76,7 +83,7 @@ The same run writes the day's equity at open and close, a Markdown summary, and 
 - the account's equity at open and close and the change;
 - whether the daily-loss breaker fired;
 - how many decisions were made, how many approved and rejected (with counts per rejection rule), orders submitted and filled, Execution's refusals by reason, and stop-loss exits;
-- notes: missed sessions, symbols that couldn't be priced.
+- notes: missed sessions, and a count of symbols that couldn't be priced.
 
 It never includes text a model wrote, and never includes attribution or the per-agent usage counts: the PM reads the summary, and attribution is measurement, not an input (ADR 0002). The usage counts go into the attribution data only.
 
@@ -127,13 +134,13 @@ The owner can run the journal writer in a dry-run mode that does everything exce
 
 - **Not a session day, or before the close** (a weekend, a holiday, or a manual run during the session): the run does nothing and says so. An early-close day is a normal session.
 - **A run after midnight, New York time**: today's date isn't the session that closed, so the run does nothing. Only the current day's session is ever written, because only its closing price can be fetched.
-- **A missed session**: no row for it, ever. The next run logs it, measures each held symbol from its last stored price to today's close, so the return covers the gap, and applies the missed session's reports at today's close, marked as late.
+- **A missed session**: no row for it, ever. The next run logs it, measures each held symbol from its last stored price to today's close, so the return covers the gap, and applies the missed session's reports at today's close, counted as late.
 - **Reports from a non-session day** (generated on a weekend, say): applied at the next valued close, like any report since the previous row.
-- **Several reports from one agent on one symbol before a close**: the latest by generation time sets the target.
+- **Several reports from one agent on one symbol before a close**: applied in generation order. A buy then a sell to a lower figure leaves the lower weight, and the buy restarts the holding count.
 - **A sell whose figure is above the current weight**, or a sell on a symbol the book doesn't hold: it can only lower a weight, so it changes nothing. A sell can't open or raise a position.
 - **A hold report**: sets the target weight to its suggested size, like a buy.
 - **The Opportunistic Identifier proposes only buys**: its holdings exit through the holding limit (FR-010), never through a sell.
-- **The holding limit counts exchange sessions**, not valued ones, so a missed run doesn't extend a holding. A holding that reaches the limit on a missed session exits at the next valued close, noted as late.
+- **The holding limit counts exchange sessions**, not valued ones, so a missed run doesn't extend a holding. A holding that reaches the limit on a missed session exits at the next valued close.
 - **A held symbol can't be priced today** (fetch failed, quote not from today's session, halted, delisted): its price is carried forward unchanged, so its return that day is 0, and it is listed in the notes. A symbol a report newly targets can't enter a book without a price; that target is skipped and noted. An exit from an unpriced symbol happens at its last stored price, noted.
 - **Weights drift between reports**: a holding is bought once at its target and then moves with its price; it isn't rebalanced unless a new report sets a new target.
 - **The journal's first-ever run** (no earlier row): only today's session's reports apply, to the books and the usage counts. Reports from before it are never applied.
@@ -162,7 +169,7 @@ The owner can run the journal writer in a dry-run mode that does everything exce
 **Attribution (deterministic, no model)**
 - **FR-007**: For each analyst agent with any report on record, the journal MUST keep a book: holdings as weights of the book, and an index that starts at 100 on the agent's first valued day. Each holding also records the session of its agent's latest buy or hold report on it.
 - **FR-008**: At each valued close, the run MUST compute each book's return as the weighted sum of its holdings' price changes from their stored reference prices to today's closes. The uninvested remainder returns 0. The index MUST be the previous index × (1 + that return). Each holding's weight MUST then drift with its price: its weight × (1 + its price change) ÷ (1 + the book's return).
-- **FR-009**: After valuing, the run MUST apply every report the agent wrote since the previous valued close, in generation order, the latest per symbol winning. With no earlier row, only reports from today's session apply. A buy or hold sets the symbol's target weight to the report's suggested size. A sell lowers it to the sell's figure, or leaves it if the figure is not lower. A `no_action` report changes nothing.
+- **FR-009**: After valuing, the run MUST apply every report the agent wrote since the previous valued close, one after another in generation order, so a later report on a symbol acts on the result of an earlier one. A report counts from the first session whose close is at or after its generation time, and is late if that session is before today. With no earlier row, only reports from today's session apply. A buy or hold sets the symbol's target weight to the report's suggested size. A sell lowers it to the sell's figure, or leaves it if the figure is not lower. A `no_action` report changes nothing.
 - **FR-010**: After applying reports, every holding whose latest buy or hold report from its agent is `holding_sessions` or more exchange sessions before today MUST exit at today's close. `holding_sessions` is configuration, changed through code review. Default 5, about one trading week (owner, Q3).
 - **FR-011**: If a book's weights total more than 100% after applying reports and exits, every weight MUST be scaled down proportionally to total 100%. No other limit applies. Holdings are long-only.
 - **FR-012**: Today's closing price MUST come from the journal's own read-only market-data source, and MUST be from today's session. A held symbol without one carries its last price forward; a new target without one is skipped; both are noted.

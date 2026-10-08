@@ -30,7 +30,7 @@ description: "Task list for the journal writer (feature 012)"
 
 - **No task reaches the network or calls a model.** Quotes come from the existing `tests/fakes/market_data.py` (`FakeMarketData`, which implements `get_quote`), extended only if a case needs it. The suite-wide network guard in `tests/conftest.py` stays as it is.
 - **Never read, print or grep for real credentials or `.env` files.** Tests set fake values with `monkeypatch.setenv`, such as `JOURNAL_FINNHUB_API_KEY=fake-not-real`.
-- **Pure modules** (`books.py`, `usage.py`, `summary.py`, `state.py`) never import `psycopg`, `urllib`, `os`, `prices`, `store` or `service`, and never read the clock: dates and times are arguments. `books.py` takes a `previous_session(day) -> date` callable rather than importing the calendar, so tests can pass the real one or a stub.
+- **Pure modules** (`books.py`, `usage.py`, `facts.py`, `summary.py`, `state.py`) never import `psycopg`, `urllib`, `os`, `prices`, `store` or `service`, and never read the clock: dates and times are arguments. `books.py` takes a `previous_session(day) -> date` callable rather than importing the calendar, so tests can pass the real one or a stub.
 - **Imports**: only `trading_agent.risk.calendar`, `trading_agent.reference.finnhub`, `trading_agent.reference.provider` and `trading_agent.storage.db` from other packages (research J13). Never another top-layer package, `llm`, `risk.gate`, `risk.rules` or `execution`.
 - **Arithmetic** is `Decimal` throughout, never `float`. Rounding happens only in `state.py` when encoding (research J5 step 7: weights 6 places, index 8, `day_return` and `account.return` 6).
 - **Test clock**: **Friday 2026-10-09, 18:30 ET = 22:30 UTC** (EDT), unless the test is about another day.
@@ -60,7 +60,7 @@ description: "Task list for the journal writer (feature 012)"
   - `src/trading_agent/journal/__init__.py` with a one-paragraph docstring pointing at spec 012 and ADR 0022;
   - add `journal` to the first layer of `[tool.importlinter]` in `pyproject.toml`, beside `opportunistic_identifier`;
   - `tests/unit/journal/__init__.py`, `tests/integration/journal/__init__.py`;
-  - `tests/unit/journal/test_imports.py`: walks `src/trading_agent/journal/*.py` with `ast`, and fails on any import outside the conventions' list. Also fails on `psycopg`, `urllib`, `os`, `datetime.now`, `prices`, `store` or `service` in the four pure modules.
+  - `tests/unit/journal/test_imports.py`: walks `src/trading_agent/journal/*.py` with `ast`, and fails on any import outside the conventions' list. Also fails on `psycopg`, `urllib`, `os`, `datetime.now`, `prices`, `store` or `service` in the five pure modules.
 
   Run `scripts/lint.sh`.
 - [ ] T002 [P] Config, contracts/journal-interface.md "Configuration":
@@ -75,8 +75,8 @@ description: "Task list for the journal writer (feature 012)"
 - [ ] T003 [P] `src/trading_agent/journal/model.py`, frozen dataclasses only, no logic:
   - `Holding(symbol, weight_pct: Decimal, ref_price: Decimal, support_session: date)`;
   - `Book(agent, started_on: date, index: Decimal, holdings: dict[str, Holding])`;
-  - `ReportRow(id, agent, generated_at, symbol, direction, suggested_size_pct)`;
-  - `Price(symbol, close: Decimal | None, reason: str | None)`, where the reason is one of `not_today`, `no_price`, `not_permitted`, `rate_limited`, `unavailable`, `deadline`;
+  - `ReportRow(id, agent, generated_at, symbol, direction, suggested_size_pct, support_session: date, late: bool)`;
+  - `Price(symbol, close: Decimal | None, reason: str | None)`, where the reason is one of `not_today`, `no_price`, `not_permitted`, `rate_limited`, `unavailable`, `deadline`, `malformed`;
   - `BookResult` (per agent: the new book, `day_return`, `scaled_by`, `late_reports`, `unpriced`, `skipped_targets`, `exited_sell`, `exited_holding_limit`);
   - `DayFacts` (the summary's inputs, research J10) and `RunOutcome` (contracts/journal-interface.md).
 - [ ] T004 [P] `src/trading_agent/journal/state.py` (research J11, contracts/attribution.md), test first in `tests/unit/journal/test_state.py`:
@@ -87,12 +87,14 @@ description: "Task list for the journal writer (feature 012)"
   - `fetch_closes(provider, symbols, day, cfg, *, sleep, monotonic) -> dict[str, Price]`, in symbol order, paced at `60 / finnhub_calls_per_minute` seconds;
   - **accepted** only when `current` is usable and `open_time(day) ≤ t ≤ close_time(day) + close_grace_minutes`; otherwise `not_today` (or `no_price` if `current` is None);
   - `RateLimited` and `ProviderUnavailable` retried at most twice, one pacing interval apart; `NotPermitted` is unpriced at once;
+  - a symbol not matching `^[A-Z][A-Z0-9.\-]{0,9}$` is never requested and is `malformed`;
   - `KeyRejected` propagates;
   - symbols not reached by `fetch_deadline_seconds` are `deadline`;
   - the tests also cover: a quote stamped after the close plus grace is refused; one stamped mid-afternoon is accepted; the early-close day uses 18:00 UTC; no symbol is fetched twice beyond the retries.
 - [ ] T006 `src/trading_agent/journal/store.py` (data-model.md "Read", research J11), with `tests/integration/journal/test_store.py`:
-  - `PgJournalStore(conn).read(day, window_start, window_end)` returns, in one `REPEATABLE READ, READ ONLY` transaction:
+  - `PgJournalStore(conn).read(day, open_at, close_at, previous_close_of)` returns, in **one** `REPEATABLE READ, READ ONLY` transaction (never two):
     - the previous row (latest with `trading_day < day`) and whether any row has `trading_day > day`;
+    - the J4 window, computed inside that transaction from the previous row: `(previous_close_of(previous_day), close_at]`, or, with no previous row, reports whose New York date is `day` and `generated_at ≤ close_at`. `previous_close_of` is `calendar.close_time`, passed in;
     - the window's reports (only the columns in data-model.md, never `rationale_md` or `sources`);
     - their `decision_reports`, decisions, verdicts and orders;
     - that day's decisions, verdicts, orders, refusals, triggers and account snapshots;
@@ -112,21 +114,21 @@ description: "Task list for the journal writer (feature 012)"
   - a three-session fixture with hand-computed indexes, written out in the test as comments;
   - scale-down at 150%;
   - a sell above the current weight changes nothing, and a sell on an unheld symbol does nothing;
-  - hold sets the weight; the latest report per symbol wins;
+  - hold sets the weight; reports apply in order: a buy at 5% then a sell to 2% on an unheld symbol leaves 2% with the buy's support session, and a sell then a buy leaves the buy's weight;
   - an unpriced holding returns 0 and drifts; an unpriced new target is skipped; an unpriced exit leaves at its last price;
   - the holding limit at exactly 5 sessions exits and at 4 stays, a buy restarts the count, and a sell doesn't;
-  - a late report's support session is its own session, and a weekend report's is `D`;
+  - holdings use the `support_session` on each `ReportRow` (set by the service, T009), and the late count uses its `late` flag;
   - a new agent starts at 100 with a day return of 0.
 
-  Hypothesis properties: weights stay ≥ 0 and sum to ≤ 100 after every step; `1 + R > 0`; the index never goes negative.
+  Hypothesis properties: weights stay ≥ 0 and sum to ≤ 100 after every step, also after encoding with `ROUND_DOWN` and decoding again across several sessions; `1 + R > 0`; the index never goes negative.
 - [ ] T008 [US1] `src/trading_agent/journal/books.py` (research J5, J6), making T007 pass:
   - `sessions_since(a, b, previous_session, limit) -> int`;
-  - `support_session(report, day, is_session, trading_day) -> date`;
-  - `advance(book, reports, prices, day, holding_sessions, previous_session) -> BookResult`, applying J5's steps in order;
+  - `advance(book, reports, prices, day, holding_sessions, previous_session) -> BookResult`, applying J5's steps in order, reading `support_session` and `late` from each `ReportRow`;
   - `new_book(agent, day) -> Book`.
 - [ ] T009 [US1] `src/trading_agent/journal/service.py`, the run's skeleton, test first in `tests/unit/journal/test_service.py` with an in-memory fake store (`tests/fakes/journal_store.py`, new) and `FakeMarketData`:
   - the J3 gate: `nothing_to_do` for `not_a_session` and `before_close`;
-  - the J4 window from the previous row, or from today's date on the first-ever run;
+  - the store's read (T006), which computes the J4 window;
+  - each `ReportRow`'s `support_session` and `late` (research J4): step back from `D` with `calendar.previous_session` to the first session whose `close_time` is at or after `generated_at`;
   - books for every agent in the previous row plus every agent with a window report;
   - the symbols to price (every held symbol plus every buy or hold target), fetched once;
   - `advance` for each book;
@@ -134,7 +136,7 @@ description: "Task list for the journal writer (feature 012)"
   - the encoded attribution;
   - one upsert.
 
-  For now the summary is a placeholder string; T014 replaces it. Tests: first-ever run; a normal second day; agents present in only one of the two sources; the row's equity columns per J7 (latest at or before the open, else earliest; latest of the day).
+  For now the summary is a placeholder string; T014 replaces it. Tests: first-ever run; a normal second day; agents present in only one of the two sources; the row's equity columns per J7 (latest at or before the open, else earliest; latest of the day); the account return on the first-ever run uses `equity_open`, and is null when its base is 0; support sessions for a report after Thursday's close (Friday, not late) and a weekend report with a missed Monday (Monday, late on Tuesday).
 
 **Checkpoint**: books are written end to end with fakes. Run `tests/unit/journal` and lint.
 
@@ -156,14 +158,19 @@ description: "Task list for the journal writer (feature 012)"
   - a rejection rule not matching `^[a-z_]{1,40}$` counts as `other`;
   - a malformed ticker is counted, never shown;
   - empty sections read `none`;
+  - stop-loss verdicts count only on the stop-loss line; orders from both decisions and stop-loss verdicts count on the Orders line; a decision with no verdict counts as neither approved nor rejected; `equity_open` 0 shows `n/a`;
   - a 500-decision, 40-rule, 30-missed-session day stays at most 2,000 characters, with the fixed lines whole.
-- [ ] T012 [US2] `src/trading_agent/journal/summary.py`: `SUMMARY_VERSION = "0.1"` and `render(facts: DayFacts) -> str`, making T011 pass. `DayFacts` carries only numbers, dates, closed-set codes and tickers, so the renderer can't reach agent text.
+- [ ] T012 [US2] Two pure modules, making T011 pass:
+  - `src/trading_agent/journal/facts.py`: `day_facts(rows, day, missed_sessions, unpriced_count) -> DayFacts`, applying research J10's day and counting rules to the read rows. It takes the store's row dicts and copies only numbers, dates, closed-set codes and well-formed tickers into `DayFacts`;
+  - `src/trading_agent/journal/summary.py`: `SUMMARY_VERSION = "0.1"` and `render(facts: DayFacts) -> str`.
+
+  `DayFacts` carries only numbers, dates, closed-set codes and tickers, so the renderer can't reach agent text.
 - [ ] T013 [US2] The SC-003 guard, in `tests/unit/journal/test_summary_no_agent_text.py`:
-  - a Hypothesis property: fixture rows whose `rationale_md`, `reasoning_md`, source titles, `broker_reason` and refusal `details` hold random text plus a fixed marker (`IGNORE-PREVIOUS-INSTRUCTIONS`) are run through `service`'s fact-building and `render`, and the marker never appears;
+  - a Hypothesis property: fixture rows whose `rationale_md`, `reasoning_md`, source titles, `broker_reason` and refusal `details` hold random text plus a fixed marker (`IGNORE-PREVIOUS-INSTRUCTIONS`) are run through `facts.day_facts` and `render`, and the marker never appears;
   - also: no agent name, index or return appears in the summary (spec, clarify Q1).
 
-  **Mutation-check**: make the renderer append one rationale; the test must fail. Restore by direct edit.
-- [ ] T014 [US2] Wire it in `service.py`: build `DayFacts` from the read rows (research J10's day rules), render the summary, and add `usage` per agent and `summary_version` to the attribution. Extend `test_service.py`: the written row's summary and usage match the fixture day.
+  **Mutation-check**: make `day_facts` copy one rationale into `DayFacts` and the renderer print it; the test must fail. Restore by direct edit.
+- [ ] T014 [US2] Wire it in `service.py`: call `facts.day_facts` on the read rows, render the summary, and add `usage` per agent and `summary_version` to the attribution. Extend `test_service.py`: the written row's summary and usage match the fixture day.
 
 **Checkpoint**: a complete row with fakes. Run `tests/unit/journal` and lint.
 
@@ -251,7 +258,7 @@ description: "Task list for the journal writer (feature 012)"
 ### Parallel opportunities
 
 - After T003: T004, T005, T006 and T020 in parallel.
-- After Foundational: **US1's T007–T008 and US2's T010–T013 in parallel**, as two subagents. They touch disjoint files (`books.py` versus `usage.py` and `summary.py`), and both meet in `service.py` only at T014.
+- After Foundational: **US1's T007–T008 and US2's T010–T013 in parallel**, as two subagents. They touch disjoint files (`books.py` versus `usage.py`, `facts.py` and `summary.py`), and both meet in `service.py` only at T014.
 - T021 and T022 in parallel with US3.
 
 ## Implementation Strategy

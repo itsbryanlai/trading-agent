@@ -42,7 +42,7 @@ One line per event, at INFO unless noted:
 - **Start:** `journal: start trading_day=… summary_version=0.1 schema_version=1`.
 - **Nothing to do:** `journal: nothing to do: not_a_session|before_close`.
 - **Missed sessions:** `journal: missed sessions: …` (WARNING).
-- **Each unpriced symbol:** `journal: unpriced SYMBOL: not_today|no_price|not_permitted|rate_limited|unavailable|deadline` (WARNING).
+- **Each unpriced symbol:** `journal: unpriced SYMBOL: not_today|no_price|not_permitted|rate_limited|unavailable|deadline` (WARNING). A malformed symbol is never logged as text: `journal: unpriced malformed symbols: N` (WARNING).
 - **Done:** `journal: wrote trading_day=… agents=N symbols_priced=P/Q sessions_covered=S`.
 - **Failure:** `journal: failed: <reason>` (ERROR). Exceptions are logged by type only.
 

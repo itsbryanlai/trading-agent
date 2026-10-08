@@ -21,7 +21,7 @@ No migration. The `journal` table, the `ta_journal` role and its grants exist si
 | `reports` | `id, agent, generated_at, symbol, direction, suggested_size_pct` in the J4 window | books, usage. Never `rationale_md` or `sources`. |
 | `decision_reports` | rows for those reports | usage (J9) |
 | `decisions` | `id, generated_at, symbol, direction` | usage; summary counts and tickers. Never `reasoning_md`. |
-| `risk_verdicts` | `decision_id, stop_loss_trigger_id, trading_day, verdict, rejection_rule` | usage, summary, breaker |
+| `risk_verdicts` | `id, decision_id, stop_loss_trigger_id, trading_day, verdict, rejection_rule` | usage, summary, breaker |
 | `orders` | `risk_verdict_id, status, fill_qty` | usage, summary. Never `broker_reason`. |
 | `execution_refusals` | `reason, refused_at` | summary, breaker. Never `details`. |
 | `stop_loss_triggers` | `id, observed_at` | summary |
@@ -33,7 +33,7 @@ The journal reads no `system_state`, and has no grant to. All reads run in one `
 
 - **Holding**: symbol, `weight_pct`, `ref_price`, `support_session`.
 - **Book**: agent, `started_on`, `index`, holdings.
-- **ReportRow**: id, agent, `generated_at`, symbol, direction, `suggested_size_pct`.
+- **ReportRow**: id, agent, `generated_at`, symbol, direction, `suggested_size_pct`, plus `support_session` and `late`, set by the service (research J4).
 - **Price**: symbol, `Decimal` close or none, with the unpriced reason.
 - **DayFacts**: the counts and closed-set values the summary needs.
 - **RunOutcome**: `wrote`, `nothing_to_do` with a reason, or `failed` with a reason; plus the would-be row for `--dry-run`.

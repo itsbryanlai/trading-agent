@@ -13,7 +13,7 @@
 4. counts each agent's PM usage (J9), and builds the summary from a fixed template with no model or broker text (J10);
 5. upserts today's row (J11).
 
-**How it's built**: a pure core (`books`, `usage`, `summary`, `state`) with no database or network, so the arithmetic (SC-002) and the "no agent text" property (SC-003) are tested directly. Thin edges handle prices, the store and the CLI. No migration, no grant, no model.
+**How it's built**: a pure core (`books`, `usage`, `facts`, `summary`, `state`) with no database or network, so the arithmetic (SC-002) and the "no agent text" property (SC-003) are tested directly. Thin edges handle prices, the store and the CLI. No migration, no grant, no model.
 
 ## Technical Context
 
@@ -96,6 +96,7 @@ src/trading_agent/
 │   ├── model.py         # Holding, Book, ReportRow, Price, DayFacts, RunOutcome
 │   ├── books.py         # pure: value, drift, apply, holding limit, scale, round (J5, J6)
 │   ├── usage.py         # pure: per-agent usage counts (J9)
+│   ├── facts.py         # pure: read rows to DayFacts, J10's day and counting rules
 │   ├── summary.py       # pure: SUMMARY_VERSION, the template, the length bound (J10)
 │   ├── state.py         # pure: attribution object to and from books, schema_version (J11)
 │   ├── prices.py        # quotes through reference.finnhub, pacing, retries, deadline, J2's rule (J8)
