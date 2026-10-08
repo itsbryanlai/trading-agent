@@ -63,7 +63,7 @@ description: "Task list for the journal writer (feature 012)"
   - `tests/unit/journal/test_imports.py`: walks `src/trading_agent/journal/*.py` with `ast`, and fails on any import outside the conventions' list. Also fails on `psycopg`, `urllib`, `os`, `datetime.now`, `prices`, `store` or `service` in the five pure modules.
 
   Run `scripts/lint.sh`.
-- [ ] T002 [P] Config, contracts/journal-interface.md "Configuration":
+- [x] T002 [P] Config, contracts/journal-interface.md "Configuration":
   - `config/journal.yaml` with `holding_sessions: 5`, `finnhub_calls_per_minute: 20`, `fetch_deadline_seconds: 480`, `close_grace_minutes: 5`, each with a one-line comment;
   - `src/trading_agent/journal/config.py`: `load_config(path) -> JournalConfig` (a frozen dataclass), `DEFAULT_CONFIG_PATH`, and `JournalConfigError`. Every key is required, unknown keys are refused, and the values are integers (not booleans) within bounds: 1–60, 1–300, 30–540, 0–30;
   - `tests/unit/journal/test_config.py`: the shipped file loads; each missing, unknown, wrong-typed and out-of-bounds key is refused by name.
