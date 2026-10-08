@@ -59,7 +59,7 @@
 | II. Analysts propose, PM decides | The journal decides nothing. Attribution never enters the PM's input: the summary carries none (spec, clarify Q1), and the PM already leaves `per_agent_attribution` out (specs/008 P6). | Pass |
 | III. Least privilege at the database | No new grant. One new login, for the existing `ta_journal` role. Integration tests assert it can't write anything but `journal` and can't read `system_state`. | Pass |
 | IV. Autonomous, one hard stop | No approval gate. The breaker is reported, not acted on. | Pass |
-| V. Spec and ADR first | ADR 0022 covers the new service and credential. The behavior spec `docs/specs/journal.md` is added, and `docs/specs/data-model.md`, the overview and the service-layout and logins contracts are updated, all referencing ADR 0022. | Pass, once ADR 0022 is accepted (flag 1) |
+| V. Spec and ADR first | ADR 0022 covers the new service and credential. The behavior spec `docs/specs/journal.md` is added, and `docs/specs/data-model.md`, the overview and the service-layout and logins contracts are updated, all referencing ADR 0022. | Pass (ADR 0022 accepted 2026-10-09) |
 | VI. Paper only, US equities | Not affected. Hypothetical books are measurement. | Pass |
 | VII. Assistant and dashboard read-only | Not affected. They read the new rows through their existing grants. | Pass |
 | Technology section (v1.1.1) | Finnhub is a named credential. One worker service per process, as code. No model. | Pass |
@@ -126,8 +126,8 @@ specs/010-observe-only-deployment/contracts/{service-layout,logins-command}.md (
 
 ## Things flagged for the owner
 
-1. **ADR 0022 should be accepted with this plan.** Its first open item is settled: the pinned Railway SDK declares `deploy.cronSchedule` and `restartPolicyType` (J1). The second, whether `/quote` after the close returns the close, can't be settled from documentation. It's guarded instead: a quote stamped after the close is refused (J2), and your `--check` after a close confirms it before release (quickstart step 3). I'll mark the ADR accepted, recording both, when you approve this plan.
-2. **`equity_close` is the last snapshot Execution recorded**, normally from the last stop-loss window, up to about 30 minutes before the close (J7). The journal can't ask the broker. It's labelled "last recorded" in the summary, and its time is stored.
+1. **ADR 0022 is accepted (owner, 2026-10-09).** Its first open item is settled: the pinned Railway SDK declares `deploy.cronSchedule` and `restartPolicyType` (J1). The second, whether `/quote` after the close returns the close, can't be settled from documentation. It's guarded instead: a quote stamped after the close is refused (J2), and your `--check` after a close confirms it before release (quickstart step 3). The ADR records both.
+2. **`equity_close` is the last snapshot Execution recorded (owner, 2026-10-09: accepted)**, normally from the last stop-loss window, up to about 30 minutes before the close (J7). The journal can't ask the broker. It's labelled "last recorded" in the summary, and its time is stored.
 3. **A new Railway service, on cron**: `30 22 * * 1-5` (18:30 ET in summer, 17:30 in winter), restart policy `NEVER`. A failed run is re-run by hand the same evening (J1, FR-003).
 4. **New credentials for you to create**: `ta_journal_login` (logins command) and `JOURNAL_FINNHUB_API_KEY` (a read-only Finnhub key, or the shared account's). Both are needed before the service runs.
 5. **No migration**: the release is a merge to `release/prod` plus `railway config apply`. No proxy step.
