@@ -170,7 +170,7 @@ description: "Task list for the journal writer (feature 012)"
   - also: no agent name, index or return appears in the summary (spec, clarify Q1).
 
   **Mutation-check**: make `day_facts` copy one rationale into `DayFacts` and the renderer print it; the test must fail. Restore by direct edit.
-- [ ] T014 [US2] Wire it in `service.py`: call `facts.day_facts` on the read rows, render the summary, and add `usage` per agent and `summary_version` to the attribution. Extend `test_service.py`: the written row's summary and usage match the fixture day.
+- [x] T014 [US2] Wire it in `service.py`: call `facts.day_facts` on the read rows, render the summary, and add `usage` per agent and `summary_version` to the attribution. Extend `test_service.py`: the written row's summary and usage match the fixture day.
 
 **Checkpoint**: a complete row with fakes. Run `tests/unit/journal` and lint.
 
@@ -182,7 +182,7 @@ description: "Task list for the journal writer (feature 012)"
 
 **Independent Test**: inject each failure and check no write and the exit code; run a day twice and compare.
 
-- [ ] T015 [US3] Failures in `service.py`, test first in `test_service.py`. Each must leave no upsert and a named `RunOutcome`:
+- [x] T015 [US3] Failures in `service.py`, test first in `test_service.py`. Each must leave no upsert and a named `RunOutcome`:
   - `no_account_snapshot`;
   - `no_prices` (at least one symbol needed, none priced);
   - `market_data_key_rejected`;
@@ -190,14 +190,14 @@ description: "Task list for the journal writer (feature 012)"
   - `unknown_schema`.
 
   Also: some unpriced symbols are not a failure; missed sessions are listed and logged at WARNING, with `sessions_covered` and the books valued across the gap (US3 scenario 3); a re-run of the same day computes from the previous day's row, not today's (US3 scenario 2).
-- [ ] T016 [US3] `src/trading_agent/journal/__main__.py` (contracts/journal-interface.md, research J12), test first in `tests/unit/journal/test_main.py`, built like `opportunistic_identifier/__main__.py`:
+- [x] T016 [US3] `src/trading_agent/journal/__main__.py` (contracts/journal-interface.md, research J12), test first in `tests/unit/journal/test_main.py`, built like `opportunistic_identifier/__main__.py`:
   - `main(argv, *, market_factory, connect, config_path, clock, sleep, monotonic, out) -> int`;
   - `JOURNAL_*` variables only, named when missing and never echoed;
   - exit codes 0–4, with any exception becoming 4 and a `psycopg.Error` becoming 3;
   - log lines exactly as the contract lists, exceptions by type only.
 
   Tests: each exit code; a missing variable is named; no variable value appears in any log record (caplog).
-- [ ] T017 [US3] `tests/integration/journal/test_run.py`, against Postgres with fake quotes:
+- [x] T017 [US3] `tests/integration/journal/test_run.py`, against Postgres with fake quotes:
   - a full run writes one row that the PM's role can read;
   - running the same day twice leaves one identical row apart from `written_at` (SC-004);
   - a run with no snapshot writes nothing and leaves the previous rows untouched.
@@ -212,26 +212,26 @@ description: "Task list for the journal writer (feature 012)"
 
 **Independent Test**: dry run with fakes writes nothing and prints the row.
 
-- [ ] T018 [US4] `--dry-run` in `__main__.py` and `service.py`: the same run with the upsert replaced by printing the would-be row as JSON lines (equity, the summary, the attribution). It needs `JOURNAL_DATABASE_URL`. Test: no upsert call, and the output parses as JSON.
-- [ ] T019 [US4] `src/trading_agent/journal/check.py` and `--check SYMBOL …` (at most 20, each matching `^[A-Z][A-Z0-9.\-]{0,9}$`, else exit 2). It needs only `JOURNAL_FINNHUB_API_KEY` and prints per symbol `c`, `t`, today's open and close, and `accepted: true|false` with J2's reason. Test first in `tests/unit/journal/test_check.py`.
+- [x] T018 [US4] `--dry-run` in `__main__.py` and `service.py`: the same run with the upsert replaced by printing the would-be row as JSON lines (equity, the summary, the attribution). It needs `JOURNAL_DATABASE_URL`. Test: no upsert call, and the output parses as JSON.
+- [x] T019 [US4] `src/trading_agent/journal/check.py` and `--check SYMBOL …` (at most 20, each matching `^[A-Z][A-Z0-9.\-]{0,9}$`, else exit 2). It needs only `JOURNAL_FINNHUB_API_KEY` and prints per symbol `c`, `t`, today's open and close, and `accepted: true|false` with J2's reason. Test first in `tests/unit/journal/test_check.py`.
 
 ---
 
 ## Phase 7: Login, deployment and docs
 
-- [ ] T020 [P] The login (research J14):
+- [x] T020 [P] The login (research J14):
   - add `Login("ta_journal_login", "ta_journal")` to `src/trading_agent/storage/logins.py`, and update its "nine rows" comment to ten;
   - update `tests/unit/storage/test_logins.py` and `tests/integration/storage/test_logins.py` to ten rows;
   - new `tests/integration/journal/test_role_limits.py`, as `ta_journal`: it can upsert `journal`; it can't insert or update `reports`, `decisions`, `risk_verdicts`, `orders`, `positions` or `account_snapshots`, and can't read `system_state`; the Risk Gate and Execution roles still can't select `journal`.
 
   **Mutation-check**: temporarily grant `ta_journal` select on `system_state` inside the test transaction; the test must fail.
-- [ ] T021 [P] Deployment wiring (research J1, J14):
+- [x] T021 [P] Deployment wiring (research J1, J14):
   - `.railway/railway.ts`: a `journal` service with the same source and build as the others, `start: "python -m trading_agent.journal"`, `deploy: { cronSchedule: "30 22 * * 1-5", restartPolicyType: "NEVER" }`, `replicas: 1`, and `env` holding exactly `JOURNAL_DATABASE_URL: preserve()` and `JOURNAL_FINNHUB_API_KEY: preserve()`; add it to `resources`;
   - `tests/unit/deploy/test_deployed_shape.py`: the contract gains `journal`; new checks that `journal` alone has a `cronSchedule`, that it is exactly `30 22 * * 1-5`, and that its restart policy is `NEVER`; a broken copy with a cron schedule on another service, or a `JOURNAL_*` variable on another service, must fail;
   - `specs/010-observe-only-deployment/contracts/service-layout.md`: a `journal` row and a note referencing ADR 0022;
   - `.env.example`: the two variables, commented;
   - `.railway/README.md`: five services.
-- [ ] T022 [P] Docs, each referencing ADR 0022:
+- [x] T022 [P] Docs, each referencing ADR 0022:
   - new `docs/specs/journal.md`, the behavior spec, short, in the style of `docs/specs/reference-data.md`;
   - `docs/specs/data-model.md` §`journal`: books, the 5-session holding limit, and that the summary carries no attribution;
   - `docs/architecture/overview.md`: a journal row;
