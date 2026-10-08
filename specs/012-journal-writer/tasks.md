@@ -83,7 +83,7 @@ description: "Task list for the journal writer (feature 012)"
   - `decode_books(attribution: dict) -> dict[str, Book]`, refusing any `schema_version` other than `1` with `UnknownSchema`;
   - `encode(...) -> dict`, producing exactly the documented object, with numbers as strings rounded per the conventions, symbols sorted, and `missed_sessions` capped at 30;
   - the tests: a round trip; the documented example decodes; the unknown version is refused; and a Hypothesis property that `decode(encode(x))` re-encodes identically, which is what makes a re-run identical (SC-004).
-- [ ] T005 `src/trading_agent/journal/prices.py` (research J2, J8), test first in `tests/unit/journal/test_prices.py` using `FakeMarketData` and injected `sleep` and `monotonic`:
+- [x] T005 `src/trading_agent/journal/prices.py` (research J2, J8), test first in `tests/unit/journal/test_prices.py` using `FakeMarketData` and injected `sleep` and `monotonic`:
   - `fetch_closes(provider, symbols, day, cfg, *, sleep, monotonic) -> dict[str, Price]`, in symbol order, paced at `60 / finnhub_calls_per_minute` seconds;
   - **accepted** only when `current` is usable and `open_time(day) ≤ t ≤ close_time(day) + close_grace_minutes`; otherwise `not_today` (or `no_price` if `current` is None);
   - `RateLimited` and `ProviderUnavailable` retried at most twice, one pacing interval apart; `NotPermitted` is unpriced at once;
