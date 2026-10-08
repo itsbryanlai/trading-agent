@@ -72,7 +72,7 @@ description: "Task list for the journal writer (feature 012)"
 
 ## Phase 2: Foundational (blocks every story)
 
-- [ ] T003 [P] `src/trading_agent/journal/model.py`, frozen dataclasses only, no logic:
+- [x] T003 [P] `src/trading_agent/journal/model.py`, frozen dataclasses only, no logic:
   - `Holding(symbol, weight_pct: Decimal, ref_price: Decimal, support_session: date)`;
   - `Book(agent, started_on: date, index: Decimal, holdings: dict[str, Holding])`;
   - `ReportRow(id, agent, generated_at, symbol, direction, suggested_size_pct, support_session: date, late: bool)`;
