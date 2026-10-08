@@ -26,13 +26,13 @@ Expected: the book arithmetic matches hand-computed fixtures over several sessio
 
 ## 3. Check the quote after a close (owner, ADR 0022's open item)
 
-After 16:05 ET on a session day, with symbols of your choosing:
+Run it at the cron's own time, 22:30 UTC (18:30 ET in summer, 17:30 in winter) on a session day, not only just after the close, because what the provider sends for `t` can change between the close and then. Use liquid symbols of your choosing:
 
 ```bash
 python -m trading_agent.journal --check AAPL MSFT
 ```
 
-Expected: each line shows `t` inside today's session and `accepted: true`. If `t` is after the close (after-hours prices), J2 refuses those quotes, and the scheduled run would fail as `no_prices`. Stop and tell me.
+Expected: each line shows `t` inside today's session and `accepted: true`. This is a release gate: `accepted: true` for liquid symbols at 22:30 UTC. If a liquid symbol shows `reason: after_close` (after-hours prices), J2 refuses those quotes and the scheduled run would fail as `no_prices` every evening. Stop and tell me; do not release.
 
 ## 4. Dry run against production (owner)
 

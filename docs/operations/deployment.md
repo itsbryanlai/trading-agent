@@ -211,7 +211,7 @@ The `journal` service is a cron job: it runs once after each weekday's close, wr
    PYTHONPATH=src .venv/bin/python -m trading_agent.journal --check AAPL MSFT
    ```
 
-   Each line must show `t` inside today's session and `accepted: true`. If `t` falls after the close, the scheduled run would fail as `no_prices`: do not release, and raise it.
+   Run it at the cron's time, 22:30 UTC, not only just after the close. Each line must show `t` inside today's session and `accepted: true` for liquid symbols; this is a release gate. If `t` falls after the close (`reason: after_close`), the scheduled run would fail as `no_prices`: do not release, and raise it.
 4. **Dry run.** The same evening, with `JOURNAL_DATABASE_URL` pointing at the database through the proxy (with `sslmode=require` and the host override), run `python -m trading_agent.journal --dry-run`. It prints the would-be row and writes nothing.
 5. **Plan and apply.** From a clean checkout of `release/prod`, after the guard test passes, run `railway config plan`. It must show one new service, `journal`, with the cron schedule `30 0,22 * * *` (22:30 UTC and a 00:30 UTC retry slot), restart policy `NEVER` and only `JOURNAL_DATABASE_URL` and `JOURNAL_FINNHUB_API_KEY`. Then `railway config apply`, and set the two values in the Railway dashboard.
 
