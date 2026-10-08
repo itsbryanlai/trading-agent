@@ -203,6 +203,25 @@ def test_a_second_day_values_the_previous_book_and_continues_its_index():
     assert a["account"]["return"] == "0.005000"  # 100500 / 100000 - 1
 
 
+def test_an_agent_with_a_book_but_no_report_today_gets_zero_usage_counts():
+    # contracts/attribution.md: `usage` always carries its seven counts (converge T024).
+    market, clock = market_for(AAPL=204)
+    prev = previous(
+        date(2026, 10, 8),
+        research=("104", date(2026, 10, 1), {"AAPL": ("10", "200", date(2026, 10, 7))}),
+    )
+    outcome, _ = go(empty_reads(previous=prev, **snapshots()), market, clock)
+    assert outcome.row.per_agent_attribution["agents"]["research"]["usage"] == {
+        "written": 0,
+        "argued": 0,
+        "no_action": 0,
+        "cited": 0,
+        "cited_decisions": 0,
+        "approved": 0,
+        "filled": 0,
+    }
+
+
 def test_the_account_return_is_null_when_its_base_is_zero():
     market, clock = market_for()
     reads = empty_reads(previous=previous(date(2026, 10, 8), equity_close="0"), **snapshots())

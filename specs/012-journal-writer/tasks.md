@@ -266,3 +266,9 @@ description: "Task list for the journal writer (feature 012)"
 - **MVP**: Phases 1–3. Books are written with a placeholder summary; that's enough to prove the arithmetic on real rows.
 - **Then**: US2 (the summary the PM reads), US3 (failures and the CLI), US4 (the owner's checks), and Phase 7.
 - **Review between phases** (CLAUDE.local.md): the main session reviews each phase's commits, test results and lint before sending the next.
+
+---
+
+## Phase 8: Convergence
+
+- [x] T024 Record zero usage counts for every agent that has a book, not only those with a report in the window: in `src/trading_agent/journal/service.py` (`_row`, which passes `usage(...)` to `encode`) or `usage.py`, give each agent in `results` the seven fields (`written`, `argued`, `no_action`, `cited`, `cited_decisions`, `approved`, `filled`) at 0 when it has no window report, so `agents.<name>.usage` is never `{}` (today `state._agent` writes `usage.get(agent, {})`). Add a test in `tests/unit/journal/test_service.py`: a second day where an agent with a held book has no report in the window gets all-zero usage. Per FR-015 and contracts/attribution.md `usage` (partial)

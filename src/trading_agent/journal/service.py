@@ -25,7 +25,7 @@ from trading_agent.journal.model import (
 )
 from trading_agent.journal.prices import fetch_closes
 from trading_agent.journal.state import SCHEMA_VERSION, UnknownSchema, decode_books, encode
-from trading_agent.journal.usage import usage
+from trading_agent.journal.usage import usage, zero_counts
 from trading_agent.reference.provider import KeyRejected, MarketDataProvider
 from trading_agent.risk import calendar
 
@@ -135,10 +135,16 @@ def _row(reads, day, previous_day, missed, cfg, results, unpriced, prices) -> Jo
         account_base=base_name,
         close_taken_at=reads.snapshot_close["taken_at"].astimezone(UTC),
         results=results,
-        usage=usage(reads.reports, reads.decision_reports, reads.verdicts, reads.orders),
+        usage=_usage_for(results, reads),
     )
     text = summary.render(facts.day_facts(reads, day, missed, unpriced))
     return JournalRow(day, equity_open, equity_close, text, attribution)
+
+
+def _usage_for(results: dict[str, BookResult], reads: JournalReads) -> dict[str, dict[str, int]]:
+    """Every agent with a book gets all seven counts, zeros included (contracts/attribution.md)."""
+    counts = usage(reads.reports, reads.decision_reports, reads.verdicts, reads.orders)
+    return {agent: counts.get(agent) or zero_counts() for agent in results}
 
 
 def _nothing_to_do(reason: str) -> RunOutcome:

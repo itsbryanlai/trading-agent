@@ -53,4 +53,9 @@ def usage(
     return counts
 
 
+def zero_counts() -> dict[str, int]:
+    """The seven counts at 0, for an agent with a book but no report in the window."""
+    return dict.fromkeys(_FIELDS, 0)
+
+
 _FIELDS = ("written", "argued", "no_action", "cited", "cited_decisions", "approved", "filled")
