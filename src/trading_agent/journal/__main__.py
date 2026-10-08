@@ -22,6 +22,7 @@ import psycopg
 from psycopg.rows import dict_row
 
 from trading_agent.journal import service
+from trading_agent.journal.check import run_check, valid_symbols
 from trading_agent.journal.config import (
     DEFAULT_CONFIG_PATH,
     JournalConfig,
@@ -73,17 +74,22 @@ def main(
 
 
 def _main(args, market_factory, connect, store_factory, config_path, clocks, out) -> int:
+    clock, sleep, monotonic = clocks
     dry_run = args == ["--dry-run"]
-    if args and not dry_run:
+    checking = bool(args) and args[0] == "--check"
+    if args and not dry_run and not (checking and valid_symbols(args[1:])):
         log.critical("journal: unknown or invalid arguments")
         return EXIT_REFUSED
     try:
         cfg = load_config(config_path)
         key = require_env(FINNHUB_KEY_VARIABLE)
-        database_url = require_env(DATABASE_VARIABLE)
+        database_url = None if checking else require_env(DATABASE_VARIABLE)
     except (ConfigError, JournalConfigError) as exc:
         log.critical("journal: refusing to start: %s", exc)
         return EXIT_REFUSED
+
+    if checking:
+        return run_check(args[1:], market_factory(key), cfg, now=clock(), sleep=sleep, out=out)
 
     try:
         conn = connect(

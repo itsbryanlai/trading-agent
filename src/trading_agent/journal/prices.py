@@ -40,16 +40,31 @@ def fetch_closes(
     monotonic: Callable[[], float],
 ) -> dict[str, Price]:
     """`symbol -> Price` for every distinct symbol asked about, in symbol order."""
-    window = _Window(
-        calendar.open_time(day),
-        calendar.close_time(day) + timedelta(minutes=cfg.close_grace_minutes),
-    )
+    window = session_window(day, cfg)
     pace = 60 / cfg.finnhub_calls_per_minute
     started = monotonic()
     fetcher = _Fetcher(
         provider, window, pace, started + cfg.fetch_deadline_seconds, sleep, monotonic
     )
     return {symbol: fetcher.price(symbol) for symbol in sorted(set(symbols))}
+
+
+def session_window(day: date, cfg: JournalConfig) -> _Window:
+    """Today's session plus the grace for the closing auction (research J2)."""
+    return _Window(
+        calendar.open_time(day),
+        calendar.close_time(day) + timedelta(minutes=cfg.close_grace_minutes),
+    )
+
+
+def judge(symbol: str, quote: Quote, window: _Window) -> Price:
+    """Whether a quote is today's close: a usable price, stamped inside the window."""
+    current: Decimal | None = quote.current
+    if current is None or current <= 0:
+        return Price(symbol, None, "no_price")
+    if not window.accepts(quote):
+        return Price(symbol, None, "not_today")
+    return Price(symbol, current, None)
 
 
 class _Window:
@@ -94,9 +109,4 @@ class _Fetcher:
         return Price(symbol, None, reason)
 
     def _judge(self, symbol: str, quote: Quote) -> Price:
-        current: Decimal | None = quote.current
-        if current is None or current <= 0:
-            return Price(symbol, None, "no_price")
-        if not self._window.accepts(quote):
-            return Price(symbol, None, "not_today")
-        return Price(symbol, current, None)
+        return judge(symbol, quote, self._window)

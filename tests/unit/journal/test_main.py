@@ -14,6 +14,7 @@ from tests.fakes.journal_store import FakeJournalStore, empty_reads
 from tests.fakes.market_data import FakeMarketData
 from trading_agent.journal import __main__ as runner
 from trading_agent.journal.config import DEFAULT_CONFIG_PATH
+from trading_agent.reference.provider import KeyRejected
 
 DATABASE = "postgresql://fake-user:fake-password-not-real@127.0.0.1:1/none"
 KEY = "fake-not-real-key"
@@ -185,4 +186,42 @@ def test_a_dry_run_on_a_day_with_nothing_to_do_prints_nothing(env):
 def test_a_dry_run_still_needs_the_database_url(env, monkeypatch):
     monkeypatch.delenv("JOURNAL_DATABASE_URL")
     code, *_ = go(["--dry-run"])
+    assert code == 2
+
+
+# --- --check (T019) --------------------------------------------------------------------------
+
+
+def test_check_needs_only_the_market_data_key_and_prints_a_line_per_symbol(env, monkeypatch):
+    import json
+
+    monkeypatch.delenv("JOURNAL_DATABASE_URL")
+    market = FakeMarketData(quote_time=datetime(2026, 10, 9, 19, 59, tzinfo=UTC))
+    market.add("AAPL", current="229.15")
+
+    def no_database(url, **kw):
+        raise AssertionError("--check must not connect")
+
+    code, store, _, lines = go(["--check", "AAPL"], market=market, connect=no_database)
+    assert code == 0 and store.upserts == [] and store.read_calls == []
+    (line,) = [json.loads(x)["check"] for x in lines]
+    assert (line["symbol"], line["accepted"]) == ("AAPL", True)
+
+
+def test_check_without_its_key_is_exit_2_and_names_it(env, monkeypatch, caplog):
+    monkeypatch.delenv("JOURNAL_FINNHUB_API_KEY")
+    code, *_ = go(["--check", "AAPL"])
+    assert code == 2 and "JOURNAL_FINNHUB_API_KEY" in critical(caplog)[0]
+
+
+def test_check_with_a_rejected_key_is_exit_1(env):
+    market = FakeMarketData()
+    market.add("AAPL")
+    market.fail("get_quote", error=KeyRejected())
+    code, *_ = go(["--check", "AAPL"], market=market)
+    assert code == 1
+
+
+def test_check_with_more_than_twenty_symbols_is_exit_2(env):
+    code, *_ = go(["--check", *[f"S{i}" for i in range(21)]])
     assert code == 2
