@@ -109,7 +109,7 @@ description: "Task list for the journal writer (feature 012)"
 
 **Independent Test**: a multi-session run with fakes, checked against hand-computed books (spec US1 scenarios 1–7).
 
-- [ ] T007 [P] [US1] Tests first, in `tests/unit/journal/test_books.py`:
+- [x] T007 [P] [US1] Tests first, in `tests/unit/journal/test_books.py`:
   - every US1 acceptance scenario, including the 10.89% drift;
   - a three-session fixture with hand-computed indexes, written out in the test as comments;
   - scale-down at 150%;
@@ -121,11 +121,11 @@ description: "Task list for the journal writer (feature 012)"
   - a new agent starts at 100 with a day return of 0.
 
   Hypothesis properties: weights stay ≥ 0 and sum to ≤ 100 after every step, also after encoding with `ROUND_DOWN` and decoding again across several sessions; `1 + R > 0`; the index never goes negative.
-- [ ] T008 [US1] `src/trading_agent/journal/books.py` (research J5, J6), making T007 pass:
+- [x] T008 [US1] `src/trading_agent/journal/books.py` (research J5, J6), making T007 pass:
   - `sessions_since(a, b, previous_session, limit) -> int`;
   - `advance(book, reports, prices, day, holding_sessions, previous_session) -> BookResult`, applying J5's steps in order, reading `support_session` and `late` from each `ReportRow`;
   - `new_book(agent, day) -> Book`.
-- [ ] T009 [US1] `src/trading_agent/journal/service.py`, the run's skeleton, test first in `tests/unit/journal/test_service.py` with an in-memory fake store (`tests/fakes/journal_store.py`, new) and `FakeMarketData`:
+- [x] T009 [US1] `src/trading_agent/journal/service.py`, the run's skeleton, test first in `tests/unit/journal/test_service.py` with an in-memory fake store (`tests/fakes/journal_store.py`, new) and `FakeMarketData`:
   - the J3 gate: `nothing_to_do` for `not_a_session` and `before_close`;
   - the store's read (T006), which computes the J4 window;
   - each `ReportRow`'s `support_session` and `late` (research J4): step back from `D` with `calendar.previous_session` to the first session whose `close_time` is at or after `generated_at`;
@@ -148,10 +148,10 @@ description: "Task list for the journal writer (feature 012)"
 
 **Independent Test**: fixture rows for one day produce the exact expected summary, and planted instructions never appear.
 
-- [ ] T010 [P] [US2] `src/trading_agent/journal/usage.py` (research J9), test first in `tests/unit/journal/test_usage.py`:
+- [x] T010 [P] [US2] `src/trading_agent/journal/usage.py` (research J9), test first in `tests/unit/journal/test_usage.py`:
   - `usage(reports, decision_reports, verdicts, orders) -> dict[agent, counts]`;
   - spec US2 scenario 2; a decision citing two reports from one agent counts once in `cited_decisions`; a decision citing both agents counts once for each; `filled` needs `fill_qty > 0` (a `partially_filled` order counts, an `expired` one with 0 doesn't).
-- [ ] T011 [P] [US2] Tests first, in `tests/unit/journal/test_summary.py`:
+- [x] T011 [P] [US2] Tests first, in `tests/unit/journal/test_summary.py`:
   - the contract's example day renders character for character;
   - US2 scenarios 1, 3 and 4;
   - the breaker reads `triggered` for a `daily_loss_halt` verdict and for a `daily_loss_line_crossed` refusal, else `not triggered`;
@@ -160,12 +160,12 @@ description: "Task list for the journal writer (feature 012)"
   - empty sections read `none`;
   - stop-loss verdicts count only on the stop-loss line; orders from both decisions and stop-loss verdicts count on the Orders line; a decision with no verdict counts as neither approved nor rejected; `equity_open` 0 shows `n/a`;
   - a 500-decision, 40-rule, 30-missed-session day stays at most 2,000 characters, with the fixed lines whole.
-- [ ] T012 [US2] Two pure modules, making T011 pass:
+- [x] T012 [US2] Two pure modules, making T011 pass:
   - `src/trading_agent/journal/facts.py`: `day_facts(rows, day, missed_sessions, unpriced_count) -> DayFacts`, applying research J10's day and counting rules to the read rows. It takes the store's row dicts and copies only numbers, dates, closed-set codes and well-formed tickers into `DayFacts`;
   - `src/trading_agent/journal/summary.py`: `SUMMARY_VERSION = "0.1"` and `render(facts: DayFacts) -> str`.
 
   `DayFacts` carries only numbers, dates, closed-set codes and tickers, so the renderer can't reach agent text.
-- [ ] T013 [US2] The SC-003 guard, in `tests/unit/journal/test_summary_no_agent_text.py`:
+- [x] T013 [US2] The SC-003 guard, in `tests/unit/journal/test_summary_no_agent_text.py`:
   - a Hypothesis property: fixture rows whose `rationale_md`, `reasoning_md`, source titles, `broker_reason` and refusal `details` hold random text plus a fixed marker (`IGNORE-PREVIOUS-INSTRUCTIONS`) are run through `facts.day_facts` and `render`, and the marker never appears;
   - also: no agent name, index or return appears in the summary (spec, clarify Q1).
 
