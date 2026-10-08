@@ -56,7 +56,7 @@ description: "Task list for the journal writer (feature 012)"
 
 ## Phase 1: Setup
 
-- [ ] T001 Create the package and its layer:
+- [x] T001 Create the package and its layer:
   - `src/trading_agent/journal/__init__.py` with a one-paragraph docstring pointing at spec 012 and ADR 0022;
   - add `journal` to the first layer of `[tool.importlinter]` in `pyproject.toml`, beside `opportunistic_identifier`;
   - `tests/unit/journal/__init__.py`, `tests/integration/journal/__init__.py`;
