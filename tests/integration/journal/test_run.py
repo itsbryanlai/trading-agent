@@ -27,7 +27,10 @@ def seed(conn, *, snapshots=True):
     conn.execute(
         "INSERT INTO journal (trading_day, equity_open, equity_close, summary_md, "
         "per_agent_attribution) VALUES (%s, 100000, 100000, 's', %s)",
-        (date(2026, 10, 8), Jsonb({"schema_version": 1, "agents": {}})),
+        (
+            date(2026, 10, 8),
+            Jsonb({"schema_version": 1, "trading_day": "2026-10-08", "agents": {}}),
+        ),
     )
     conn.execute(
         "INSERT INTO reports (agent, symbol, direction, conviction, suggested_size_pct, "

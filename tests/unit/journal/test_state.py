@@ -212,6 +212,71 @@ def test_a_missing_version_or_a_malformed_object_is_refused():
         decode_books("nonsense")  # type: ignore[arg-type]
 
 
+def _stored(**over):
+    """The documented example with one value of its research book changed."""
+    import copy
+
+    row = copy.deepcopy(EXAMPLE)
+    book = row["agents"]["research"]
+    holding = book["holdings"]["AAPL"]
+    for key, value in over.items():
+        target = book if key in ("index", "started_on") else holding
+        target[key] = value
+    return row
+
+
+@pytest.mark.parametrize(
+    "over",
+    [
+        {"weight_pct": "NaN"},
+        {"weight_pct": "Infinity"},
+        {"weight_pct": "-Infinity"},
+        {"ref_price": "NaN"},
+        {"ref_price": "Infinity"},
+        {"index": "NaN"},
+        {"index": "Infinity"},
+        {"weight_pct": "-0.000001"},
+        {"weight_pct": "100.000001"},
+        {"ref_price": "0"},
+        {"ref_price": "-1"},
+        {"index": "0"},
+        {"index": "-1.5"},
+        {"started_on": "2026-10-10"},
+        {"support_session": "2026-10-10"},
+        {"support_session": "2099-01-01"},
+    ],
+)
+def test_a_stored_value_no_run_could_have_written_is_refused(over):
+    with pytest.raises(UnknownSchema):
+        decode_books(_stored(**over))
+
+
+def test_each_books_weights_must_sum_to_at_most_100():
+    row = _stored()
+    holdings = row["agents"]["research"]["holdings"]
+    holdings["AAPL"]["weight_pct"] = "60.000000"
+    holdings["MSFT"] = {**holdings["AAPL"], "weight_pct": "40.000001"}
+    with pytest.raises(UnknownSchema):
+        decode_books(row)
+    holdings["MSFT"]["weight_pct"] = "40.000000"
+    assert decode_books(row)["research"].holdings["MSFT"].weight_pct == Decimal("40")
+
+
+@pytest.mark.parametrize("symbol", ["aapl", "", "1AAPL", "AAPL; DROP", "A" * 11, "AA PL", "AAPL\n"])
+def test_a_malformed_stored_symbol_is_refused(symbol):
+    row = _stored()
+    holdings = row["agents"]["research"]["holdings"]
+    holdings[symbol] = holdings.pop("AAPL")
+    with pytest.raises(UnknownSchema):
+        decode_books(row)
+
+
+def test_the_boundary_values_are_accepted():
+    row = _stored(weight_pct="100.000000", started_on="2026-10-09", support_session="2026-10-09")
+    assert decode_books(row)["research"].holdings["AAPL"].weight_pct == Decimal("100")
+    assert decode_books(_stored(weight_pct="0.000000"))
+
+
 _symbols = st.sampled_from(["AAPL", "MSFT", "NVDA", "BRK.B", "X"])
 _weight = st.decimals(min_value=0, max_value=100, places=9, allow_nan=False)
 _price = st.decimals(min_value=Decimal("0.0001"), max_value=1_000_000, places=6)
@@ -221,11 +286,11 @@ _holdings = st.dictionaries(
         lambda w, p, d: (w, p, d),
         _weight,
         _price,
-        st.dates(min_value=date(2020, 1, 1), max_value=date(2030, 1, 1)),
+        st.dates(min_value=date(2020, 1, 1), max_value=DAY),
     ),
     max_size=5,
-)
-_index = st.decimals(min_value=0, max_value=1_000_000, places=12)
+).filter(lambda held: sum(w for w, _, _ in held.values()) <= 100)
+_index = st.decimals(min_value=Decimal("0.0001"), max_value=1_000_000, places=12)
 
 
 @given(

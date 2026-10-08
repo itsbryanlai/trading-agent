@@ -10,13 +10,12 @@ reached before the deadline are unpriced as `deadline`. Time is injected, never 
 
 from __future__ import annotations
 
-import re
 from collections.abc import Callable
 from datetime import date, timedelta
 from decimal import Decimal
 
 from trading_agent.journal.config import JournalConfig
-from trading_agent.journal.model import Price
+from trading_agent.journal.model import SYMBOL_PATTERN, Price
 from trading_agent.reference.provider import (
     MarketDataProvider,
     NotPermitted,
@@ -26,7 +25,6 @@ from trading_agent.reference.provider import (
 )
 from trading_agent.risk import calendar
 
-SYMBOL_PATTERN = re.compile(r"[A-Z][A-Z0-9.\-]{0,9}")
 RETRIES = 2
 
 

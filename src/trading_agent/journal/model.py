@@ -5,10 +5,14 @@ Frozen dataclasses only, no logic. Money, weights and prices are `Decimal`, neve
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
 from datetime import date, datetime
 from decimal import Decimal
 from typing import Any
+
+# A symbol the journal will fetch, hold or store (research J2, J11).
+SYMBOL_PATTERN = re.compile(r"[A-Z][A-Z0-9.\-]{0,9}")
 
 # Why a symbol has no price for the day (research J2, J8).
 UNPRICED_REASONS = (

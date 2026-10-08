@@ -13,7 +13,7 @@ from datetime import date, datetime
 from decimal import ROUND_DOWN, ROUND_HALF_EVEN, Decimal, InvalidOperation, localcontext
 from typing import Any
 
-from trading_agent.journal.model import Book, BookResult, Holding
+from trading_agent.journal.model import SYMBOL_PATTERN, Book, BookResult, Holding
 
 SCHEMA_VERSION = 1
 MISSED_LISTED = 30
@@ -62,13 +62,17 @@ def encode(
 
 
 def decode_books(attribution: Mapping[str, Any]) -> dict[str, Book]:
-    """The books a previous row left behind. Any other schema version is refused."""
+    """The books a previous row left behind. Any other schema version, and any value no run
+    could have stored (a non-finite number, a weight outside 0 to 100 or a book over 100, a
+    non-positive price or index, a date after the row's day, a malformed symbol), is refused
+    (research J11)."""
     try:
         if attribution["schema_version"] != SCHEMA_VERSION or isinstance(
             attribution["schema_version"], bool
         ):
             raise UnknownSchema(f"schema_version {attribution['schema_version']!r}")
-        return {agent: _book(agent, body) for agent, body in attribution["agents"].items()}
+        day = date.fromisoformat(attribution["trading_day"])
+        return {agent: _book(agent, body, day) for agent, body in attribution["agents"].items()}
     except UnknownSchema:
         raise
     except (KeyError, TypeError, ValueError, AttributeError, InvalidOperation) as exc:
@@ -101,17 +105,38 @@ def _agent(result: BookResult, usage: dict[str, int]) -> dict[str, Any]:
     }
 
 
-def _book(agent: str, body: Mapping[str, Any]) -> Book:
-    holdings = {
-        symbol: Holding(
-            symbol,
-            Decimal(h["weight_pct"]),
-            Decimal(h["ref_price"]),
-            date.fromisoformat(h["support_session"]),
-        )
-        for symbol, h in body["holdings"].items()
-    }
-    return Book(agent, date.fromisoformat(body["started_on"]), Decimal(body["index"]), holdings)
+def _book(agent: str, body: Mapping[str, Any], day: date) -> Book:
+    holdings = {}
+    for symbol, h in body["holdings"].items():
+        if SYMBOL_PATTERN.fullmatch(symbol) is None:
+            raise UnknownSchema("malformed symbol")
+        weight = _number(h["weight_pct"])
+        if not 0 <= weight <= 100:
+            raise UnknownSchema("weight out of range")
+        support = date.fromisoformat(h["support_session"])
+        if support > day:
+            raise UnknownSchema("support session after the row's day")
+        holdings[symbol] = Holding(symbol, weight, _positive(h["ref_price"]), support)
+    if sum((h.weight_pct for h in holdings.values()), Decimal(0)) > 100:
+        raise UnknownSchema("weights sum over 100")
+    started = date.fromisoformat(body["started_on"])
+    if started > day:
+        raise UnknownSchema("book started after the row's day")
+    return Book(agent, started, _positive(body["index"]), holdings)
+
+
+def _number(text: str) -> Decimal:
+    value = Decimal(text)
+    if not value.is_finite():
+        raise UnknownSchema("non-finite number")
+    return value
+
+
+def _positive(text: str) -> Decimal:
+    value = _number(text)
+    if value <= 0:
+        raise UnknownSchema("non-positive price or index")
+    return value
 
 
 def _fixed(value: Decimal, step: Decimal, rounding: str = ROUND_HALF_EVEN) -> str:
