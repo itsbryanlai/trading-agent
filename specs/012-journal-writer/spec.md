@@ -40,6 +40,13 @@
 - Q: Do stop-loss verdicts count with the PM's decisions in the summary? → A: No. They appear only on the stop-loss line. The Orders line counts every order submitted that day, whatever started it. Decisions are today's PM decisions and their verdicts. With `equity_open` at 0 the percentage change reads `n/a`.
 - Q: May a ticker-shaped symbol the PM chose appear in the summary? → A: Yes, as FR-017 allows: only symbols matching the strict ticker pattern, at most 10 characters.
 
+### Session 2026-10-09 (after the adversarial review)
+
+- Q: Should one symbol that can never be priced fail every run? → A: No. A run fails as `no_prices` only when nothing was priced and at least one failure is systemic (rate-limited, unavailable, the deadline, or a quote stamped after the close). Permanent failures (malformed, not permitted, no price, a quote stamped before today's open) leave the symbol unpriced, and the holding limit ages it out. Rejected: failing whenever every needed symbol is unpriced, which let one delisted holding stop the journal for good.
+- Q: May a re-run replace a row already written? → A: Only when asked. A plain run that finds today's row does nothing (`already_written`); `--replace` rewrites it. Rejected: always replacing, which let a rate-limited re-run overwrite a complete row with a worse one.
+- Q: Is one attempt a night enough? → A: No. The service starts at 22:30 UTC and again at 00:30 UTC, both the same New York evening; the second does nothing if the first wrote. A run on a non-session evening does nothing, as before.
+- Q: Should the Portfolio Manager's database role lose read access to attribution in this feature? → A: No, a separate follow-up (a column-level grant needs its own ADR and migration). Today the PM's own query leaves it out.
+
 ## User Scenarios & Testing *(mandatory)*
 
 The users of the journal are:
@@ -102,7 +109,7 @@ It never includes text a model wrote, and never includes attribution or the per-
 
 ### User Story 3 - A run that can't finish leaves the record honest (Priority: P2)
 
-A run that can't produce a correct row writes nothing and exits with a failure status naming why. The previous rows are untouched, so the next session continues from the last good state. A missed session is never filled in with guessed numbers. The owner can re-run the same evening, and a re-run replaces that day's row rather than adding a second one.
+A run that can't produce a correct row writes nothing and exits with a failure status naming why. The previous rows are untouched, so the next session continues from the last good state. A missed session is never filled in with guessed numbers. A second attempt runs the same evening. If the row was already written it does nothing, and the owner can replace a row only on purpose, with `--replace`, which rewrites that day's row rather than adding a second one.
 
 **Why this priority**: a wrong row is worse than a missing one, because the next day builds on it. But the normal run (Stories 1 and 2) comes first.
 
@@ -157,9 +164,9 @@ The owner can run the journal writer in a dry-run mode that does everything exce
 ### Functional Requirements
 
 **Running**
-- **FR-001**: The journal writer MUST run once after each weekday's close, as its own service ([ADR 0022](../../docs/adr/0022-journal-writer-runs-after-the-close-with-its-own-finnhub-key.md)). It MUST write only when today, New York time, is a session day and that session has closed. Otherwise it writes nothing and exits successfully, saying why.
+- **FR-001**: The journal writer MUST run after each close, as its own service, with a second attempt later the same New York evening ([ADR 0022](../../docs/adr/0022-journal-writer-runs-after-the-close-with-its-own-finnhub-key.md)). It MUST write only when today, New York time, is a session day and that session has closed. Otherwise it writes nothing and exits successfully, saying why.
 - **FR-002**: It MUST run whether or not trading is paused.
-- **FR-003**: It MUST write at most one row per session. A second run for the same session replaces that session's row, computed from the previous session's row, not from the row being replaced.
+- **FR-003**: It MUST write at most one row per session. A run that finds the session's row already written MUST write nothing and say so (`already_written`), unless the owner passes `--replace`, which replaces that row, computed from the previous session's row, not from the row being replaced.
 - **FR-004**: It MUST NOT write rows for any session other than today's. A missed session stays missing; the next run logs the sessions missed since the previous row.
 - **FR-005**: It MUST offer a dry-run mode that writes nothing and prints the would-be row, and a check mode that confirms its credentials work without writing.
 
@@ -185,7 +192,7 @@ The owner can run the journal writer in a dry-run mode that does everything exce
 - **FR-018**: The equity line, breaker line and counts MUST come first and fit within 2,000 characters, the length the PM reads. Longer lists after them are cut with "and N more".
 
 **Failures**
-- **FR-019**: A run that can't produce a complete, correct row (no snapshot today, the market-data key rejected, the database unreachable, an unexpected error) MUST write nothing and exit with a failure status that names the reason. Some unpriced symbols are not a failure (FR-012). Every symbol failing to price is.
+- **FR-019**: A run that can't produce a complete, correct row (no snapshot today, the market-data key rejected, the database unreachable, an unexpected error) MUST write nothing and exit with a failure status that names the reason. Unpriced symbols are not a failure (FR-012), unless nothing was priced and at least one symbol failed for a systemic reason (rate-limited, unavailable, the fetch deadline, or a quote stamped after the close): then the run fails as `no_prices`. A symbol that can never be priced (malformed, not permitted, no price, a quote stamped before today's open) is unpriced and ages out through the holding limit.
 
 **Boundaries and credentials**
 - **FR-020**: The journal MUST write only the `journal` table, through its existing role, and MUST NOT need any grant it doesn't already have. The Risk Gate and Execution MUST still have no access to `journal`.

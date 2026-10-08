@@ -7,6 +7,7 @@ One run, then exit. Started by Railway's cron on the `journal` service (research
 | Form | Does | Needs |
 |---|---|---|
 | (no arguments) | writes today's row if today is a session and it has closed (J3) | `JOURNAL_DATABASE_URL`, `JOURNAL_FINNHUB_API_KEY` |
+| `--replace` | as a plain run, but replaces today's row if it already exists (FR-003) | both |
 | `--dry-run` | everything except the write; prints the would-be row as JSON lines | both |
 | `--check SYMBOL [SYMBOL …]` | fetches each quote; prints `c`, `t`, today's open and close, and whether J2 accepts it; writes nothing | `JOURNAL_FINNHUB_API_KEY` only |
 
@@ -40,9 +41,9 @@ Research J12: 0 wrote or nothing to do; 1 named failure, nothing written; 2 refu
 
 One line per event, at INFO unless noted:
 - **Start:** `journal: start trading_day=… summary_version=0.1 schema_version=1`.
-- **Nothing to do:** `journal: nothing to do: not_a_session|before_close`.
+- **Nothing to do:** `journal: nothing to do: not_a_session|before_close|already_written`.
 - **Missed sessions:** `journal: missed sessions: …` (WARNING).
-- **Each unpriced symbol:** `journal: unpriced SYMBOL: not_today|no_price|not_permitted|rate_limited|unavailable|deadline` (WARNING). A malformed symbol is never logged as text: `journal: unpriced malformed symbols: N` (WARNING).
+- **Each unpriced symbol:** `journal: unpriced SYMBOL: stale|after_close|no_price|not_permitted|rate_limited|unavailable|deadline` (WARNING). A malformed symbol is never logged as text: `journal: unpriced malformed symbols: N` (WARNING).
 - **Done:** `journal: wrote trading_day=… agents=N symbols_priced=P/Q sessions_covered=S`.
 - **Failure:** `journal: failed: <reason>` (ERROR). Exceptions are logged by type only.
 

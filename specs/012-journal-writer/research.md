@@ -4,19 +4,19 @@ Decisions for `specs/012-journal-writer`. Each has the decision, why, and what w
 
 ## J1. Railway can run it on a cron schedule
 
-**Decision**: the `journal` service in `.railway/railway.ts` carries `deploy: { cronSchedule: "30 22 * * 1-5", restartPolicyType: "NEVER" }`. 22:30 UTC is 18:30 ET in summer and 17:30 ET in winter, after every close, early closes included, and before midnight New York time in both.
+**Decision**: the `journal` service in `.railway/railway.ts` carries `deploy: { cronSchedule: "30 0,22 * * *", restartPolicyType: "NEVER" }`. 22:30 UTC is 18:30 ET in summer and 17:30 ET in winter, after every close, early closes included. 00:30 UTC is 20:30 ET in summer and 19:30 ET in winter, still the same New York date: a second attempt that does nothing if the first wrote (J11). The J3 gate makes every other start (weekends, holidays) do nothing, so the expression needs no weekday field. Both are within ADR 0022 §2 ("after the close"); the retry slot was added after the adversarial review (finding 5).
 
 **Verified 2026-10-09**: the pinned SDK, `railway@3.12.0`, declares `cronSchedule?: string | null` and `restartPolicyType?: "ON_FAILURE" | "ALWAYS" | "NEVER" | null` on its `DeployConfig` (`dist/index-UavU4i3L.d.ts`, read from unpkg). Railway's IaC reference page doesn't mention cron, so the type declaration is the evidence. The owner's `railway config plan` shows the schedule before anything is applied (quickstart step 5).
 
-**Why `NEVER`**: a failed run fails for a reason a restart won't fix within minutes (no snapshot, a rejected key). A restart loop would also repeat the market-data calls. The owner re-runs by hand the same evening (FR-003). Transient fetch errors are retried inside the run (J8).
+**Why `NEVER`**: a failed run fails for a reason a restart won't fix within minutes (no snapshot, a rejected key). A restart loop would also repeat the market-data calls. The 00:30 UTC slot is the retry, and the owner can still run it by hand the same evening (FR-003). Transient fetch errors are retried inside the run (J8).
 
 **Rejected**: an always-on loop (ADR 0022); `ON_FAILURE` (above).
 
 ## J2. `/quote` after the close is the session's close, or the symbol goes unpriced
 
-**Decision**: a quote counts as today's close only when its price is usable and its own trade time `t` falls inside today's session: on or after `calendar.open_time(D)` and at or before `calendar.close_time(D)` plus `close_grace_minutes` (default 5, for the closing auction's prints). Anything else is unpriced for the day (FR-012 of the spec).
+**Decision**: a quote counts as today's close only when its price is usable and its own trade time `t` falls inside today's session: on or after `calendar.open_time(D)` and at or before `calendar.close_time(D)` plus `close_grace_minutes` (default 5, for the closing auction's prints). Anything else is unpriced for the day (FR-012 of the spec), as `stale` when `t` is missing or before the open (a delisted or halted symbol: permanent), or `after_close` when `t` is after the close plus grace (systemic: the provider reports after-hours prices).
 
-**Why**: Finnhub doesn't document whether `/quote` reflects after-hours trading. If it does, `t` lands after the close and the price is refused rather than silently used. If every symbol is refused that way, the run fails (FR-019), which the owner sees the first evening. An illiquid symbol whose last trade was mid-afternoon still prices: its last regular-session trade is its close.
+**Why**: Finnhub doesn't document whether `/quote` reflects after-hours trading. If it does, `t` lands after the close and the price is refused rather than silently used. If nothing is priced and any symbol is `after_close`, the run fails (FR-019), which the owner sees the first evening. An illiquid symbol whose last trade was mid-afternoon still prices: its last regular-session trade is its close.
 
 **Not yet verified**: what `t` reads after the close. The owner's `--check` after a close prints `t` against the close for each symbol (quickstart step 3) before the service is released, as ADR 0016's status records for the PM's quote.
 
@@ -113,21 +113,21 @@ The breaker line reads "triggered" when any verdict that day is `daily_loss_halt
 
 **Decision**: `per_agent_attribution` holds `schema_version: 1` and everything the next run needs (contracts/attribution.md). A run reads only the previous row's attribution object. A schema version it doesn't know refuses the run (`unknown_schema`, exit 1), rather than guessing.
 
-The write is one `INSERT … ON CONFLICT (trading_day) DO UPDATE`, setting every column and `written_at = now()`. Reads run first, in one `REPEATABLE READ, READ ONLY` transaction. Prices are fetched outside any transaction. The write is its own transaction.
+A plain run that reads an existing row for `D` returns `already_written` (exit 0) before fetching anything. Its write is `INSERT … ON CONFLICT (trading_day) DO NOTHING`; if that inserts nothing (a concurrent run wrote first), the outcome is also `already_written`. `--replace` skips the check and writes with `ON CONFLICT (trading_day) DO UPDATE`, setting every column and `written_at = now()` (owner, after the adversarial review, finding 2). Reads run first, in one `REPEATABLE READ, READ ONLY` transaction. Prices are fetched outside any transaction. The write is its own transaction.
 
-**Two runs at once** (the cron and a manual one): both read the same previous row and write the same day. The later write wins, and both computed from the same inputs, apart from a price that changed between fetches, which after the close it doesn't. No lock is needed.
+**Two runs at once** (the cron and a manual one): both read the same previous row; the first insert wins and the second reports `already_written`. No lock is needed.
 
 ## J12. Exit codes and modes
 
 | Exit | Meaning |
 |---|---|
-| 0 | wrote today's row, or nothing to do (`not_a_session`, `before_close`) |
+| 0 | wrote today's row, or nothing to do (`not_a_session`, `before_close`, `already_written`) |
 | 1 | a named failure; nothing written (`no_account_snapshot`, `no_prices`, `market_data_key_rejected`, `future_row`, `unknown_schema`) |
 | 2 | refused to start: bad arguments, config or a missing variable |
 | 3 | the database is unreachable, or a read or write failed |
 | 4 | crashed (never Python's default 1) |
 
-`--dry-run` does everything except the write, and prints the row. It needs the database login, because it reads. `--check SYMBOL …` needs only the market-data key. It fetches each symbol's quote and prints `c`, `t`, today's open and close, and whether J2 would accept it. The owner names the symbols; none are built in.
+`--replace` rewrites today's row if it exists. `--dry-run` does everything except the write, and prints the row; it ignores an existing row. It needs the database login, because it reads. `--check SYMBOL …` needs only the market-data key. It fetches each symbol's quote and prints `c`, `t`, today's open and close, and whether J2 would accept it. The owner names the symbols; none are built in.
 
 ## J13. Package and layering
 
