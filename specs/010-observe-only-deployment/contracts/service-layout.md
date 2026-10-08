@@ -21,6 +21,6 @@ What `.railway/railway.ts` declares, and what each service may hold. The guard t
 
 Every `*_DATABASE_URL` is a login string printed by the login command ([logins-command.md](logins-command.md)), pointing at the database's private network host.
 
-**The journal** (feature 012, [ADR 0022](../../../docs/adr/0022-journal-writer-runs-after-the-close-with-its-own-finnhub-key.md)) is the one scheduled service: `deploy: { cronSchedule: "30 22 * * 1-5", restartPolicyType: "NEVER" }`. No other service has a cron schedule or a restart policy, and the guard test enforces both. It runs, writes one `journal` row and exits; a failed run is re-run by hand the same evening.
+**The journal** (feature 012, [ADR 0022](../../../docs/adr/0022-journal-writer-runs-after-the-close-with-its-own-finnhub-key.md)) is the one scheduled service: `deploy: { cronSchedule: "30 0,22 * * *", restartPolicyType: "NEVER" }`. No other service has a cron schedule or a restart policy, and the guard test enforces both. It runs, writes one `journal` row and exits; it starts at 22:30 UTC and again at 00:30 UTC, the same New York evening, and the second does nothing if the first wrote or the evening is not a session; a failed run is re-run by hand.
 
 **Deploy order on the first deploy** (research R9): pause set, then the paper account flat, then `railway config apply`. Execution must never start against an unpaused database or a non-flat account.

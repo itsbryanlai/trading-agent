@@ -52,7 +52,7 @@ Release through `release/prod` as usual. There's no migration. Then:
 railway config plan
 ```
 
-Expected: one new service, `journal`, with a cron schedule `30 22 * * 1-5`, restart policy `NEVER`, and only the two `JOURNAL_*` variables. Then `railway config apply`, and set the two values.
+Expected: one new service, `journal`, with a cron schedule `30 0,22 * * *`, restart policy `NEVER`, and only the two `JOURNAL_*` variables. Then `railway config apply`, and set the two values.
 
 ## 6. The first scheduled run
 

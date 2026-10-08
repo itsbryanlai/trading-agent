@@ -32,9 +32,10 @@ SOURCE = 'github("itsbryanlai/trading-agent", { branch: "release/prod" })'
 # run in the build step, once the source is there (fix after the first deploy, 2026-10-07).
 BUILD = 'build: { builder: "RAILPACK", buildCommand: "/app/.venv/bin/pip install -e ." }'
 
-# ADR 0022: the journal alone runs on a schedule, once a weekday at 22:30 UTC (18:30 ET in
-# summer, 17:30 in winter), and is never restarted: a failed run is re-run by hand.
-JOURNAL_DEPLOY = 'deploy: { cronSchedule: "30 22 * * 1-5", restartPolicyType: "NEVER" }'
+# ADR 0022: the journal alone runs on a schedule, at 22:30 UTC and again at 00:30 UTC (the
+# same New York evening; the second is a retry slot, research J1), and is never restarted: a
+# failed run is re-run by hand.
+JOURNAL_DEPLOY = 'deploy: { cronSchedule: "30 0,22 * * *", restartPolicyType: "NEVER" }'
 SCHEDULED_ONLY = ("cronSchedule", "restartPolicyType")
 
 # contracts/service-layout.md, as data: service -> (start command, variable names).
@@ -440,18 +441,20 @@ def test_the_journal_alone_has_a_cron_schedule_and_never_restarts(shipped):
     blocks = service_blocks(raw)
     assert [n for n, b in blocks.items() if "cronSchedule" in b] == ["journal"]
     assert [n for n, b in blocks.items() if "restartPolicyType" in b] == ["journal"]
-    assert 'cronSchedule: "30 22 * * 1-5"' in blocks["journal"]
+    assert 'cronSchedule: "30 0,22 * * *"' in blocks["journal"]
     assert 'restartPolicyType: "NEVER"' in blocks["journal"]
 
 
 @pytest.mark.parametrize(
     ("old", "new"),
     [
-        ('cronSchedule: "30 22 * * 1-5"', 'cronSchedule: "0 22 * * 1-5"'),
+        ('cronSchedule: "30 0,22 * * *"', 'cronSchedule: "0 22 * * 1-5"'),
+        ('cronSchedule: "30 0,22 * * *"', 'cronSchedule: "30 22 * * 1-5"'),
+        ('cronSchedule: "30 0,22 * * *"', 'cronSchedule: "30 0,22 * * 1-5"'),
         ('restartPolicyType: "NEVER"', 'restartPolicyType: "ON_FAILURE"'),
         (JOURNAL_DEPLOY + ",", ""),
     ],
-    ids=["other schedule", "restarting", "no schedule"],
+    ids=["other schedule", "no retry slot", "weekdays only", "restarting", "no schedule"],
 )
 def test_a_changed_journal_schedule_is_caught(shipped, old, new):
     assert _broken(shipped, old, new)

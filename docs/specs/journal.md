@@ -28,7 +28,7 @@ writing any narrative with a model (that needs its own ADR).
 
 ## Outputs
 
-One row per session, replaced if the same session is run again:
+One row per session, written once (`--replace` rewrites it):
 - `equity_open` and `equity_close` from account snapshots. The close is the last
   snapshot Execution recorded, which can be up to about 30 minutes before the
   bell; the summary says "last recorded" and the row stores its time.
@@ -56,9 +56,11 @@ How a book works:
 
 ## Cadence
 
-Its own Railway service on a cron schedule: once on weekdays at 22:30 UTC (after
-the close in both summer and winter time), then it exits, never restarted. It
-writes only when today, New York time, is a session and the close has passed. It
+Its own Railway service on a cron schedule: at 22:30 UTC (after the close in both
+summer and winter time) and again at 00:30 UTC, the same New York evening, then
+it exits, never restarted. The second start is a retry slot: it does nothing if
+the first wrote. It writes only when today, New York time, is a session and the
+close has passed. It
 runs whether or not trading is paused: during observe-only, the books are the only
 performance signal.
 

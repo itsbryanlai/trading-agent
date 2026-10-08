@@ -638,3 +638,21 @@ def test_a_dry_run_ignores_an_existing_row():
         dry_run=True,
     )
     assert outcome.status == "dry_run" and outcome.row is not None
+
+
+# --- the retry slot (T027) --------------------------------------------------------------
+
+
+def test_the_00_30_utc_start_after_a_friday_session_writes_fridays_row():
+    market, clock = market_for(AAPL=100)
+    reads = empty_reads(reports=[report(1, "research", "AAPL")], **snapshots())
+    outcome, _ = go(reads, market, clock, now=utc(10, 10, 0, 30))  # Friday 20:30 ET
+    assert outcome.status == "wrote"
+    assert outcome.row.trading_day == FRIDAY
+
+
+def test_the_00_30_utc_start_on_monday_is_sunday_evening_in_new_york_and_does_nothing():
+    market, clock = market_for(AAPL=100)
+    outcome, store = go(empty_reads(**snapshots()), market, clock, now=utc(10, 12, 0, 30))
+    assert (outcome.status, outcome.reason) == ("nothing_to_do", "not_a_session")
+    assert store.read_calls == [] and market.calls == []

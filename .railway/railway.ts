@@ -81,14 +81,15 @@ export default defineRailway(() => {
     },
   });
 
-  // Runs once a weekday after the close and exits (ADR 0022). 22:30 UTC is 18:30 ET in
-  // summer and 17:30 in winter, both after the close. Never restarted: a failed run is
-  // re-run by hand the same evening.
+  // Runs after the close and exits (ADR 0022), at 22:30 UTC and again at 00:30 UTC, both
+  // the same New York evening (18:30 and 20:30 ET in summer, 17:30 and 19:30 in winter).
+  // The second is a retry slot: it does nothing if the first wrote, or if that evening
+  // is not a session. Never restarted: a failed run is re-run by hand.
   const journal = service("journal", {
     source: github("itsbryanlai/trading-agent", { branch: "release/prod" }),
     build: { builder: "RAILPACK", buildCommand: "/app/.venv/bin/pip install -e ." },
     start: "python -m trading_agent.journal",
-    deploy: { cronSchedule: "30 22 * * 1-5", restartPolicyType: "NEVER" },
+    deploy: { cronSchedule: "30 0,22 * * *", restartPolicyType: "NEVER" },
     replicas: 1,
     env: {
       JOURNAL_DATABASE_URL: preserve(),
