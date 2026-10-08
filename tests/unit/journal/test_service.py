@@ -361,3 +361,54 @@ def test_the_holding_limit_applies_through_the_service():
     research = a["agents"]["research"]
     assert research["holdings"] == {}
     assert research["exited"]["holding_limit"] == ["AAPL"]
+
+
+# --- the summary and the usage counts (T014) -------------------------------------------
+
+
+def test_the_row_carries_the_rendered_summary_and_each_agents_usage():
+    from tests.unit.journal.summary_fixtures import decision, order, verdict
+    from trading_agent.journal import summary
+
+    market, clock = market_for(AAPL=100)
+    d1 = decision("AAPL", "buy")
+    v1 = verdict(d1["id"], "approved")
+    reads = empty_reads(
+        reports=[report(1, "research", "AAPL"), report(2, "research", None, "no_action")],
+        decision_reports=[{"decision_id": d1["id"], "report_id": 1}],
+        decisions=[d1],
+        verdicts=[v1],
+        orders=[order(v1["id"], "filled", "3")],
+        **snapshots(),
+    )
+    outcome, _ = go(reads, market, clock)
+    row = outcome.row
+    assert row.summary_md.startswith("## 2026-10-09\n")
+    assert "- Decisions: 1 (buy 1, sell 0, hold 0); approved 1, rejected 0" in row.summary_md
+    assert "AAPL" in row.summary_md
+    assert row.per_agent_attribution["summary_version"] == summary.SUMMARY_VERSION
+    assert row.per_agent_attribution["agents"]["research"]["usage"] == {
+        "written": 2,
+        "argued": 1,
+        "no_action": 1,
+        "cited": 1,
+        "cited_decisions": 1,
+        "approved": 1,
+        "filled": 1,
+    }
+
+
+def test_the_summary_counts_unpriced_symbols_and_missed_sessions():
+    market, clock = market_for(AAPL=100)
+    market.add("MSFT", current=50, quote_time=utc(10, 9, 23, 0))  # after-hours: unpriced
+    reads = empty_reads(
+        previous=previous(
+            date(2026, 10, 7),
+            research=("100", date(2026, 10, 1), {"MSFT": ("5", "48", date(2026, 10, 7))}),
+        ),
+        reports=[report(1, "research", "AAPL")],
+        **snapshots(),
+    )
+    row = go(reads, market, clock)[0].row
+    assert "missed sessions 2026-10-08" in row.summary_md
+    assert "1 symbol unpriced" in row.summary_md

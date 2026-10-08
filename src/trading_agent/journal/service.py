@@ -1,8 +1,7 @@
 """One journal run: gate, read, price, advance every book, write one row (research J3-J8, J11).
 
 The store does the database work and the provider the quotes; this module sequences them and
-holds no I/O of its own. Time is an argument. The summary is a placeholder until the summary
-is wired in (specs/012 T014).
+holds no I/O of its own. Time is an argument.
 """
 
 from __future__ import annotations
@@ -12,7 +11,7 @@ from datetime import UTC, date, datetime
 from decimal import Decimal
 from typing import Any, Protocol
 
-from trading_agent.journal import books
+from trading_agent.journal import books, facts, summary
 from trading_agent.journal.config import JournalConfig
 from trading_agent.journal.model import (
     Book,
@@ -24,11 +23,9 @@ from trading_agent.journal.model import (
 )
 from trading_agent.journal.prices import fetch_closes
 from trading_agent.journal.state import decode_books, encode
+from trading_agent.journal.usage import usage
 from trading_agent.reference.provider import MarketDataProvider
 from trading_agent.risk import calendar
-
-SUMMARY_VERSION = "0.1"
-PLACEHOLDER_SUMMARY = "## {day}\n"
 
 
 class Store(Protocol):
@@ -87,16 +84,16 @@ def run(
         sessions_covered=len(missed) + 1,
         missed_sessions=missed,
         holding_sessions=cfg.holding_sessions,
-        summary_version=SUMMARY_VERSION,
+        summary_version=summary.SUMMARY_VERSION,
         account_return=None if base == 0 else equity_close / base - 1,
         account_base=base_name,
         close_taken_at=reads.snapshot_close["taken_at"].astimezone(UTC),
         results=results,
-        usage={},
+        usage=usage(reads.reports, reads.decision_reports, reads.verdicts, reads.orders),
     )
-    row = JournalRow(
-        day, equity_open, equity_close, PLACEHOLDER_SUMMARY.format(day=day), attribution
-    )
+    unpriced = sum(1 for p in prices.values() if p.close is None)
+    text = summary.render(facts.day_facts(reads, day, missed, unpriced))
+    row = JournalRow(day, equity_open, equity_close, text, attribution)
     store.upsert(row)
     return RunOutcome("wrote", None, row)
 
