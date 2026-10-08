@@ -238,7 +238,7 @@ description: "Task list for the journal writer (feature 012)"
   - `docs/policy/versioning.md`: rows for `SUMMARY_VERSION` 0.1 and the attribution `schema_version` 1;
   - `docs/operations/deployment.md`: the journal's login, key and service steps (quickstart steps 2–5);
   - `specs/010-observe-only-deployment/contracts/logins-command.md`: the tenth row.
-- [ ] T023 Final validation:
+- [x] T023 Final validation:
   - the full unit suite and the full integration suite, once;
   - `scripts/lint.sh`;
   - `python -m trading_agent.journal --dry-run` against a local test database seeded by `tests/integration/storage/factories.py`, with a fake key, reached through an injected fake provider in a small script in the scratchpad, never against production;
@@ -284,3 +284,11 @@ Owner's decisions after the adversarial review are in spec.md "Session 2026-10-0
 - [x] T029 Small corrections: in `prices.py` fetch held symbols first (sorted), then new targets (sorted), so the deadline never starves the same held symbols (`service.py` passes the two groups); in `books.py` count `late_reports` only for reports actually applied (buy or hold entered, or a sell that lowered a weight), and class a holding as `exited_sell` only when a sell report set it to 0 today (a weight that merely rounds to 0 isn't a sell). Tests first in `test_prices.py` and `test_books.py`.
 - [x] T030 Role-limit test gaps, in `tests/integration/journal/test_role_limits.py`: add `decision_reports`, `execution_refusals`, `stop_loss_triggers` and `system_state` to the not-writable set; assert `DELETE` on `journal` is denied; run the checks as a login created in the test that is a member of `ta_journal` only (as `ta_journal_login` is), not only via `SET ROLE ta_journal`.
 - [x] T031 Quickstart step 3 (research J2, finding 6): run `--check` at the cron's time, 22:30 UTC, not just after the close, and treat `accepted: true` for liquid symbols as a release gate.
+
+---
+
+**Final validation (T023), 2026-10-09**, after T025–T031:
+- `scripts/lint.sh`: clean.
+- Full unit suite: 2466 passed, 1 failed. The failure, `tests/unit/risk/test_trigger_runner_main.py::test_a_missing_credential_is_refused_by_name_before_connecting`, comes from the owner's uncommitted `src/trading_agent/risk/__main__.py` edit and isn't part of this feature. An earlier full run also hit a flake in `tests/unit/opportunistic_identifier/test_screen_gate_equivalence.py::test_the_property_reaches_every_outcome`, which passes in isolation; that's a pre-existing issue, filed separately.
+- Full integration suite against a throwaway `postgres:16`: 1501 passed.
+- The end-to-end run against Postgres with fake quotes is covered by `tests/integration/journal/test_run.py`. No separate scratchpad dry-run script was written.
