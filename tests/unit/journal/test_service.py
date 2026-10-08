@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from datetime import UTC, date, datetime
 from decimal import Decimal
 
@@ -13,6 +14,7 @@ from trading_agent.journal.config import JournalConfig
 from trading_agent.journal.model import Book, BookResult, Holding
 from trading_agent.journal.service import run
 from trading_agent.journal.state import encode
+from trading_agent.reference.provider import KeyRejected
 from trading_agent.risk import calendar
 
 D = Decimal
@@ -123,7 +125,8 @@ def test_nothing_to_do_outside_a_closed_session(now, reason):
 
 def test_the_early_close_day_runs_after_the_early_close():
     day = date(2026, 11, 27)
-    market, clock = market_for(day, AAPL=100)
+    market, clock = market_for(day)
+    market.add("AAPL", current=100, quote_time=utc(11, 27, 17, 59))  # before the 18:00 close
     reads = empty_reads(
         reports=[report(1, "research", "AAPL", at=utc(11, 27, 15))],
         snapshot_open={"taken_at": utc(11, 27, 14), "equity": D(1)},
@@ -412,3 +415,104 @@ def test_the_summary_counts_unpriced_symbols_and_missed_sessions():
     row = go(reads, market, clock)[0].row
     assert "missed sessions 2026-10-08" in row.summary_md
     assert "1 symbol unpriced" in row.summary_md
+
+
+# --- failures write nothing and name themselves (T015) ----------------------------------
+
+
+def failed(reads, market, clock, reason):
+    outcome, store = go(reads, market, clock)
+    assert (outcome.status, outcome.reason, outcome.row) == ("failed", reason, None)
+    assert store.upserts == []
+    return store
+
+
+def test_a_day_with_no_account_snapshot_fails_before_any_quote_is_fetched():
+    market, clock = market_for(AAPL=100)
+    reads = empty_reads(reports=[report(1, "research", "AAPL")])
+    failed(reads, market, clock, "no_account_snapshot")
+    assert market.calls == []
+    only_open = empty_reads(snapshot_open=snapshots()["snapshot_open"])
+    failed(only_open, market, clock, "no_account_snapshot")
+
+
+def test_a_run_that_needs_prices_and_gets_none_fails():
+    market, clock = market_for()  # AAPL has no quote at all
+    reads = empty_reads(reports=[report(1, "research", "AAPL")], **snapshots())
+    failed(reads, market, clock, "no_prices")
+
+
+def test_a_rejected_key_fails_the_run():
+    market, clock = market_for(AAPL=100)
+    market.fail("get_quote", error=KeyRejected())
+    reads = empty_reads(reports=[report(1, "research", "AAPL")], **snapshots())
+    failed(reads, market, clock, "market_data_key_rejected")
+
+
+def test_a_row_after_today_fails_the_run_before_any_quote_is_fetched():
+    market, clock = market_for(AAPL=100)
+    reads = empty_reads(has_future_row=True, reports=[report(1, "research", "AAPL")], **snapshots())
+    failed(reads, market, clock, "future_row")
+    assert market.calls == []
+
+
+def test_an_unknown_schema_version_fails_the_run():
+    market, clock = market_for(AAPL=100)
+    prev = previous(date(2026, 10, 8))
+    prev["per_agent_attribution"]["schema_version"] = 2
+    failed(empty_reads(previous=prev, **snapshots()), market, clock, "unknown_schema")
+    prev["per_agent_attribution"] = {"agents": "garbage"}
+    failed(empty_reads(previous=prev, **snapshots()), market, clock, "unknown_schema")
+
+
+def test_some_unpriced_symbols_are_not_a_failure_and_are_logged_by_reason(caplog):
+    market, clock = market_for(AAPL=100)
+    market.add("MSFT", current=50, quote_time=utc(10, 9, 23, 0))
+    reads = empty_reads(
+        reports=[report(1, "research", "AAPL"), report(2, "research", "MSFT")], **snapshots()
+    )
+    with caplog.at_level(logging.INFO, logger="trading_agent.journal"):
+        outcome, _ = go(reads, market, clock)
+    assert outcome.status == "wrote"
+    warnings = [r.getMessage() for r in caplog.records if r.levelno == logging.WARNING]
+    assert warnings == ["journal: unpriced MSFT: not_today"]
+    assert "agents=1 symbols_priced=1/2 sessions_covered=1" in caplog.text
+
+
+def test_a_malformed_symbol_is_logged_as_a_count_never_as_text(caplog):
+    market, clock = market_for(AAPL=100)
+    reads = empty_reads(
+        reports=[report(1, "research", "AAPL"), report(2, "research", "x; DROP")], **snapshots()
+    )
+    with caplog.at_level(logging.INFO, logger="trading_agent.journal"):
+        go(reads, market, clock)
+    assert "journal: unpriced malformed symbols: 1" in caplog.text
+    assert "DROP" not in caplog.text
+
+
+def test_missed_sessions_are_logged_as_a_warning_and_the_books_are_valued_across_the_gap(caplog):
+    market, clock = market_for(AAPL=110)
+    prev = previous(
+        date(2026, 10, 7),
+        research=("100", date(2026, 10, 1), {"AAPL": ("10", "100", date(2026, 10, 7))}),
+    )
+    with caplog.at_level(logging.INFO, logger="trading_agent.journal"):
+        outcome, _ = go(empty_reads(previous=prev, **snapshots()), market, clock)
+    a = outcome.row.per_agent_attribution
+    assert (a["sessions_covered"], a["missed_sessions"]) == (2, ["2026-10-08"])
+    assert a["agents"]["research"]["index"] == "101.00000000"  # 10% x +10%, over the gap
+    warnings = [r.getMessage() for r in caplog.records if r.levelno == logging.WARNING]
+    assert warnings == ["journal: missed sessions: 2026-10-08"]
+
+
+def test_a_rerun_computes_from_the_previous_days_row_so_the_result_is_identical():
+    prev = previous(
+        date(2026, 10, 8),
+        research=("104", date(2026, 10, 1), {"AAPL": ("10", "200", date(2026, 10, 7))}),
+    )
+    rows = []
+    for _ in range(2):
+        market, clock = market_for(AAPL=204)
+        reads = empty_reads(previous=prev, reports=[report(1, "research", "AAPL")], **snapshots())
+        rows.append(go(reads, market, clock)[0].row)
+    assert rows[0] == rows[1]
