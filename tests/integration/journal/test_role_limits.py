@@ -25,15 +25,40 @@ UPSERT = """
 NOT_WRITABLE = (
     "reports",
     "decisions",
+    "decision_reports",
     "risk_verdicts",
     "orders",
     "positions",
     "account_snapshots",
+    "execution_refusals",
+    "stop_loss_triggers",
+    "system_state",
 )
 
+LOGIN = "ta_journal_probe_login"
 
-def test_the_journal_role_can_upsert_a_day_twice(conn):
-    with as_role(conn, "ta_journal"):
+
+@pytest.fixture(params=["group role", "login"])
+def journal_role(request, conn):
+    """`ta_journal` itself, and a login made here that is a member of `ta_journal` only, as
+    `ta_journal_login` is (storage/logins.py). Both are rolled back with the test."""
+    if request.param == "group role":
+        return "ta_journal"
+    conn.execute(
+        f"CREATE ROLE {LOGIN} LOGIN INHERIT NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION"
+    )
+    conn.execute(f"GRANT ta_journal TO {LOGIN}")
+    groups = conn.execute(
+        "SELECT g.rolname FROM pg_auth_members m JOIN pg_roles g ON g.oid = m.roleid "
+        "JOIN pg_roles r ON r.oid = m.member WHERE r.rolname = %s",
+        (LOGIN,),
+    ).fetchall()
+    assert [g["rolname"] for g in groups] == ["ta_journal"]
+    return LOGIN
+
+
+def test_the_journal_role_can_upsert_a_day_twice(conn, journal_role):
+    with as_role(conn, journal_role):
         conn.execute(UPSERT)
         conn.execute(UPSERT)
         count = conn.execute("SELECT count(*) AS n FROM journal").fetchone()["n"]
@@ -42,12 +67,16 @@ def test_the_journal_role_can_upsert_a_day_twice(conn):
 
 @pytest.mark.parametrize("table", NOT_WRITABLE)
 @pytest.mark.parametrize("op", ["I", "U"])
-def test_the_journal_role_can_not_write_anything_but_the_journal(conn, table, op):
-    assert attempt(conn, "ta_journal", probe(table, op)) == "denied"
+def test_the_journal_role_can_not_write_anything_but_the_journal(conn, journal_role, table, op):
+    assert attempt(conn, journal_role, probe(table, op)) == "denied"
 
 
-def test_the_journal_role_can_not_read_system_state(conn):
-    assert attempt(conn, "ta_journal", probe("system_state", "S")) == "denied"
+def test_the_journal_role_can_not_delete_from_the_journal(conn, journal_role):
+    assert attempt(conn, journal_role, probe("journal", "D")) == "denied"
+
+
+def test_the_journal_role_can_not_read_system_state(conn, journal_role):
+    assert attempt(conn, journal_role, probe("system_state", "S")) == "denied"
 
 
 @pytest.mark.parametrize("role", ["ta_risk_gate", "ta_execution"])
