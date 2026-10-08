@@ -200,6 +200,19 @@ closes. Never read by the Risk Gate or Execution — attribution is
 measurement, not a feedback input, per
 [ADR 0002](../adr/0002-pm-synthesizes-rather-than-analysts-deciding.md).
 
+How the journal writer fills it
+([ADR 0022](../adr/0022-journal-writer-runs-after-the-close-with-its-own-finnhub-key.md),
+[`journal.md`](journal.md)):
+- `per_agent_attribution` holds one book per analyst agent: a return index
+  starting at 100, and holdings as weights with reference prices, so the next
+  run continues from the previous row alone. It carries a `schema_version`.
+- A book is long-only, sized from each report's suggested size, and scaled down
+  above 100%. A holding exits after 5 sessions without a fresh buy or hold report
+  on it (the holding limit, configuration).
+- `summary_md` is built by code from a fixed template. It carries no attribution
+  and no agent, broker or model text, because the Portfolio Manager reads it.
+- `equity_close` is the last account snapshot recorded that day.
+
 ## `system_state`
 
 A single control row for the one manual control and the daily-loss breaker.

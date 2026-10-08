@@ -15,7 +15,7 @@ Accounts and keys, by name:
 | A Railway account and a project | the four services and the Postgres |
 | A GitHub repository with a `release/prod` branch | the deploy source (`itsbryanlai/trading-agent`) |
 | An Alpaca **paper** account: `ALPACA_API_KEY_ID`, `ALPACA_API_SECRET_KEY` | Execution only |
-| A Finnhub key per use: `RESEARCH_FINNHUB_API_KEY`, `PORTFOLIO_MANAGER_FINNHUB_API_KEY`, `REFERENCE_DATA_FINNHUB_API_KEY` | market data (read-only) |
+| A Finnhub key per use: `RESEARCH_FINNHUB_API_KEY`, `PORTFOLIO_MANAGER_FINNHUB_API_KEY`, `REFERENCE_DATA_FINNHUB_API_KEY`, `JOURNAL_FINNHUB_API_KEY` | market data (read-only) |
 | A Qwen key and endpoint: `RESEARCH_DASHSCOPE_API_KEY`, `RESEARCH_QWEN_BASE_URL`, `PORTFOLIO_MANAGER_DASHSCOPE_API_KEY`, `PORTFOLIO_MANAGER_QWEN_BASE_URL` | the models (`RESEARCH_ANTHROPIC_API_KEY` and `PORTFOLIO_MANAGER_ANTHROPIC_API_KEY` only if a provider is switched to Anthropic) |
 | A password manager | the eight database login strings, printed once |
 
@@ -198,3 +198,21 @@ All three must be `0`. Also confirm zero positions and zero open orders in Alpac
 - **Exit code 3**: the database was unreachable or the connection was lost. Railway restarts the service. If it keeps happening, check the database service's status and the service's `*_DATABASE_URL` host and login.
 - **Where to look**: each service's logs in the Railway dashboard (or `railway logs`); the orchestrator's run records (block 7 of `observe-queries.sql`) for what ran, what was skipped and why; Execution's refusals (block 6) for approvals it declined.
 - **Not sure it is safe**: pause (section 6). It is always available and always reversible.
+
+## 8. Adding the journal service (feature 012, ADR 0022)
+
+The `journal` service is a cron job: it runs once after each weekday's close, writes one `journal` row and exits. Decision: [ADR 0022](../adr/0022-journal-writer-runs-after-the-close-with-its-own-finnhub-key.md). Behavior: [`docs/specs/journal.md`](../specs/journal.md). There is no migration. Type every secret step directly in your own terminal tab (section 1).
+
+1. **Create the login.** Release the code first (section 3), then enable the database's public proxy, export `ADMIN_DATABASE_URL`, and run `logins` as in step 7 of section 2. It creates only the missing login, `ta_journal_login`, and prints its string once. Store it in your password manager, then disable the proxy and unset the variable.
+2. **Get a read-only Finnhub key** for the journal, or reuse the shared account's (it then shares that account's rate limit, [ADR 0016](../adr/0016-market-data-for-the-llm-agents.md) §5). Export both values locally with `read -rs`, for steps 3 and 4 only.
+3. **Check the quote after a close.** After 16:05 ET on a session day, with symbols of your choosing:
+
+   ```bash
+   PYTHONPATH=src .venv/bin/python -m trading_agent.journal --check AAPL MSFT
+   ```
+
+   Each line must show `t` inside today's session and `accepted: true`. If `t` falls after the close, the scheduled run would fail as `no_prices`: do not release, and raise it.
+4. **Dry run.** The same evening, with `JOURNAL_DATABASE_URL` pointing at the database through the proxy (with `sslmode=require` and the host override), run `python -m trading_agent.journal --dry-run`. It prints the would-be row and writes nothing.
+5. **Plan and apply.** From a clean checkout of `release/prod`, after the guard test passes, run `railway config plan`. It must show one new service, `journal`, with the cron schedule `30 22 * * 1-5`, restart policy `NEVER` and only `JOURNAL_DATABASE_URL` and `JOURNAL_FINNHUB_API_KEY`. Then `railway config apply`, and set the two values in the Railway dashboard.
+
+The service runs whether or not trading is paused. A failed run is never restarted: read the log (the exit code names the reason, section 7), fix the cause and run it again by hand the same evening. Running it again for the same session replaces that session's row.

@@ -76,6 +76,7 @@ Full behavior, inputs/outputs, and edge cases for each are in
 | Risk Gate | `decisions` rows and stop-loss triggers, `config/risk.yaml`; its own loop evaluates the ones without a verdict ([ADR 0019](../adr/0019-the-gate-evaluates-pm-decisions-in-its-own-loop.md)) | `risk_verdicts` | its own database login only (the rules are a pure function) |
 | Execution | an approved `risk_verdicts` row | `orders` | the only broker (Alpaca) credentials in the system |
 | Reference-data job | `reference_candidate_symbols` (held and recently named symbols), a seed list, Finnhub | `instrument_reference`, insert-only | a read-only Finnhub key; cannot trade |
+| Journal writer | the day's snapshots, reports, decisions, verdicts and orders, the previous `journal` row, Finnhub closing quotes | `journal`, one row per trading day | its own read-only Finnhub key and database login; runs once after the close on a cron schedule, no model call ([ADR 0022](../adr/0022-journal-writer-runs-after-the-close-with-its-own-finnhub-key.md), [`docs/specs/journal.md`](../specs/journal.md)) |
 
 Execution, the Risk Gate's loop (stop-loss triggers, then Portfolio Manager decisions) and the reference-data job each run
 their own loop in their own process ([ADR 0013](../adr/0013-deterministic-services-run-their-own-loops.md)).
@@ -109,7 +110,7 @@ default, write access is scoped to the table(s) that component owns
 ## Deployment shape (borrowed pattern, not shared code, from `trading-bot`)
 
 - Described as infrastructure as code in `.railway/railway.ts`, applied by the owner; built with Railpack (Python 3.12); services deploy only from the `release/prod` branch ([ADR 0021](../adr/0021-railway-deployment-as-code-observe-only-first.md))
-- One Railway worker service per process, each holding only its own variables: `orchestrator` (with Research and the Portfolio Manager), `risk-gate`, `reference-data` and `execution`
+- One Railway worker service per process, each holding only its own variables: `orchestrator` (with Research and the Portfolio Manager), `risk-gate`, `reference-data`, `execution` and `journal` (a cron job, not a loop)
 - Railway Postgres service for the shared knowledge base
 - The first deployment is observe-only: Execution is deployed, trading is paused before any service starts, and the paper account is flat before Execution first starts. The Portfolio Manager runs while paused (`portfolio_manager.run_while_paused`), and the gate approves no buy while paused. Trading is switched on only after the close ([ADR 0021](../adr/0021-railway-deployment-as-code-observe-only-first.md))
 - A separate Railway web service for the dashboard UI (FastAPI + Jinja2,
