@@ -1,7 +1,8 @@
 """`python -m trading_agent.journal` (contracts/journal-interface.md; research J12).
 
-One run, then exit. Railway's cron starts it after the close. Reads only JOURNAL_* variables
-(ADR 0015, ADR 0022), reported by name and never by value.
+One run, then exit (`--dry-run`, `--replace` and `--check` are each alone). Railway's cron
+starts it after the close. Reads only JOURNAL_* variables (ADR 0015, ADR 0022), reported by
+name and never by value.
 
 Exit codes: 0 wrote, or nothing to do; 1 a named failure, nothing written; 2 refused to start;
 3 the database is unreachable or a read or write failed; 4 crashed (never Python's default 1,
@@ -76,8 +77,9 @@ def main(
 def _main(args, market_factory, connect, store_factory, config_path, clocks, out) -> int:
     clock, sleep, monotonic = clocks
     dry_run = args == ["--dry-run"]
+    replace = args == ["--replace"]
     checking = bool(args) and args[0] == "--check"
-    if args and not dry_run and not (checking and valid_symbols(args[1:])):
+    if args and not (dry_run or replace) and not (checking and valid_symbols(args[1:])):
         log.critical("journal: unknown or invalid arguments")
         return EXIT_REFUSED
     try:
@@ -102,7 +104,7 @@ def _main(args, market_factory, connect, store_factory, config_path, clocks, out
         log.critical("journal: database unreachable: %s", type(exc).__name__)
         return EXIT_DATABASE
     try:
-        return _run(cfg, market_factory(key), store_factory(conn), clocks, dry_run, out)
+        return _run(cfg, market_factory(key), store_factory(conn), clocks, (dry_run, replace), out)
     except psycopg.Error as exc:
         log.critical("journal: database error: %s", type(exc).__name__)
         return EXIT_DATABASE
@@ -110,10 +112,18 @@ def _main(args, market_factory, connect, store_factory, config_path, clocks, out
         conn.close()
 
 
-def _run(cfg: JournalConfig, market, store, clocks, dry_run: bool, out) -> int:
+def _run(cfg: JournalConfig, market, store, clocks, modes: tuple[bool, bool], out) -> int:
     clock, sleep, monotonic = clocks
+    dry_run, replace = modes
     outcome = service.run(
-        store, market, cfg, now=clock(), sleep=sleep, monotonic=monotonic, dry_run=dry_run
+        store,
+        market,
+        cfg,
+        now=clock(),
+        sleep=sleep,
+        monotonic=monotonic,
+        dry_run=dry_run,
+        replace=replace,
     )
     if outcome.status == "dry_run":
         row = outcome.row

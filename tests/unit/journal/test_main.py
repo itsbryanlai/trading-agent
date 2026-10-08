@@ -104,7 +104,17 @@ def test_a_missing_variable_is_exit_2_and_named(env, monkeypatch, caplog, missin
 
 
 @pytest.mark.parametrize(
-    "argv", [["--nope"], ["extra"], ["--dry-run", "--dry-run"], ["--check"], ["--check", "aapl"]]
+    "argv",
+    [
+        ["--nope"],
+        ["extra"],
+        ["--dry-run", "--dry-run"],
+        ["--check"],
+        ["--check", "aapl"],
+        ["--replace", "--dry-run"],
+        ["--replace", "--check", "AAPL"],
+        ["--replace", "x"],
+    ],
 )
 def test_bad_arguments_are_exit_2(env, argv):
     code, store, conn, _ = go(argv)
@@ -225,3 +235,20 @@ def test_check_with_a_rejected_key_is_exit_1(env):
 def test_check_with_more_than_twenty_symbols_is_exit_2(env):
     code, *_ = go(["--check", *[f"S{i}" for i in range(21)]])
     assert code == 2
+
+
+# --- --replace and an existing row (T026) -----------------------------------------------------
+
+
+def test_a_plain_run_over_an_existing_row_is_exit_0_and_writes_nothing(env, caplog):
+    store = FakeJournalStore(empty_reads(row_exists=True, **snapshots()))
+    with caplog.at_level(logging.INFO, logger="trading_agent.journal"):
+        code, store, conn, _ = go(store=store)
+    assert code == 0 and store.upserts == [] and conn.closed
+    assert "journal: nothing to do: already_written" in caplog.text
+
+
+def test_replace_rewrites_an_existing_row(env):
+    store = FakeJournalStore(empty_reads(row_exists=True, **snapshots()))
+    code, store, _, _ = go(["--replace"], store=store)
+    assert code == 0 and len(store.replaces) == 1

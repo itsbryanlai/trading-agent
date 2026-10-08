@@ -44,12 +44,18 @@ def seed(conn, *, snapshots=True):
             )
 
 
-def journal_run(conn):
+def journal_run(conn, **options):
     market = FakeMarketData(quote_time=utc(9, 19, 59))
     market.add("AAPL", current="229.15")
     with as_role(conn, "ta_journal"):
         return run(
-            PgJournalStore(conn), market, CFG, now=NOW, sleep=lambda s: None, monotonic=lambda: 0.0
+            PgJournalStore(conn),
+            market,
+            CFG,
+            now=NOW,
+            sleep=lambda s: None,
+            monotonic=lambda: 0.0,
+            **options,
         )
 
 
@@ -70,15 +76,25 @@ def test_a_full_run_writes_one_row_that_the_portfolio_manager_can_read(conn):
     assert research["usage"]["written"] == 1
 
 
-def test_running_the_same_day_twice_leaves_one_identical_row(conn):
+def test_a_second_plain_run_leaves_the_first_row_untouched(conn):
+    seed(conn)
+    assert journal_run(conn).status == "wrote"
+    first = [r for r in rows(conn) if r["trading_day"] == DAY]
+    second_outcome = journal_run(conn)
+    assert (second_outcome.status, second_outcome.reason) == ("nothing_to_do", "already_written")
+    assert [r for r in rows(conn) if r["trading_day"] == DAY] == first  # written_at included
+
+
+def test_replace_rewrites_the_row_and_its_written_at(conn):
     seed(conn)
     journal_run(conn)
-    first = [r for r in rows(conn) if r["trading_day"] == DAY]
-    journal_run(conn)
-    second = [r for r in rows(conn) if r["trading_day"] == DAY]
-    assert len(first) == len(second) == 1
-    for column in ("equity_open", "equity_close", "summary_md", "per_agent_attribution"):
-        assert first[0][column] == second[0][column]
+    conn.execute("UPDATE journal SET summary_md = 'old' WHERE trading_day = %s", (DAY,))
+    before = [r for r in rows(conn) if r["trading_day"] == DAY][0]
+    assert journal_run(conn, replace=True).status == "wrote"
+    after = [r for r in rows(conn) if r["trading_day"] == DAY]
+    assert len(after) == 1
+    assert after[0]["summary_md"].startswith("## 2026-10-09\n")
+    assert after[0]["written_at"] >= before["written_at"]
 
 
 def test_a_run_with_no_snapshot_writes_nothing_and_leaves_earlier_rows(conn):

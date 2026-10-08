@@ -140,3 +140,4 @@ class JournalReads:
     triggers: list[dict[str, Any]]
     snapshot_open: dict[str, Any] | None  # taken_at, equity
     snapshot_close: dict[str, Any] | None
+    row_exists: bool = False  # a journal row for `day` is already there (FR-003)

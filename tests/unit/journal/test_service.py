@@ -589,3 +589,52 @@ def test_a_dry_run_does_everything_but_the_write_and_returns_the_row():
     assert len(market.calls) == 1
     wrote, _ = go(reads, market_for(AAPL=100)[0], clock)
     assert outcome.row == wrote.row
+
+
+# --- an existing row, --replace (T026) ---------------------------------------------------
+
+
+def existing_row_reads(**over):
+    return empty_reads(
+        row_exists=True, reports=[report(1, "research", "AAPL")], **snapshots(), **over
+    )
+
+
+def test_a_plain_run_that_finds_todays_row_does_nothing_before_any_quote():
+    market, clock = market_for(AAPL=100)
+    outcome, store = go(existing_row_reads(), market, clock)
+    assert (outcome.status, outcome.reason) == ("nothing_to_do", "already_written")
+    assert market.calls == [] and store.upserts == []
+
+
+def test_a_plain_run_whose_insert_finds_a_row_written_meanwhile_reports_already_written():
+    market, clock = market_for(AAPL=100)
+    reads = empty_reads(reports=[report(1, "research", "AAPL")], **snapshots())
+    store = FakeJournalStore(reads, insert_result=False)
+    outcome = run(store, market, CFG, now=NOW, sleep=clock.sleep, monotonic=clock.monotonic)
+    assert (outcome.status, outcome.reason) == ("nothing_to_do", "already_written")
+    assert store.upserts == []
+
+
+def test_replace_rewrites_an_existing_row_through_replace_not_insert():
+    market, clock = market_for(AAPL=100)
+    store = FakeJournalStore(existing_row_reads())
+    outcome = run(
+        store, market, CFG, now=NOW, sleep=clock.sleep, monotonic=clock.monotonic, replace=True
+    )
+    assert outcome.status == "wrote"
+    assert store.replaces == [outcome.row]
+
+
+def test_a_dry_run_ignores_an_existing_row():
+    market, clock = market_for(AAPL=100)
+    outcome = run(
+        FakeJournalStore(existing_row_reads()),
+        market,
+        CFG,
+        now=NOW,
+        sleep=clock.sleep,
+        monotonic=clock.monotonic,
+        dry_run=True,
+    )
+    assert outcome.status == "dry_run" and outcome.row is not None

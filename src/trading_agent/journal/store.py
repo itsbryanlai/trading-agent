@@ -3,7 +3,8 @@
 Reads run as `ta_journal` in one `REPEATABLE READ, READ ONLY` transaction, so the previous
 row, the report window and the day's facts come from a single snapshot. The columns are
 listed by name: nothing here selects text a model or the broker wrote. The write is one
-upsert in its own transaction, so a re-run replaces the day's row.
+statement in its own transaction: `insert` leaves an existing row for the day untouched,
+`replace` (only on `--replace`) rewrites it.
 """
 
 from __future__ import annotations
@@ -62,7 +63,13 @@ _SNAPSHOT_CLOSE = (
     "SELECT taken_at, equity FROM account_snapshots "
     "WHERE taken_at >= %s AND taken_at < %s ORDER BY taken_at DESC LIMIT 1"
 )
-_UPSERT = (
+_EXISTS = "SELECT EXISTS (SELECT 1 FROM journal WHERE trading_day = %s) AS found"
+_INSERT = (
+    "INSERT INTO journal (trading_day, equity_open, equity_close, summary_md, "
+    "per_agent_attribution) VALUES (%s, %s, %s, %s, %s) "
+    "ON CONFLICT (trading_day) DO NOTHING"
+)
+_REPLACE = (
     "INSERT INTO journal (trading_day, equity_open, equity_close, summary_md, "
     "per_agent_attribution) VALUES (%s, %s, %s, %s, %s) "
     "ON CONFLICT (trading_day) DO UPDATE SET equity_open = EXCLUDED.equity_open, "
@@ -106,6 +113,7 @@ class PgJournalStore:
         start, end = _new_york_day(day)
         previous = conn.execute(_PREVIOUS, (day,)).fetchone()
         future = conn.execute(_FUTURE, (day,)).fetchone()["found"]
+        exists = conn.execute(_EXISTS, (day,)).fetchone()["found"]
         if previous is None:
             # First-ever run: today's reports only (spec, clarify Q2).
             window_start = start - timedelta(microseconds=1)
@@ -134,13 +142,21 @@ class PgJournalStore:
                 _SNAPSHOT_OPEN, {"start": start, "end": end, "open": open_at}
             ).fetchone(),
             snapshot_close=conn.execute(_SNAPSHOT_CLOSE, (start, end)).fetchone(),
+            row_exists=exists,
         )
 
-    def upsert(self, row: JournalRow) -> None:
-        """Write the day's row, replacing any earlier one for the same day (research J11)."""
+    def insert(self, row: JournalRow) -> bool:
+        """Write the day's row unless one exists; whether it was inserted (research J11)."""
+        return self._write(_INSERT, row)
+
+    def replace(self, row: JournalRow) -> None:
+        """Rewrite the day's row, or insert it (`--replace`, research J11)."""
+        self._write(_REPLACE, row)
+
+    def _write(self, sql: str, row: JournalRow) -> bool:
         with self._conn.transaction():
-            self._conn.execute(
-                _UPSERT,
+            cur = self._conn.execute(
+                sql,
                 (
                     row.trading_day,
                     row.equity_open,
@@ -149,6 +165,7 @@ class PgJournalStore:
                     Jsonb(row.per_agent_attribution),
                 ),
             )
+            return cur.rowcount == 1
 
 
 def _new_york_day(day: date) -> tuple[datetime, datetime]:

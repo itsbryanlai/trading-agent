@@ -235,11 +235,28 @@ def _row(summary="first", close="101.50"):
     )
 
 
-def test_an_upsert_twice_leaves_one_row_with_the_second_values(conn):
+def test_an_insert_over_an_existing_row_changes_nothing_and_says_so(conn):
     with as_role(conn, "ta_journal"):
         store = PgJournalStore(conn)
-        store.upsert(_row("first", "101.50"))
-        store.upsert(_row("second", "102.25"))
+        assert store.insert(_row("first", "101.50")) is True
+        first = conn.execute("SELECT * FROM journal WHERE trading_day = %s", (DAY,)).fetchone()
+        assert store.insert(_row("second", "102.25")) is False
+    rows = conn.execute("SELECT * FROM journal WHERE trading_day = %s", (DAY,)).fetchall()
+    assert rows == [first]
+
+
+def test_read_reports_whether_a_row_exists_for_the_day(conn):
+    assert read(conn).row_exists is False
+    with as_role(conn, "ta_journal"):
+        PgJournalStore(conn).insert(_row())
+    assert read(conn).row_exists is True
+
+
+def test_a_replace_twice_leaves_one_row_with_the_second_values(conn):
+    with as_role(conn, "ta_journal"):
+        store = PgJournalStore(conn)
+        store.replace(_row("first", "101.50"))
+        store.replace(_row("second", "102.25"))
     rows = conn.execute("SELECT * FROM journal WHERE trading_day = %s", (DAY,)).fetchall()
     assert len(rows) == 1
     assert rows[0]["summary_md"] == "second"

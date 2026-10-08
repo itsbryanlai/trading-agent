@@ -41,7 +41,9 @@ class Store(Protocol):
         previous_close_of: Callable[[date], datetime],
     ) -> JournalReads: ...
 
-    def upsert(self, row: JournalRow) -> None: ...
+    def insert(self, row: JournalRow) -> bool: ...
+
+    def replace(self, row: JournalRow) -> None: ...
 
 
 def run(
@@ -53,9 +55,12 @@ def run(
     sleep: Callable[[float], None],
     monotonic: Callable[[], float],
     dry_run: bool = False,
+    replace: bool = False,
 ) -> RunOutcome:
     """One run. A failure writes nothing and names itself (research J12). A dry run does
-    everything but the write and reports `dry_run` with the row it would have written."""
+    everything but the write and reports `dry_run` with the row it would have written, and
+    ignores an existing row. A plain run that finds today's row does nothing; `replace`
+    rewrites it (spec FR-003, research J11)."""
     day = calendar.trading_day(now)
     if not calendar.is_session(day):
         return _nothing_to_do("not_a_session")
@@ -71,6 +76,8 @@ def run(
     reads = store.read(day, calendar.open_time(day), calendar.close_time(day), calendar.close_time)
     if reads.has_future_row:
         return _failed("future_row")
+    if reads.row_exists and not (dry_run or replace):
+        return _nothing_to_do("already_written")
     if reads.snapshot_open is None or reads.snapshot_close is None:
         return _failed("no_account_snapshot")
     previous_day = None if reads.previous is None else reads.previous["trading_day"]
@@ -104,7 +111,10 @@ def run(
     row = _row(reads, day, previous_day, missed, cfg, results, unpriced, prices)
     if dry_run:
         return RunOutcome("dry_run", None, row)
-    store.upsert(row)
+    if replace:
+        store.replace(row)
+    elif not store.insert(row):
+        return _nothing_to_do("already_written")  # another run wrote it since the read
     log.info(
         "journal: wrote trading_day=%s agents=%d symbols_priced=%d/%d sessions_covered=%d",
         day,
@@ -122,8 +132,10 @@ SYSTEMIC = frozenset({"rate_limited", "unavailable", "deadline", "after_close"})
 def _systemic_failure(prices: dict[str, Price]) -> bool:
     """Nothing was priced and at least one reason is systemic (spec FR-019, research J2).
     Permanent failures leave a symbol unpriced and the holding limit ages it out."""
-    return bool(prices) and all(p.close is None for p in prices.values()) and any(
-        p.reason in SYSTEMIC for p in prices.values()
+    return (
+        bool(prices)
+        and all(p.close is None for p in prices.values())
+        and any(p.reason in SYSTEMIC for p in prices.values())
     )
 
 
