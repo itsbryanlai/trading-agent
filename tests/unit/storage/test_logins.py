@@ -75,10 +75,11 @@ def _env(monkeypatch):
     monkeypatch.setenv("ADMIN_DATABASE_URL", ADMIN_URL)
 
 
-def test_the_login_table_is_the_contracts_eight_rows():
+def test_the_login_table_is_the_contracts_nine_rows():
     assert [tuple(login) for login in LOGINS] == [
         ("ta_orchestrator_login", "ta_orchestrator"),
         ("ta_research_login", "ta_research"),
+        ("ta_opportunistic_identifier_login", "ta_opportunistic_identifier"),
         ("ta_portfolio_manager_login", "ta_portfolio_manager"),
         ("ta_risk_gate_login", "ta_risk_gate"),
         ("ta_reference_data_login", "ta_reference_data"),
@@ -138,11 +139,11 @@ def test_passwords_are_32_random_bytes_urlsafe():
     assert first != second and len(first) == 43
 
 
-def test_a_fresh_run_creates_all_eight_and_prints_each_string_once(capsys):
+def test_a_fresh_run_creates_all_nine_and_prints_each_string_once(capsys):
     conn = FakeConnection(GROUPS)
     assert main(["--service-host", "svc.internal:5433"], connect_fn=_connector(conn)) == 0
     out = capsys.readouterr().out.splitlines()
-    assert len(out) == 8
+    assert len(out) == 9
     for line, login in zip(out, LOGINS, strict=True):
         name, url = line.split("  ")
         assert name == login.name
@@ -150,7 +151,7 @@ def test_a_fresh_run_creates_all_eight_and_prints_each_string_once(capsys):
             "@svc.internal:5433/railway"
         )
     creates = [s for s in conn.statements if s.startswith("CREATE ROLE")]
-    assert len(creates) == 8
+    assert len(creates) == 9
     assert all("LOGIN INHERIT NOSUPERUSER NOCREATEDB NOCREATEROLE PASSWORD '" in s for s in creates)
     assert 'IN ROLE "ta_dashboard_control"' in creates[-1]
 
@@ -161,7 +162,7 @@ def test_existing_logins_are_left_alone(capsys):
     out = capsys.readouterr().out
     assert "ta_research_login  exists, unchanged" in out
     assert "ta_execution_login  exists, unchanged" in out
-    assert len([s for s in conn.statements if s.startswith("CREATE ROLE")]) == 6
+    assert len([s for s in conn.statements if s.startswith("CREATE ROLE")]) == 7
     assert not any(s.startswith("ALTER ROLE") for s in conn.statements)
 
 
@@ -174,7 +175,7 @@ def test_reset_changes_only_the_named_login(capsys):
     )
     assert [s.split()[2] for s in conn.statements] == ['"ta_risk_gate_login"']
     out = capsys.readouterr().out.splitlines()
-    assert sum("exists, unchanged" in line for line in out) == 7
+    assert sum("exists, unchanged" in line for line in out) == 8
 
 
 def test_reset_of_a_login_that_does_not_exist_exits_2():
@@ -229,7 +230,7 @@ def test_the_database_receives_a_scram_verifier_never_the_plain_password(capsys)
     assert main(["--service-host", "h"], connect_fn=_connector(conn)) == 0
     lines = capsys.readouterr().out.splitlines()
     creates = [s for s in conn.statements if s.startswith("CREATE ROLE")]
-    assert len(creates) == 8
+    assert len(creates) == 9
     for line, statement in zip(lines, creates, strict=True):
         password = line.split("  ")[1].split(":")[2].split("@")[0]
         assert "PASSWORD 'SCRAM-SHA-256$" in statement

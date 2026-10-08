@@ -11,7 +11,8 @@
 #
 # Each agent's feature enables its own entry and lists its variables, which must
 # start with its prefix (ADR 0015). Research is enabled (feature 007) and so is the
-# PM (feature 008); the Opportunistic Identifier doesn't exist yet and stays disabled.
+# PM (feature 008). The Opportunistic Identifier exists (feature 011) and ships disabled; a
+# separate PR enables it after the owner's dry run.
 
 research:
   enabled: true                # specs/007-research-agent
@@ -27,10 +28,17 @@ research:
   interval_minutes: null       # optional intraday runs; null = off
 
 opportunistic_identifier:
-  enabled: false
+  enabled: false               # specs/011-opportunistic-identifier; switched on in a separate PR
   module: trading_agent.opportunistic_identifier
-  env: []                      # OPPORTUNISTIC_IDENTIFIER_* names only
-  timeout_minutes: 10
+  env:                         # OPPORTUNISTIC_IDENTIFIER_* names only; unset ones aren't passed
+    - OPPORTUNISTIC_IDENTIFIER_DATABASE_URL
+    - OPPORTUNISTIC_IDENTIFIER_FINNHUB_API_KEY
+    - OPPORTUNISTIC_IDENTIFIER_DASHSCOPE_API_KEY     # model.provider: qwen (config/opportunistic_identifier.yaml)
+    - OPPORTUNISTIC_IDENTIFIER_QWEN_BASE_URL         # model.provider: qwen
+    - OPPORTUNISTIC_IDENTIFIER_ANTHROPIC_API_KEY     # model.provider: anthropic
+  # 15, not 10: the run's fetch deadline and model attempts are budgeted against it
+  # (specs/011-opportunistic-identifier research O10). Must stay under interval_minutes.
+  timeout_minutes: 15
   window_start: "10:00"
   window_end: "15:00"
   interval_minutes: 60

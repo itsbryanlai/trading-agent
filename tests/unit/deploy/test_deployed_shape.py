@@ -43,6 +43,11 @@ CONTRACT: dict[str, tuple[str, set[str]]] = {
             "RESEARCH_DASHSCOPE_API_KEY",
             "RESEARCH_QWEN_BASE_URL",
             "RESEARCH_ANTHROPIC_API_KEY",
+            "OPPORTUNISTIC_IDENTIFIER_DATABASE_URL",
+            "OPPORTUNISTIC_IDENTIFIER_FINNHUB_API_KEY",
+            "OPPORTUNISTIC_IDENTIFIER_DASHSCOPE_API_KEY",
+            "OPPORTUNISTIC_IDENTIFIER_QWEN_BASE_URL",
+            "OPPORTUNISTIC_IDENTIFIER_ANTHROPIC_API_KEY",
             "PORTFOLIO_MANAGER_DATABASE_URL",
             "PORTFOLIO_MANAGER_FINNHUB_API_KEY",
             "PORTFOLIO_MANAGER_DASHSCOPE_API_KEY",
@@ -247,7 +252,9 @@ def _against_the_repo(
     example = set(re.findall(r"^([A-Z][A-Z0-9_]*)=", env_example, re.MULTILINE))
     if declared - example:
         found.append(f"declared but missing from .env.example: {sorted(declared - example)}")
-    agents = [cfg for cfg in schedule.values() if isinstance(cfg, dict) and cfg.get("enabled")]
+    # Every agent's list, enabled or not: a disabled agent's variables are deployed ahead
+    # of the PR that enables it (feature 011 ships the Opportunistic Identifier disabled).
+    agents = [cfg for cfg in schedule.values() if isinstance(cfg, dict) and "env" in cfg]
     wanted = {var for cfg in agents for var in cfg["env"]}
     have = set(env_entries(blocks.get("orchestrator", ""))[0]) - {"ORCHESTRATOR_DATABASE_URL"}
     if wanted != have:

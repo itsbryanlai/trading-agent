@@ -129,14 +129,14 @@ def test_a_hung_agent_is_stopped_and_the_others_start_on_time():
     orch.tick(clock.now)
     hung = launcher.running("trading_agent.opportunistic_identifier")
     now = et("11:00")
-    while now <= et("11:15"):
+    while now <= et("11:20"):
         clock.now = now
         orch.tick(now)
         now += timedelta(seconds=30)
     assert hung.pgid in launcher.stops
     (oi_11,) = [r for r in store.records.values() if r.slot_key == "oi@11:00"]
     assert oi_11.outcome == "timed_out"
-    assert oi_11.finished_at - et("11:10") < timedelta(minutes=1)
+    assert oi_11.finished_at - et("11:15") < timedelta(minutes=1)
 
 
 def test_shutdown_stops_every_running_agent_and_records_it():

@@ -10,6 +10,7 @@ Run by the owner on their own machine, with `ADMIN_DATABASE_URL` exported in the
 |---|---|---|
 | `ta_orchestrator_login` | `ta_orchestrator` | orchestrator service |
 | `ta_research_login` | `ta_research` | orchestrator service (passed to Research) |
+| `ta_opportunistic_identifier_login` | `ta_opportunistic_identifier` | orchestrator service (passed to the Opportunistic Identifier) |
 | `ta_portfolio_manager_login` | `ta_portfolio_manager` | orchestrator service (passed to the PM) |
 | `ta_risk_gate_login` | `ta_risk_gate` | risk-gate service |
 | `ta_reference_data_login` | `ta_reference_data` | reference-data service |
@@ -41,3 +42,7 @@ Each login is `LOGIN`, `INHERIT` and `NOSUPERUSER NOCREATEDB NOCREATEROLE`, and 
   - the stored password is a SCRAM verifier, and an existing login with an extra privilege or a second group is refused with nothing changed;
   - `--reset` changes only the named login;
   - a missing group role creates nothing.
+
+## Amendment notes
+
+**Amended 2026-10-07 by feature 011** ([`specs/011-opportunistic-identifier`](../../011-opportunistic-identifier/spec.md), FR-022). The table has nine rows, not eight: `ta_opportunistic_identifier_login` is a member of `ta_opportunistic_identifier`, whose role and grants already exist (migrations 0001 and 0002), and is passed to the Opportunistic Identifier by the orchestrator. Everything else in this contract is unchanged.

@@ -249,3 +249,10 @@ Every start, finish, skip and failure is recorded with the agent, the reason and
 - **Agent timeouts**: default timeouts (Research 15 minutes, Opportunistic Identifier 10 minutes, PM 10 minutes) are configuration and can be tuned per agent later.
 - **Deployment**: Railway configuration is out of scope, as for features 003 and 004. The orchestrator must be startable as its own process with only its own variables plus the agents' variables.
 - **Out of scope**: the agents themselves, news-triggered Research, the Assistant, the dashboard, and alerts. Owner preferences recorded here for the Opportunistic Identifier's own feature are also not decided by this feature: design A (plain code pre-screens the universe, then one LLM call reviews a shortlist of about 20 names), and Qwen3.7-Plus as the preferred model. Using a non-Anthropic model needs its own ADR, and a constitution amendment (the constitution names the `anthropic` SDK for every LLM agent), in that feature, before any code.
+
+## Amendment notes
+
+**Amended 2026-10-07 by feature 011** ([`specs/011-opportunistic-identifier`](../011-opportunistic-identifier/spec.md)). The requirements above are unchanged. Two things differ in practice:
+
+- A `no_action` report doesn't count as a new report for the event-driven PM trigger, from either analyst (feature 011 FR-023). The `latest_report_time` view (migration `0014`) excludes `direction = 'no_action'`; its name, column and grants are the same, and the orchestrator's code is unchanged.
+- The Opportunistic Identifier's timeout is now 15 minutes (`config/schedule.yaml`, feature 011 research O10). The Assumptions entry above still says 10 minutes; it is left as written.
