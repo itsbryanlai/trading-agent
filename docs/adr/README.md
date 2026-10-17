@@ -51,3 +51,4 @@ What this makes easier, harder, or locks in going forward.
 | [0021](0021-railway-deployment-as-code-observe-only-first.md) | Railway deployment as code, observe-only first |
 | [0022](0022-journal-writer-runs-after-the-close-with-its-own-finnhub-key.md) | The journal writer is a deterministic job, run after the close, with its own Finnhub key |
 | [0023](0023-assistant-runs-its-own-service-and-reads-through-a-query-menu.md) | The Assistant runs as its own service, polls Telegram, and reads through a fixed query menu |
+| [0024](0024-assistant-explains-refusals-and-reads-deployed-settings.md) | The Assistant's model explains code's refusals, and the Assistant reads a fixed list of deployed settings |
