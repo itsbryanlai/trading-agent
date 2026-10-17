@@ -50,3 +50,4 @@ What this makes easier, harder, or locks in going forward.
 | [0020](0020-the-gate-counts-orders-in-flight.md) | The Risk Gate counts orders still in flight when sizing a decision |
 | [0021](0021-railway-deployment-as-code-observe-only-first.md) | Railway deployment as code, observe-only first |
 | [0022](0022-journal-writer-runs-after-the-close-with-its-own-finnhub-key.md) | The journal writer is a deterministic job, run after the close, with its own Finnhub key |
+| [0023](0023-assistant-runs-its-own-service-and-reads-through-a-query-menu.md) | The Assistant runs as its own service, polls Telegram, and reads through a fixed query menu |
