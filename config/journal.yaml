@@ -1,0 +1,14 @@
+# Settings for the journal writer (python -m trading_agent.journal).
+#
+# Schema: specs/012-journal-writer/contracts/journal-interface.md ("Configuration").
+# Every key is required and unknown keys are rejected; a bad file means the run
+# refuses to start (exit 2). Changed only through code review.
+
+# Sessions an agent's holding is carried after its latest buy or hold report on it.
+holding_sessions: 5
+# Finnhub pace; 20 because the account is shared with the other components (ADR 0016).
+finnhub_calls_per_minute: 20
+# No quote request starts after this many seconds; the rest go unpriced.
+fetch_deadline_seconds: 480
+# Minutes after the close within which a quote's trade time still counts as the close.
+close_grace_minutes: 5

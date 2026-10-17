@@ -28,6 +28,7 @@ GROUP_OF = {
     "ta_execution_login": "ta_execution",
     "ta_owner_read_login": "ta_dashboard",
     "ta_owner_control_login": "ta_dashboard_control",
+    "ta_journal_login": "ta_journal",
 }
 
 

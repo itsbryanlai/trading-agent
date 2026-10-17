@@ -1,0 +1,658 @@
+"""One journal run with a fake store and fake quotes (specs/012 T009)."""
+
+from __future__ import annotations
+
+import logging
+from datetime import UTC, date, datetime
+from decimal import Decimal
+
+import pytest
+
+from tests.fakes.journal_store import FakeJournalStore, empty_reads
+from tests.fakes.market_data import FakeMarketData
+from trading_agent.journal.config import JournalConfig
+from trading_agent.journal.model import Book, BookResult, Holding
+from trading_agent.journal.service import run
+from trading_agent.journal.state import encode
+from trading_agent.reference.provider import KeyRejected, NotPermitted
+from trading_agent.risk import calendar
+
+D = Decimal
+FRIDAY = date(2026, 10, 9)
+CFG = JournalConfig(5, 20, 480, 5)
+NOW = datetime(2026, 10, 9, 22, 30, tzinfo=UTC)
+
+
+def utc(month, day, hour, minute=0):
+    return datetime(2026, month, day, hour, minute, tzinfo=UTC)
+
+
+class Clock:
+    def __init__(self):
+        self.now = 0.0
+
+    def sleep(self, seconds):
+        self.now += seconds
+
+    def monotonic(self):
+        return self.now
+
+
+def snapshots(day_open="100000.00", day_close="100500.00", taken=None):
+    return {
+        "snapshot_open": {"taken_at": utc(10, 9, 13, 0), "equity": D(day_open)},
+        "snapshot_close": {
+            "taken_at": taken or utc(10, 9, 19, 30),
+            "equity": D(day_close),
+        },
+    }
+
+
+def market_for(day=FRIDAY, **quotes):
+    clock = Clock()
+    market = FakeMarketData(clock=clock.monotonic, quote_time=utc(day.month, day.day, 19, 59))
+    for symbol, close in quotes.items():
+        market.add(symbol, current=close)
+    return market, clock
+
+
+def report(id_, agent, symbol, direction="buy", size=5, at=None):
+    return {
+        "id": id_,
+        "agent": agent,
+        "generated_at": at or utc(10, 9, 15),
+        "symbol": symbol,
+        "direction": direction,
+        "suggested_size_pct": None if direction == "no_action" else D(size),
+    }
+
+
+def previous(day, equity_close="100000.00", **agents):
+    """A previous row; agents map to (index, started_on, {symbol: (weight, ref, support)})."""
+    results = {}
+    for agent, (index, started, held) in agents.items():
+        book = Book(
+            agent,
+            started,
+            D(index),
+            {s: Holding(s, D(w), D(ref), sup) for s, (w, ref, sup) in held.items()},
+        )
+        results[agent] = BookResult(book, D(0), None, 0, (), (), (), ())
+    attribution = encode(
+        day=day,
+        previous_day=None,
+        sessions_covered=1,
+        missed_sessions=(),
+        holding_sessions=5,
+        summary_version="0.1",
+        account_return=None,
+        account_base="open",
+        close_taken_at=None,
+        results=results,
+        usage={},
+    )
+    return {
+        "trading_day": day,
+        "equity_close": D(equity_close),
+        "per_agent_attribution": attribution,
+    }
+
+
+def go(reads, market, clock, now=NOW, cfg=CFG):
+    store = FakeJournalStore(reads)
+    outcome = run(store, market, cfg, now=now, sleep=clock.sleep, monotonic=clock.monotonic)
+    return outcome, store
+
+
+# --- the gate ------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("now", "reason"),
+    [
+        (utc(10, 10, 22, 30), "not_a_session"),  # Saturday
+        (utc(11, 26, 22, 30), "not_a_session"),  # Thanksgiving
+        (utc(10, 9, 19, 59), "before_close"),
+        (utc(11, 27, 17, 59), "before_close"),  # early close 13:00 ET = 18:00 UTC
+    ],
+)
+def test_nothing_to_do_outside_a_closed_session(now, reason):
+    market, clock = market_for()
+    outcome, store = go(empty_reads(), market, clock, now=now)
+    assert (outcome.status, outcome.reason) == ("nothing_to_do", reason)
+    assert store.read_calls == [] and store.upserts == [] and market.calls == []
+
+
+def test_the_early_close_day_runs_after_the_early_close():
+    day = date(2026, 11, 27)
+    market, clock = market_for(day)
+    market.add("AAPL", current=100, quote_time=utc(11, 27, 17, 59))  # before the 18:00 close
+    reads = empty_reads(
+        reports=[report(1, "research", "AAPL", at=utc(11, 27, 15))],
+        snapshot_open={"taken_at": utc(11, 27, 14), "equity": D(1)},
+        snapshot_close={"taken_at": utc(11, 27, 17), "equity": D(1)},
+    )
+    outcome, _ = go(reads, market, clock, now=utc(11, 27, 22, 30))
+    assert outcome.status == "wrote"
+    assert outcome.row.trading_day == day
+
+
+# --- a first-ever run ----------------------------------------------------------------
+
+
+def test_the_first_ever_run_writes_one_row_with_a_new_book():
+    market, clock = market_for(AAPL="229.15")
+    reads = empty_reads(reports=[report(1, "research", "AAPL")], **snapshots())
+    outcome, store = go(reads, market, clock)
+    assert outcome.status == "wrote"
+    assert store.upserts == [outcome.row]
+    row = outcome.row
+    assert (row.trading_day, row.equity_open, row.equity_close) == (
+        FRIDAY,
+        D("100000.00"),
+        D("100500.00"),
+    )
+    assert row.summary_md
+    a = row.per_agent_attribution
+    assert a["previous_trading_day"] is None
+    assert (a["sessions_covered"], a["missed_sessions"]) == (1, [])
+    assert a["account"] == {
+        "return": "0.005000",  # 500 / 100000, from the open on a first-ever run
+        "base": "open",
+        "close_taken_at": "2026-10-09T19:30:00+00:00",
+    }
+    research = a["agents"]["research"]
+    assert (research["started_on"], research["index"], research["day_return"]) == (
+        "2026-10-09",
+        "100.00000000",
+        "0.000000",
+    )
+    assert research["holdings"] == {
+        "AAPL": {"weight_pct": "5.000000", "ref_price": "229.15", "support_session": "2026-10-09"}
+    }
+
+
+def test_the_store_is_read_with_the_days_times_and_the_calendars_close():
+    market, clock = market_for()
+    _, store = go(empty_reads(**snapshots()), market, clock)
+    ((day, open_at, close_at, previous_close_of),) = store.read_calls
+    assert day == FRIDAY
+    assert (open_at, close_at) == (calendar.open_time(FRIDAY), calendar.close_time(FRIDAY))
+    assert previous_close_of is calendar.close_time
+
+
+# --- a normal second day -------------------------------------------------------------
+
+
+def test_a_second_day_values_the_previous_book_and_continues_its_index():
+    market, clock = market_for(AAPL=204)
+    prev = previous(
+        date(2026, 10, 8),
+        research=("104", date(2026, 10, 1), {"AAPL": ("10", "200", date(2026, 10, 7))}),
+    )
+    reads = empty_reads(previous=prev, **snapshots())
+    outcome, _ = go(reads, market, clock)
+    a = outcome.row.per_agent_attribution
+    research = a["agents"]["research"]
+    assert research["started_on"] == "2026-10-01"
+    assert research["day_return"] == "0.002000"  # 10% x +2%
+    assert research["index"] == "104.20800000"
+    assert research["holdings"]["AAPL"]["ref_price"] == "204"
+    assert (a["previous_trading_day"], a["sessions_covered"]) == ("2026-10-08", 1)
+    assert a["account"]["base"] == "previous_close"
+    assert a["account"]["return"] == "0.005000"  # 100500 / 100000 - 1
+
+
+def test_an_agent_with_a_book_but_no_report_today_gets_zero_usage_counts():
+    # contracts/attribution.md: `usage` always carries its seven counts (converge T024).
+    market, clock = market_for(AAPL=204)
+    prev = previous(
+        date(2026, 10, 8),
+        research=("104", date(2026, 10, 1), {"AAPL": ("10", "200", date(2026, 10, 7))}),
+    )
+    outcome, _ = go(empty_reads(previous=prev, **snapshots()), market, clock)
+    assert outcome.row.per_agent_attribution["agents"]["research"]["usage"] == {
+        "written": 0,
+        "argued": 0,
+        "no_action": 0,
+        "cited": 0,
+        "cited_decisions": 0,
+        "approved": 0,
+        "filled": 0,
+    }
+
+
+def test_the_account_return_is_null_when_its_base_is_zero():
+    market, clock = market_for()
+    reads = empty_reads(previous=previous(date(2026, 10, 8), equity_close="0"), **snapshots())
+    a = go(reads, market, clock)[0].row.per_agent_attribution
+    assert a["account"]["return"] is None
+    reads = empty_reads(**snapshots(day_open="0", day_close="10"))
+    a = go(reads, market, clock)[0].row.per_agent_attribution
+    assert (a["account"]["return"], a["account"]["base"]) == (None, "open")
+
+
+def test_the_rows_equity_columns_come_from_the_stores_open_and_close_snapshots():
+    market, clock = market_for()
+    outcome, _ = go(empty_reads(**snapshots("98765.43", "99999.99")), market, clock)
+    assert (outcome.row.equity_open, outcome.row.equity_close) == (D("98765.43"), D("99999.99"))
+
+
+# --- which agents have books ---------------------------------------------------------
+
+
+def test_agents_in_only_one_of_the_two_sources_both_get_books():
+    market, clock = market_for(AAPL=100, MSFT=50)
+    prev = previous(
+        date(2026, 10, 8),
+        research=("120", date(2026, 10, 1), {"AAPL": ("10", "100", date(2026, 10, 8))}),
+    )
+    reads = empty_reads(
+        previous=prev,
+        reports=[report(1, "opportunistic_identifier", "MSFT", size=3)],
+        **snapshots(),
+    )
+    agents = go(reads, market, clock)[0].row.per_agent_attribution["agents"]
+    assert set(agents) == {"research", "opportunistic_identifier"}
+    assert agents["research"]["index"] == "120.00000000"  # carried, no reports today
+    assert agents["research"]["holdings"]["AAPL"]["weight_pct"] == "10.000000"
+    oi = agents["opportunistic_identifier"]
+    assert (oi["started_on"], oi["index"]) == ("2026-10-09", "100.00000000")
+    assert oi["holdings"]["MSFT"]["weight_pct"] == "3.000000"
+
+
+def test_an_agent_with_only_a_no_action_report_gets_an_empty_book():
+    market, clock = market_for()
+    reads = empty_reads(reports=[report(1, "research", None, "no_action")], **snapshots())
+    agents = go(reads, market, clock)[0].row.per_agent_attribution["agents"]
+    assert agents["research"]["holdings"] == {}
+
+
+# --- what is priced ------------------------------------------------------------------
+
+
+def test_each_held_symbol_and_each_buy_or_hold_target_is_fetched_once():
+    market, clock = market_for(AAPL=100, MSFT=50, NVDA=10, TSLA=10, AMD=10)
+    prev = previous(
+        date(2026, 10, 8),
+        research=("100", date(2026, 10, 1), {"AAPL": ("5", "100", date(2026, 10, 8))}),
+        opportunistic_identifier=(
+            "100",
+            date(2026, 10, 1),
+            {"AAPL": ("5", "100", date(2026, 10, 8))},
+        ),
+    )
+    reads = empty_reads(
+        previous=prev,
+        reports=[
+            report(1, "research", "MSFT", "buy"),
+            report(2, "opportunistic_identifier", "MSFT", "hold"),
+            report(3, "research", "NVDA", "sell", 0),  # unheld: no price needed
+            report(4, "research", None, "no_action"),
+            report(5, "research", "AAPL", "buy"),  # already held
+        ],
+        **snapshots(),
+    )
+    go(reads, market, clock)
+    assert sorted(s for _, _, s in market.calls) == ["AAPL", "MSFT"]
+
+
+def test_a_run_with_nothing_to_price_makes_no_quote_calls():
+    market, clock = market_for()
+    go(empty_reads(**snapshots()), market, clock)
+    assert market.calls == []
+
+
+def test_an_unpriced_symbol_is_carried_and_listed_but_the_run_still_writes():
+    market, clock = market_for(AAPL=100)
+    market.add("MSFT", current=50, quote_time=utc(10, 9, 23, 0))  # after-hours print
+    prev = previous(
+        date(2026, 10, 8),
+        research=("100", date(2026, 10, 1), {"MSFT": ("5", "48", date(2026, 10, 8))}),
+    )
+    reads = empty_reads(previous=prev, reports=[report(1, "research", "AAPL")], **snapshots())
+    outcome, _ = go(reads, market, clock)
+    research = outcome.row.per_agent_attribution["agents"]["research"]
+    assert outcome.status == "wrote"
+    assert research["unpriced"] == ["MSFT"]
+    assert research["holdings"]["MSFT"]["ref_price"] == "48"
+
+
+# --- support sessions and late reports -----------------------------------------------
+
+
+def test_a_report_after_thursdays_close_counts_from_friday_and_is_not_late():
+    market, clock = market_for(AAPL=100)
+    reads = empty_reads(
+        previous=previous(date(2026, 10, 8)),
+        reports=[report(1, "research", "AAPL", at=utc(10, 8, 20, 30))],
+        **snapshots(),
+    )
+    research = go(reads, market, clock)[0].row.per_agent_attribution["agents"]["research"]
+    assert research["holdings"]["AAPL"]["support_session"] == "2026-10-09"
+    assert research["late_reports"] == 0
+
+
+def test_a_report_before_its_sessions_close_counts_from_that_session():
+    market, clock = market_for(AAPL=100)
+    reads = empty_reads(
+        previous=previous(date(2026, 10, 8)),
+        reports=[report(1, "research", "AAPL", at=utc(10, 9, 14))],
+        **snapshots(),
+    )
+    research = go(reads, market, clock)[0].row.per_agent_attribution["agents"]["research"]
+    assert research["holdings"]["AAPL"]["support_session"] == "2026-10-09"
+
+
+def test_a_weekend_report_with_a_missed_monday_counts_from_monday_and_is_late_on_tuesday():
+    tuesday = date(2026, 10, 6)
+    market, clock = market_for(tuesday, AAPL=100, MSFT=50)
+    reads = empty_reads(
+        previous=previous(date(2026, 10, 2)),
+        reports=[
+            report(1, "research", "AAPL", at=utc(10, 3, 15)),  # Saturday
+            report(2, "research", "MSFT", at=utc(10, 6, 14)),  # Tuesday, before the close
+        ],
+        snapshot_open={"taken_at": utc(10, 6, 13), "equity": D(1)},
+        snapshot_close={"taken_at": utc(10, 6, 19), "equity": D(1)},
+    )
+    outcome, _ = go(reads, market, clock, now=utc(10, 6, 22, 30))
+    a = outcome.row.per_agent_attribution
+    holdings = a["agents"]["research"]["holdings"]
+    assert holdings["AAPL"]["support_session"] == "2026-10-05"
+    assert holdings["MSFT"]["support_session"] == "2026-10-06"
+    assert a["agents"]["research"]["late_reports"] == 1
+    assert (a["sessions_covered"], a["missed_sessions"]) == (2, ["2026-10-05"])
+
+
+def test_a_missed_session_extends_sessions_covered_and_is_listed():
+    market, clock = market_for()
+    reads = empty_reads(previous=previous(date(2026, 10, 7)), **snapshots())
+    a = go(reads, market, clock)[0].row.per_agent_attribution
+    assert (a["sessions_covered"], a["missed_sessions"]) == (2, ["2026-10-08"])
+    assert a["previous_trading_day"] == "2026-10-07"
+
+
+def test_the_holding_limit_applies_through_the_service():
+    market, clock = market_for(AAPL=100)
+    prev = previous(
+        date(2026, 10, 8),
+        research=("100", date(2026, 9, 1), {"AAPL": ("5", "100", date(2026, 10, 2))}),
+    )
+    a = go(empty_reads(previous=prev, **snapshots()), market, clock)[0].row.per_agent_attribution
+    research = a["agents"]["research"]
+    assert research["holdings"] == {}
+    assert research["exited"]["holding_limit"] == ["AAPL"]
+
+
+# --- the summary and the usage counts (T014) -------------------------------------------
+
+
+def test_the_row_carries_the_rendered_summary_and_each_agents_usage():
+    from tests.unit.journal.summary_fixtures import decision, order, verdict
+    from trading_agent.journal import summary
+
+    market, clock = market_for(AAPL=100)
+    d1 = decision("AAPL", "buy")
+    v1 = verdict(d1["id"], "approved")
+    reads = empty_reads(
+        reports=[report(1, "research", "AAPL"), report(2, "research", None, "no_action")],
+        decision_reports=[{"decision_id": d1["id"], "report_id": 1}],
+        decisions=[d1],
+        verdicts=[v1],
+        orders=[order(v1["id"], "filled", "3")],
+        **snapshots(),
+    )
+    outcome, _ = go(reads, market, clock)
+    row = outcome.row
+    assert row.summary_md.startswith("## 2026-10-09\n")
+    assert "- Decisions: 1 (buy 1, sell 0, hold 0); approved 1, rejected 0" in row.summary_md
+    assert "AAPL" in row.summary_md
+    assert row.per_agent_attribution["summary_version"] == summary.SUMMARY_VERSION
+    assert row.per_agent_attribution["agents"]["research"]["usage"] == {
+        "written": 2,
+        "argued": 1,
+        "no_action": 1,
+        "cited": 1,
+        "cited_decisions": 1,
+        "approved": 1,
+        "filled": 1,
+    }
+
+
+def test_the_summary_counts_unpriced_symbols_and_missed_sessions():
+    market, clock = market_for(AAPL=100)
+    market.add("MSFT", current=50, quote_time=utc(10, 9, 23, 0))  # after-hours: unpriced
+    reads = empty_reads(
+        previous=previous(
+            date(2026, 10, 7),
+            research=("100", date(2026, 10, 1), {"MSFT": ("5", "48", date(2026, 10, 7))}),
+        ),
+        reports=[report(1, "research", "AAPL")],
+        **snapshots(),
+    )
+    row = go(reads, market, clock)[0].row
+    assert "missed sessions 2026-10-08" in row.summary_md
+    assert "1 symbol unpriced" in row.summary_md
+
+
+# --- failures write nothing and name themselves (T015) ----------------------------------
+
+
+def failed(reads, market, clock, reason):
+    outcome, store = go(reads, market, clock)
+    assert (outcome.status, outcome.reason, outcome.row) == ("failed", reason, None)
+    assert store.upserts == []
+    return store
+
+
+def test_a_day_with_no_account_snapshot_fails_before_any_quote_is_fetched():
+    market, clock = market_for(AAPL=100)
+    reads = empty_reads(reports=[report(1, "research", "AAPL")])
+    failed(reads, market, clock, "no_account_snapshot")
+    assert market.calls == []
+    only_open = empty_reads(snapshot_open=snapshots()["snapshot_open"])
+    failed(only_open, market, clock, "no_account_snapshot")
+
+
+def test_a_run_whose_every_quote_is_stamped_after_the_close_fails():
+    market, clock = market_for()
+    market.add("AAPL", current=100, quote_time=utc(10, 9, 23, 0))
+    reads = empty_reads(reports=[report(1, "research", "AAPL")], **snapshots())
+    failed(reads, market, clock, "no_prices")
+
+
+def test_a_run_whose_deadline_passes_before_any_quote_fails():
+    market, clock = market_for(AAPL=100)
+    reads = empty_reads(reports=[report(1, "research", "AAPL")], **snapshots())
+    outcome, _ = go(reads, market, clock, cfg=JournalConfig(5, 20, 0, 5))
+    assert (outcome.status, outcome.reason) == ("failed", "no_prices")
+    assert market.calls == []
+
+
+@pytest.mark.parametrize("fault", ["stale", "no_price", "not_permitted"])
+def test_permanent_failures_do_not_fail_the_run_and_the_holding_limit_ages_the_holding_out(fault):
+    market, clock = market_for()
+    if fault == "stale":
+        market.add("AAPL", current=100, quote_time=utc(10, 8, 19, 59))
+    elif fault == "no_price":
+        market.add("AAPL", current=None)
+    else:
+        market.fail("get_quote", "AAPL", error=NotPermitted())
+    prev = previous(
+        date(2026, 10, 8),
+        research=("100", date(2026, 9, 1), {"AAPL": ("5", "100", date(2026, 10, 2))}),
+    )
+    outcome, store = go(empty_reads(previous=prev, **snapshots()), market, clock)
+    assert outcome.status == "wrote"
+    assert len(store.upserts) == 1
+    research = outcome.row.per_agent_attribution["agents"]["research"]
+    assert research["holdings"] == {}
+    assert research["exited"]["holding_limit"] == ["AAPL"]
+
+
+def test_a_malformed_only_book_writes_a_row():
+    market, clock = market_for()
+    reads = empty_reads(reports=[report(1, "research", "x; DROP")], **snapshots())
+    outcome, _ = go(reads, market, clock)
+    assert outcome.status == "wrote"
+
+
+def test_a_rejected_key_fails_the_run():
+    market, clock = market_for(AAPL=100)
+    market.fail("get_quote", error=KeyRejected())
+    reads = empty_reads(reports=[report(1, "research", "AAPL")], **snapshots())
+    failed(reads, market, clock, "market_data_key_rejected")
+
+
+def test_a_row_after_today_fails_the_run_before_any_quote_is_fetched():
+    market, clock = market_for(AAPL=100)
+    reads = empty_reads(has_future_row=True, reports=[report(1, "research", "AAPL")], **snapshots())
+    failed(reads, market, clock, "future_row")
+    assert market.calls == []
+
+
+def test_an_unknown_schema_version_fails_the_run():
+    market, clock = market_for(AAPL=100)
+    prev = previous(date(2026, 10, 8))
+    prev["per_agent_attribution"]["schema_version"] = 2
+    failed(empty_reads(previous=prev, **snapshots()), market, clock, "unknown_schema")
+    prev["per_agent_attribution"] = {"agents": "garbage"}
+    failed(empty_reads(previous=prev, **snapshots()), market, clock, "unknown_schema")
+
+
+def test_some_unpriced_symbols_are_not_a_failure_and_are_logged_by_reason(caplog):
+    market, clock = market_for(AAPL=100)
+    market.add("MSFT", current=50, quote_time=utc(10, 9, 23, 0))
+    reads = empty_reads(
+        reports=[report(1, "research", "AAPL"), report(2, "research", "MSFT")], **snapshots()
+    )
+    with caplog.at_level(logging.INFO, logger="trading_agent.journal"):
+        outcome, _ = go(reads, market, clock)
+    assert outcome.status == "wrote"
+    warnings = [r.getMessage() for r in caplog.records if r.levelno == logging.WARNING]
+    assert warnings == ["journal: unpriced MSFT: after_close"]
+    assert "agents=1 symbols_priced=1/2 sessions_covered=1" in caplog.text
+
+
+def test_a_malformed_symbol_is_logged_as_a_count_never_as_text(caplog):
+    market, clock = market_for(AAPL=100)
+    reads = empty_reads(
+        reports=[report(1, "research", "AAPL"), report(2, "research", "x; DROP")], **snapshots()
+    )
+    with caplog.at_level(logging.INFO, logger="trading_agent.journal"):
+        go(reads, market, clock)
+    assert "journal: unpriced malformed symbols: 1" in caplog.text
+    assert "DROP" not in caplog.text
+
+
+def test_missed_sessions_are_logged_as_a_warning_and_the_books_are_valued_across_the_gap(caplog):
+    market, clock = market_for(AAPL=110)
+    prev = previous(
+        date(2026, 10, 7),
+        research=("100", date(2026, 10, 1), {"AAPL": ("10", "100", date(2026, 10, 7))}),
+    )
+    with caplog.at_level(logging.INFO, logger="trading_agent.journal"):
+        outcome, _ = go(empty_reads(previous=prev, **snapshots()), market, clock)
+    a = outcome.row.per_agent_attribution
+    assert (a["sessions_covered"], a["missed_sessions"]) == (2, ["2026-10-08"])
+    assert a["agents"]["research"]["index"] == "101.00000000"  # 10% x +10%, over the gap
+    warnings = [r.getMessage() for r in caplog.records if r.levelno == logging.WARNING]
+    assert warnings == ["journal: missed sessions: 2026-10-08"]
+
+
+def test_a_rerun_computes_from_the_previous_days_row_so_the_result_is_identical():
+    prev = previous(
+        date(2026, 10, 8),
+        research=("104", date(2026, 10, 1), {"AAPL": ("10", "200", date(2026, 10, 7))}),
+    )
+    rows = []
+    for _ in range(2):
+        market, clock = market_for(AAPL=204)
+        reads = empty_reads(previous=prev, reports=[report(1, "research", "AAPL")], **snapshots())
+        rows.append(go(reads, market, clock)[0].row)
+    assert rows[0] == rows[1]
+
+
+# --- a dry run (T018) --------------------------------------------------------------------
+
+
+def test_a_dry_run_does_everything_but_the_write_and_returns_the_row():
+    market, clock = market_for(AAPL=100)
+    reads = empty_reads(reports=[report(1, "research", "AAPL")], **snapshots())
+    store = FakeJournalStore(reads)
+    outcome = run(
+        store, market, CFG, now=NOW, sleep=clock.sleep, monotonic=clock.monotonic, dry_run=True
+    )
+    assert outcome.status == "dry_run" and outcome.row is not None
+    assert store.upserts == []
+    assert len(market.calls) == 1
+    wrote, _ = go(reads, market_for(AAPL=100)[0], clock)
+    assert outcome.row == wrote.row
+
+
+# --- an existing row, --replace (T026) ---------------------------------------------------
+
+
+def existing_row_reads(**over):
+    return empty_reads(
+        row_exists=True, reports=[report(1, "research", "AAPL")], **snapshots(), **over
+    )
+
+
+def test_a_plain_run_that_finds_todays_row_does_nothing_before_any_quote():
+    market, clock = market_for(AAPL=100)
+    outcome, store = go(existing_row_reads(), market, clock)
+    assert (outcome.status, outcome.reason) == ("nothing_to_do", "already_written")
+    assert market.calls == [] and store.upserts == []
+
+
+def test_a_plain_run_whose_insert_finds_a_row_written_meanwhile_reports_already_written():
+    market, clock = market_for(AAPL=100)
+    reads = empty_reads(reports=[report(1, "research", "AAPL")], **snapshots())
+    store = FakeJournalStore(reads, insert_result=False)
+    outcome = run(store, market, CFG, now=NOW, sleep=clock.sleep, monotonic=clock.monotonic)
+    assert (outcome.status, outcome.reason) == ("nothing_to_do", "already_written")
+    assert store.upserts == []
+
+
+def test_replace_rewrites_an_existing_row_through_replace_not_insert():
+    market, clock = market_for(AAPL=100)
+    store = FakeJournalStore(existing_row_reads())
+    outcome = run(
+        store, market, CFG, now=NOW, sleep=clock.sleep, monotonic=clock.monotonic, replace=True
+    )
+    assert outcome.status == "wrote"
+    assert store.replaces == [outcome.row]
+
+
+def test_a_dry_run_ignores_an_existing_row():
+    market, clock = market_for(AAPL=100)
+    outcome = run(
+        FakeJournalStore(existing_row_reads()),
+        market,
+        CFG,
+        now=NOW,
+        sleep=clock.sleep,
+        monotonic=clock.monotonic,
+        dry_run=True,
+    )
+    assert outcome.status == "dry_run" and outcome.row is not None
+
+
+# --- the retry slot (T027) --------------------------------------------------------------
+
+
+def test_the_00_30_utc_start_after_a_friday_session_writes_fridays_row():
+    market, clock = market_for(AAPL=100)
+    reads = empty_reads(reports=[report(1, "research", "AAPL")], **snapshots())
+    outcome, _ = go(reads, market, clock, now=utc(10, 10, 0, 30))  # Friday 20:30 ET
+    assert outcome.status == "wrote"
+    assert outcome.row.trading_day == FRIDAY
+
+
+def test_the_00_30_utc_start_on_monday_is_sunday_evening_in_new_york_and_does_nothing():
+    market, clock = market_for(AAPL=100)
+    outcome, store = go(empty_reads(**snapshots()), market, clock, now=utc(10, 12, 0, 30))
+    assert (outcome.status, outcome.reason) == ("nothing_to_do", "not_a_session")
+    assert store.read_calls == [] and market.calls == []

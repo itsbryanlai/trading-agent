@@ -61,7 +61,7 @@ name = "layers: higher components import only from layers below; siblings stay i
 type = "layers"
 containers = ["trading_agent"]
 layers = [
-    "execution | orchestrator | research | portfolio_manager | opportunistic_identifier",
+    "execution | orchestrator | research | portfolio_manager | opportunistic_identifier | journal",
     "reference",
     "risk",
     "llm | storage",
