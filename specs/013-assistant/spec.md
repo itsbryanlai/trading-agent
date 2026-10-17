@@ -23,8 +23,16 @@ All recorded in [ADR 0023](../../docs/adr/0023-assistant-runs-its-own-service-an
 - Q: Model-written text in tables? → A: Untrusted data, JSON-encoded in a separate message from the instructions, its instructions ignored (`specs/008-portfolio-manager` research P13). Replies are plain text with link previews off. Prompts, answers and message text never reach a log. Messages from other chats are dropped silently and counted without their IDs.
 - Q: Conversation memory? → A: In the process only: the last few exchanges, dropped after about 30 minutes of quiet and on restart. Nothing is written to the database.
 - Q: Rate and cost limits? → A: One question at a time, a cap on each prompt's input and on each answer's output, a fixed reply when a question would exceed the input cap, and token use logged per question. **No daily question cap** (owner).
-- Q: A request to pause, resume or trade? → A: A fixed reply saying the Assistant cannot act, naming the dashboard's control and, until the dashboard exists, the deployment runbook's switching-on and switching-off sections.
+- Q: A request to pause, resume or trade? → A: Refused, naming the dashboard's control and, until the dashboard exists, the deployment runbook's switching-on and switching-off sections. How it is refused and who writes the reply: see the clarify session below.
 - Q: Unprompted alerts? → A: Out of scope. The Assistant only answers. Alerts need their own ADR.
+
+### Session 2026-10-17 (clarify)
+
+- Q: When the owner asks the Assistant to act, what decides to refuse? → A: Code, before the model sees the message: a message that starts with a configured action word (pause, resume, unpause, stop, halt, buy, sell, close, cancel, trade, liquidate; case-insensitive) is refused, and nothing changes. A question that only contains such a word ("why did the PM sell MU?") is answered normally. The model then writes the reply from the refusal's outcome, like an agent reading a tool's result: why it was refused, the full list of action words, how to ask the same thing as a question, and where the real control lives. The reply always starts with a fixed line from code saying nothing was done, and the model is never given credentials, configuration values or stored model text for this reply. `/help` lists the action words too. This refines [ADR 0023](../../docs/adr/0023-assistant-runs-its-own-service-and-reads-through-a-query-menu.md) §10, which said a fixed reply; recorded in a new ADR before the plan. Rejected: the model deciding what is an action request (owner chose code), and a reply written entirely in code (less helpful).
+- Q: After a restart, what happens to messages sent while the Assistant was offline? → A: None is answered. On start it skips every message from the authorised chat sent before it started, and sends one note saying how many were skipped and asking for them again. Messages from other chats are still dropped silently. Rejected: answering recent ones (an old question could read as current) and answering all with their times.
+- Q: Which time zone do answers use, and what does "today" mean? → A: The owner's configured time zone. "Today", "yesterday" and other relative days are the owner's local calendar days. Every time in a reply is shown in that zone with New York time (ET) alongside, and a relative day is stated with the ET span it covers. Rejected: New York time only, and "today" meaning the latest New York session.
+- Q: May replies include web links? → A: Only links stored in a report's sources, which Research builds from the articles it fetched, never from model text (`specs/007-research-agent` FR-008). Code removes every other URL from a reply before sending, and link previews stay off. Rejected: no links at all, and any link the model writes.
+- Q: Should it answer questions about the system's settings, which live in config files rather than the database? → A: Yes, read-only, through one more menu entry exposing a fixed list of non-secret settings: the risk limits, each agent's schedule and whether it is enabled, and each LLM agent's model provider and name. They are read from the configuration files deployed with the service. Nothing else from those files, and no environment value, is exposed. This is a new data source beyond ADR 0023 §4, recorded in the same new ADR as the refusal change, before the plan. Rejected: settings out of scope for 013.
 
 ## User Scenarios & Testing *(mandatory)*
 
@@ -55,6 +63,8 @@ The owner asks "what did Research say about NVDA this week?", "why did the PM se
 
 **Why this priority**: Watching how each agent performs over time is the system's stated purpose. The Assistant is one of its two windows.
 
+A question such as "what's the max position size?" or "when does Research run?" is answered from the deployed settings (FR-005a).
+
 **Independent Test**: With a store holding a week of reports, decisions, journal rows and runs, ask each question and check that the reply draws only on rows in the asked period and for the asked symbol or agent.
 
 **Acceptance Scenarios**:
@@ -76,7 +86,8 @@ The owner, or a message that reached the bot some other way, asks it to act ("pa
 
 **Acceptance Scenarios**:
 
-1. **Given** any state, **When** the owner asks to pause, resume, buy or sell, **Then** the Assistant sends the fixed reply saying it cannot take actions and naming where the control lives, and nothing changes.
+1. **Given** any state, **When** the owner sends "pause trading" or "sell AAPL", **Then** nothing changes, and the reply starts with the fixed line saying nothing was done, then explains why, lists the action words, shows how to ask instead (e.g. "why did the PM sell AAPL?") and names where the control lives.
+1. **Given** any state, **When** the owner asks "why did the PM sell MU?", **Then** it is answered as a question, not refused.
 2. **Given** the system started on a known date, **When** the owner asks about a day before it, **Then** the reply says there is no data for that day, without guessing.
 3. **Given** two held symbols whose names both match the owner's words, **When** the owner asks "how is the chip stock doing?", **Then** the Assistant asks which one is meant, and answers the follow-up "the second one" using the conversation so far.
 4. **Given** a message from any chat other than the authorised one, **When** it arrives, **Then** no reply is sent and only a count is logged.
@@ -108,10 +119,15 @@ Before releasing the service, the owner runs a check that confirms the database 
 - **The question with its query results would exceed the input cap**: the fixed "too much data; narrow the question" reply, sent without the second model call.
 - **A message arrives while another is being answered**: it waits and is answered in order.
 - **A non-text message** (photo, voice, sticker, file) **or an edited message**: a fixed reply saying only new text messages are answered.
-- **A bot command** (`/start`, `/help`): a fixed reply describing what the Assistant can answer.
+- **A bot command** (`/start`, `/help`): a fixed reply describing what the Assistant can answer, including the list of action words it refuses.
+- **An action word in the middle of a question** ("is trading paused?", "why did we buy NVDA?"): not refused; answered normally.
+- **The refusal's explanation call fails**: the fixed first line is sent alone, followed by the list of action words and where the control lives, written in code.
 - **The answer is longer than one chat message allows**: it is sent as several messages, in order.
 - **A question touches a price**: only stored prices are used, each with its time. If none is stored, the reply says so; the Assistant never estimates a price.
+- **Messages sent while the service was down**: none is answered. On start, the Assistant skips them all and sends one note saying how many were skipped and asking for them again. With none skipped, no note is sent.
 - **The owner's questions or the conversation are lost on a restart**: expected. The next message starts a new conversation.
+- **"Today" before New York's session**: asked at 07:00 local (+08:00), "today" is the local day, which in ET is still the previous evening; the reply says what that span holds, with its ET times, and does not silently switch to another day.
+- **A reply contains a link not stored as a report source** (for example, one an injected rationale asked for): code removes it before sending.
 - **No journal row yet**: questions about performance say no journal has been written yet.
 
 ## Requirements *(mandatory)*
@@ -123,9 +139,11 @@ Before releasing the service, the owner runs a check that confirms the database 
 - **FR-002**: It MUST answer only messages from a private chat whose ID equals the configured authorised chat ID. Every other message, including any from a group, MUST get no reply, and MUST be logged only as a count, without the chat's or sender's ID.
 - **FR-003**: It MUST answer one question at a time, in the order received.
 - **FR-004**: It MUST answer only new text messages. Non-text and edited messages, and bot commands, MUST get fixed replies (Edge Cases).
+- **FR-004a**: On start, the Assistant MUST skip every waiting message sent before it started, answer none of them, and, if any came from the authorised chat, send one note there giving how many were skipped and asking for them again.
 
 **Reading**
 - **FR-005**: It MUST read the database only through a fixed menu of named read-only queries, covering at least: current positions; the latest account snapshot; the pause and breaker state; decisions with their verdicts and cited reports, by day or symbol; reports by agent, symbol and period; orders, fills and execution refusals; stop-loss triggers; journal rows with their summary and attribution; and the orchestrator's run history. The menu is code, changed through review.
+- **FR-005a**: The menu MUST also include one settings entry, read from the configuration files deployed with the service and exposing only a fixed list of non-secret settings, kept in code: the risk limits; each scheduled agent's schedule and whether it is enabled; and each LLM agent's model provider and model name. It MUST NOT expose any other setting, any environment variable's value or any credential. The answer MUST say the values are those deployed with the Assistant.
 - **FR-006**: Each question MUST take at most two model calls. The first MUST choose queries from the menu, with their parameters, or none. The second MUST answer from the question, the recent exchanges and the chosen queries' results.
 - **FR-007**: Code MUST validate every chosen query before it runs: a name on the menu; any symbol already present in the database; any date range within a configured maximum span; at most a configured number of queries per question. Every query MUST return at most a configured number of rows. Dropped choices MUST be reported to the second call.
 - **FR-008**: The model MUST NOT write or choose SQL text. No query's text may depend on model output except through validated parameters.
@@ -134,8 +152,11 @@ Before releasing the service, the owner runs a check that confirms the database 
 **Answering**
 - **FR-010**: Every figure in an answer MUST come from a query result. A price MUST be a stored one, stated with when it was recorded. With no data for what was asked, the answer MUST say so plainly.
 - **FR-011**: When a symbol, agent or timeframe in the question is ambiguous, the Assistant MUST ask a clarifying question rather than choose.
-- **FR-012**: A request to pause, resume, buy, sell or otherwise act MUST get a fixed reply, written in code, saying the Assistant cannot take actions and naming where the control lives: the dashboard's pause control, and until the dashboard exists, the deployment runbook's sections on switching trading on and off. No code path in the Assistant can change state, so this reply is the whole response.
+- **FR-011a**: Times in replies MUST be shown in the owner's configured time zone with New York time (ET) alongside. Relative days ("today", "yesterday", "this week") MUST be read as the owner's local calendar days, and the reply MUST state the ET span the period covers.
+- **FR-012**: A message whose first word, ignoring case and punctuation, is on the configured list of action words (default: pause, resume, unpause, stop, halt, buy, sell, close, cancel, trade, liquidate) MUST be refused by code before any query or model call, and nothing may change. The reply MUST start with a fixed line, written in code, saying nothing was done because the Assistant cannot take actions. The rest MUST be written by one model call given only the owner's message, the refusal's outcome (the word matched, the full list of action words) and where the control lives (the dashboard's pause control and, until the dashboard exists, the deployment runbook's sections on switching trading on and off). It explains the refusal and suggests next steps, such as asking the same thing as a question. That call MUST NOT be given any credential, configuration value, query result or stored model text. No code path in the Assistant can change state.
+- **FR-012a**: A message that only contains an action word elsewhere MUST be handled as an ordinary question. `/help` MUST list the action words.
 - **FR-013**: Replies MUST be sent as plain text, with no formatting parsed and link previews off. A reply longer than one message MUST be split into several, in order.
+- **FR-013a**: A reply MUST contain no URL other than one stored in the source list of a report returned by that question's queries. Code MUST remove every other URL, including any that appears in stored model text, before the reply is sent.
 - **FR-014**: When a model call fails, the Assistant MUST send a fixed reply naming the failure's category, and MUST NOT send a partial answer. It MUST NOT retry on another provider.
 
 **Prompts and untrusted text**
@@ -161,8 +182,10 @@ Before releasing the service, the owner runs a check that confirms the database 
 
 - **Question**: one text message from the authorised chat, answered in at most two model calls.
 - **Query menu entry**: a named, fixed read-only query with typed parameters (symbol, agent, date range) and a row cap, chosen by the first model call and validated by code.
+- **Exposed setting**: one named, non-secret configuration value on the fixed list (FR-005a), read from the deployed configuration files.
 - **Exchange**: a question and its reply, kept in memory for follow-ups and never stored.
-- **Fixed reply**: a reply written in code, not by the model: action requests, non-text messages, commands, the input cap, and failures.
+- **Fixed reply**: a reply written in code, not by the model: non-text messages, commands, the input cap, failures, and the first line of an action refusal.
+- **Action refusal**: code's refusal of a message starting with an action word; the model sees its outcome and writes the explanation after the fixed first line.
 
 ## Success Criteria *(mandatory)*
 
@@ -172,18 +195,20 @@ Before releasing the service, the owner runs a check that confirms the database 
 - **SC-002**: Zero database writes, and zero state changes of any kind, across every fixture, including fixtures whose messages and stored model text ask the Assistant to act.
 - **SC-003**: Zero replies to messages from any chat other than the authorised one.
 - **SC-004**: Zero logs contain a message's text, an answer, a prompt, a query result, a credential value or a chat ID, across fixtures that put recognisable markers in each.
-- **SC-005**: 100% of action requests in the fixtures get the fixed reply.
+- **SC-004a**: Zero replies contain a URL that is not a stored report source returned for that question, across fixtures whose stored text and model answers carry other links.
+- **SC-005**: 100% of fixture messages starting with an action word are refused before any query, and their replies start with the fixed line; 0% of fixture questions that only contain an action word are refused.
 - **SC-006**: A typical question is answered within 60 seconds of being sent, when the model and database are available.
 - **SC-007**: Zero queries run that fail validation, across fixtures where the model chooses unknown names, unknown symbols, oversized ranges and too many queries.
 
 ## Assumptions
 
-- **The role and grants already exist** (`specs/001-data-model`). No migration and no grant change are expected. Only a login, a bot, a service and its variables are new.
+- **The role and grants already exist** (`specs/001-data-model`). No migration and no grant change are expected. Only a login, a bot, a service and its variables are new. Settings come from files in the deployed service, not the database.
+- **Deployed settings can differ from `main`** until a release reaches `release/prod`; the Assistant reports what it was deployed with.
 - **The owner creates the bot** with the chat service's bot-creation flow and finds the private chat's ID. Both are owner steps in the runbook.
 - **"The last few exchanges" is 5** by default, configurable.
-- **Times in answers are New York time**, the exchange's time zone used everywhere else in the system, labelled as such.
-- **Messages sent while the service was down** are answered when it returns, if they are recent; older ones get a fixed reply saying they arrived while the Assistant was offline. The cut-off is configuration, 10 minutes by default.
-- **Quoting stored model text is allowed** in an answer (for example, a report's rationale), as quoted content attributed to its agent. Plain text and no link previews keep it inert.
-- **The dashboard does not exist yet.** The fixed action reply names it and the runbook, and changes when the dashboard ships.
+- **The owner's time zone is configuration** (an IANA zone name), changed through review.
+- **Messages from before a start are never answered** (Clarifications). The note gives only a count, never their text.
+- **Quoting stored model text is allowed** in an answer (for example, a report's rationale), as quoted content attributed to its agent. Plain text, no link previews and FR-013a keep it inert.
+- **The dashboard does not exist yet.** The action refusal names it and the runbook, and changes when the dashboard ships.
 - **The journal's attribution shape** is the one `specs/012-journal-writer` fixed. The Assistant reads it as is.
 - **Cost** is bounded per question by the caps; with no daily cap, total cost depends on how many questions the owner asks. Only the authorised chat can cause a model call.
