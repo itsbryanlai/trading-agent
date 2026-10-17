@@ -16,7 +16,8 @@ output.
   - the PM's morning session at 10:00 ET;
   - event-driven PM runs at least 30 minutes apart, 5 minutes after the newest report, and
     none from 15:30 ET, or 30 minutes before an early close
-    ([ADR 0011](../adr/0011-event-driven-portfolio-manager-runs.md)).
+    ([ADR 0011](../adr/0011-event-driven-portfolio-manager-runs.md)). A `no_action` report
+    doesn't count as new (`specs/011-opportunistic-identifier` FR-023).
 
   The config can't loosen those rules. Research runs daily only, with no news-triggered
   runs ([`specs/007-research-agent`](../../specs/007-research-agent/spec.md)); it is the
@@ -78,8 +79,8 @@ is claimed only once a day. These are the orchestrator's only database writes.
 ## Interfaces
 
 - Reads only the `trading_paused` column of `system_state`, the exchange
-  calendar, and the latest report's creation time, through the one-value view
-  `latest_report_time`, never `reports` itself.
+  calendar, and the latest report's creation time (excluding `no_action` reports, feature
+  011), through the one-value view `latest_report_time`, never `reports` itself.
 - Writes only `orchestrator_runs`. The Assistant and the dashboard read it.
 - Details: [`specs/005-orchestrator`](../../specs/005-orchestrator/spec.md),
   including its Clarifications.

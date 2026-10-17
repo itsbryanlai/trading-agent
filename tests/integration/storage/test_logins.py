@@ -21,12 +21,14 @@ NAMES = [login.name for login in LOGINS]
 GROUP_OF = {
     "ta_orchestrator_login": "ta_orchestrator",
     "ta_research_login": "ta_research",
+    "ta_opportunistic_identifier_login": "ta_opportunistic_identifier",
     "ta_portfolio_manager_login": "ta_portfolio_manager",
     "ta_risk_gate_login": "ta_risk_gate",
     "ta_reference_data_login": "ta_reference_data",
     "ta_execution_login": "ta_execution",
     "ta_owner_read_login": "ta_dashboard",
     "ta_owner_control_login": "ta_dashboard_control",
+    "ta_journal_login": "ta_journal",
 }
 
 

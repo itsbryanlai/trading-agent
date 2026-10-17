@@ -57,7 +57,7 @@ def test_failure_skip_and_timeout_lines(logs):
     launcher.finish(Handle(5000), 3)
     store.paused = True
     orch.tick(et("10:00"))
-    orch.tick(et("10:15"))  # the 10:00 Identifier has hung past its 10 minutes
+    orch.tick(et("10:16"))  # the 10:00 Identifier has hung past its 15 minutes
     warnings = messages(logs, logging.WARNING)
     assert "orchestrator: research finished: failed (exit 3)" in warnings
     assert "orchestrator: portfolio_manager morning_session skipped: trading paused" in warnings

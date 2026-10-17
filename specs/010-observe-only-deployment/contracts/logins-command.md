@@ -10,12 +10,14 @@ Run by the owner on their own machine, with `ADMIN_DATABASE_URL` exported in the
 |---|---|---|
 | `ta_orchestrator_login` | `ta_orchestrator` | orchestrator service |
 | `ta_research_login` | `ta_research` | orchestrator service (passed to Research) |
+| `ta_opportunistic_identifier_login` | `ta_opportunistic_identifier` | orchestrator service (passed to the Opportunistic Identifier) |
 | `ta_portfolio_manager_login` | `ta_portfolio_manager` | orchestrator service (passed to the PM) |
 | `ta_risk_gate_login` | `ta_risk_gate` | risk-gate service |
 | `ta_reference_data_login` | `ta_reference_data` | reference-data service |
 | `ta_execution_login` | `ta_execution` | execution service |
 | `ta_owner_read_login` | `ta_dashboard` (read-only) | the owner, for observation queries |
 | `ta_owner_control_login` | `ta_dashboard_control` (`trading_paused` only) | the owner: sets the pause during setup, clears it at switch-on |
+| `ta_journal_login` | `ta_journal` | journal service |
 
 Each login is `LOGIN`, `INHERIT` and `NOSUPERUSER NOCREATEDB NOCREATEROLE`, and a member of exactly one group role.
 
@@ -41,3 +43,9 @@ Each login is `LOGIN`, `INHERIT` and `NOSUPERUSER NOCREATEDB NOCREATEROLE`, and 
   - the stored password is a SCRAM verifier, and an existing login with an extra privilege or a second group is refused with nothing changed;
   - `--reset` changes only the named login;
   - a missing group role creates nothing.
+
+## Amendment notes
+
+**Amended 2026-10-07 by feature 011** ([`specs/011-opportunistic-identifier`](../../011-opportunistic-identifier/spec.md), FR-022). The table has nine rows, not eight: `ta_opportunistic_identifier_login` is a member of `ta_opportunistic_identifier`, whose role and grants already exist (migrations 0001 and 0002), and is passed to the Opportunistic Identifier by the orchestrator. Everything else in this contract is unchanged.
+
+**Amended 2026-10-09 by feature 012** ([`specs/012-journal-writer`](../../012-journal-writer/spec.md), [ADR 0022](../../../docs/adr/0022-journal-writer-runs-after-the-close-with-its-own-finnhub-key.md)). The table has ten rows: `ta_journal_login` is a member of `ta_journal`, whose role and grants already exist (migrations 0001 and 0004), and is given to the `journal` service as `JOURNAL_DATABASE_URL`. Everything else in this contract is unchanged.

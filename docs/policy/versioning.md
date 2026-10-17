@@ -27,6 +27,8 @@ Rules:
 | Git tags for releases, when there are any | `vX`, `vX.Y`, `vX.Y.Z` | none yet |
 | Research's prompt | `PROMPT_VERSION` in `src/trading_agent/research/prompt.py`, logged with every run | `0.2` |
 | The Portfolio Manager's prompt | `PROMPT_VERSION` in `src/trading_agent/portfolio_manager/prompt.py`, logged with every run | `0.1` |
+| The journal summary's template | `SUMMARY_VERSION` in `src/trading_agent/journal/summary.py`, logged with every run and stored in each row's attribution | `0.1` |
+| The journal attribution's format | `schema_version` in `per_agent_attribution` (a bare integer; a run refuses a version it doesn't know) | `1` |
 | Any future versioned prompt or interface of an agent | its own constant, logged the same way | — |
 
 ## What it doesn't apply to

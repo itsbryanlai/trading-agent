@@ -15,7 +15,7 @@ Design is settled — see [`docs/adr/0009-implementation-phase-started.md`](docs
 - Never commit secrets, API keys, or exchange/broker credentials. Use environment variables and keep an up-to-date `.env.example`.
 - Never place an order, execute a trade, or move funds — including against a paper/sandbox account — without the user explicitly asking for that specific action in the current conversation.
 - Flag any change to risk limits, position sizing, or order logic explicitly before applying it.
-- Run relevant tests after modifying any logic file.
+- **Test in two tiers.** After modifying any logic file, run the tests covering the touched modules, plus `scripts/lint.sh`. Run the full unit suite and the integration suite once, when a feature or fix is finished, before pushing; CI runs both again on the PR. The full suites take minutes, so running them after every task or phase is what makes a build slow.
 - Prefer small, focused changes over large rewrites.
 - **Atomic commits, always.** One logical change per commit, committed as you finish it — never batched at the end of a feature. Don't mix refactors with behavior changes, or code with unrelated docs. Use the message style already in `git log` (`Area (feature NNN): what changed (task/review ID)`).
 - **Modular code, always.** Keep each module to a single responsibility. Components follow the layering `execution | orchestrator | research | portfolio_manager` → `reference` → `risk` → `llm | storage`: depend only on layers below, and never import a sibling. Split a module before it grows past the size limit; don't extend one that is already over it.
