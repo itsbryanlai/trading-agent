@@ -17,8 +17,85 @@
 # To run on Claude instead of Qwen: set model.provider: anthropic and
 # model.name: claude-sonnet-5-5, and set OPPORTUNISTIC_IDENTIFIER_ANTHROPIC_API_KEY.
 
-# Tickers to scan. The owner fills this in. Sorted and de-duplicated at load.
-scan_universe: []
+# Tickers to scan, chosen by the owner (focus: tech, AI, semiconductors, energy). US common
+# stock only: foreign ADRs fail the universe rule in config/risk.yaml. Names below the floors
+# are skipped at screening. Sorted and de-duplicated at load.
+scan_universe:
+  # Semiconductors
+  - NVDA
+  - AVGO
+  - AMD
+  - MU
+  - INTC
+  - QCOM
+  - TXN
+  - ADI
+  - AMAT
+  - LRCX
+  - KLAC
+  - MRVL
+  - MCHP
+  - NXPI
+  - "ON"            # quoted: bare ON is a YAML boolean
+  - MPWR
+  - TER
+  - ENTG
+  - SWKS
+  - COHR
+  # Tech, software, AI
+  - AAPL
+  - MSFT
+  - GOOGL
+  - AMZN
+  - META
+  - ORCL
+  - CRM
+  - NOW
+  - ADBE
+  - INTU
+  - PLTR
+  - SNOW
+  - CRWD
+  - PANW
+  - DDOG
+  - NET
+  - MDB
+  - IBM
+  - CSCO
+  - ANET
+  # AI hardware and data centers
+  - DELL
+  - SMCI
+  - HPE
+  - VRT
+  - ETN
+  # Power for AI
+  - CEG
+  - VST
+  - GEV
+  - NRG
+  - TLN
+  # Energy
+  - XOM
+  - CVX
+  - COP
+  - EOG
+  - OXY
+  - DVN
+  - FANG
+  - EQT
+  - CTRA
+  - SLB
+  - HAL
+  - BKR
+  - MPC
+  - VLO
+  - PSX
+  - WMB
+  - KMI
+  - OKE
+  - TRGP
+  - LNG
 
 slice_size: 40                 # names fetched per run, 1-200
 shortlist_size: 20             # names sent to the model, 1-40
