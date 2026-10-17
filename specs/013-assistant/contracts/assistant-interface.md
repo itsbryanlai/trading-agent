@@ -32,7 +32,7 @@ Every key is required, and unknown keys are refused (exit 2). It's changed only 
 
 | Key | Default | Bounds |
 |---|---|---|
-| `owner_time_zone` | **none: the owner names it** | a zone `zoneinfo` can load |
+| `owner_time_zone` | `Asia/Singapore` (owner, 2026-10-17) | a zone `zoneinfo` can load; required, no code default |
 | `model.provider` | `qwen` | `qwen` or `anthropic` |
 | `model.name` | `qwen3.7-plus` | for `anthropic`, starts with `claude-` (e.g. `claude-sonnet-5-5`) |
 | `model.max_output_tokens` | 2000 | 1000–64000 (`llm.settings`) |

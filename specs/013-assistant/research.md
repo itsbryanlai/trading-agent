@@ -220,7 +220,7 @@ A long-lived connection would add reconnect logic for a few questions a day.
 
 Strict, like every other config: every key required, unknown keys refused (exit 2), changed only through code review. Defaults and bounds are in contracts/assistant-interface.md. The `model:` section is validated by `llm.settings.parse_model_settings`, with timeout bounds 10–120 s.
 
-**Open item: `owner_time_zone` has no default.** The plan does not choose it: the owner names their IANA zone at plan review. It is validated with `zoneinfo` at start; an unknown zone exits 2. The journal already uses `zoneinfo` in production.
+**`owner_time_zone: Asia/Singapore`** (owner, 2026-10-17, at plan review). It is required with no code default, and validated with `zoneinfo` at start; an unknown zone exits 2. The journal already uses `zoneinfo` in production.
 
 ## A18. Modes and exit codes
 

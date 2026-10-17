@@ -126,7 +126,7 @@ src/trading_agent/
 │   └── check.py          # --check and --find-chat-id
 ├── storage/logins.py     # + ta_assistant_login
 
-config/assistant.yaml                  # new; owner_time_zone named by the owner
+config/assistant.yaml                  # new; owner_time_zone: Asia/Singapore
 pyproject.toml                         # assistant in the top layer
 .env.example, .railway/railway.ts      # the variables; the assistant service
 
@@ -147,7 +147,7 @@ the assistant), .railway/README.md, specs/010-observe-only-deployment/contracts/
 
 ## Things flagged for the owner
 
-1. **Your IANA time zone is needed** for `owner_time_zone`. Examples are `Asia/Singapore` and `Asia/Shanghai`; I won't guess which. The config has no default, and the service refuses to start without it.
+1. **`owner_time_zone: Asia/Singapore`** (owner, 2026-10-17). It is required in the config, with no code default.
 2. **Polite action requests aren't caught by code** (A7). "Please pause trading" or "can you sell AAPL?" don't start with an action word, so they reach the model as questions. Its instructions say it can't act and must say so, and no code path can write either way. Adding "please" or "can" to the list would refuse every message starting with them.
 3. **Default limits for you to adjust** (contracts/assistant-interface.md):
    - 4 queries a question, 50 rows a query;
