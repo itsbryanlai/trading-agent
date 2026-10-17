@@ -18,7 +18,7 @@ Decisions for `specs/012-journal-writer`. Each has the decision, why, and what w
 
 **Why**: Finnhub doesn't document whether `/quote` reflects after-hours trading. If it does, `t` lands after the close and the price is refused rather than silently used. If nothing is priced and any symbol is `after_close`, the run fails (FR-019), which the owner sees the first evening. An illiquid symbol whose last trade was mid-afternoon still prices: its last regular-session trade is its close.
 
-**Not yet verified**: what `t` reads after the close. The owner's `--check` after a close prints `t` against the close for each symbol (quickstart step 3) before the service is released, as ADR 0016's status records for the PM's quote.
+**Verified 2026-10-17** (the release gate, quickstart step 3): the owner ran `--check AAPL MSFT SPY` on Saturday, the day after a session. Every quote's `t` was `2026-10-16T20:00:00+00:00`, exactly Friday's 16:00 ET close, and all three were accepted. So after the close `/quote` reports the regular session's close, not after-hours prices.
 
 **Reuse**: `reference.finnhub.FinnhubProvider.get_quote`, as the PM does. `reference` is a layer below, so no copy is needed. The key travels in a header, redirects are refused, and errors map to `KeyRejected`, `NotPermitted`, `RateLimited` and `ProviderUnavailable`.
 
