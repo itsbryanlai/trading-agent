@@ -77,7 +77,7 @@ No new dependency.
 
 **Re-check after design**: all pass. The design adds:
 - one package and one config file;
-- one login, one Railway service and its five possible variables;
+- one login, one Railway service and its six possible variables;
 - one menu entry reading config files (ADR 0024).
 
 It adds no table, grant or migration.
