@@ -23,8 +23,9 @@ _DOT = "[.\u3002\uff0e\uff61]"
 _HOST = r"(?<![\w\-])(?:[\w\-]+" + _DOT + r")+[^\W\d_]{2,}[\w\-]*(?:[/?#]\S*)?"
 # Telegram links 4-character usernames and some 3-character inline bots such as @gif.
 _USERNAME = r"(?<![\w@])@\w{3,32}(?!\w)"
+_IPV4 = r"(?<![\w.])\d{1,3}(?:\.\d{1,3}){3}(?!\d)(?::\d+)?(?:/\S*)?"
 # A host is tried before a username so "@name.com" leaves no host-like tail behind.
-_OTHER = re.compile(f"{_SCHEME_OR_WWW}|(?:@?{_HOST})|{_USERNAME}")
+_OTHER = re.compile(f"{_SCHEME_OR_WWW}|{_IPV4}|(?:@?{_HOST})|{_USERNAME}")
 
 
 def _protect(text: str, allowed: list[str]) -> tuple[str, list[str]]:
