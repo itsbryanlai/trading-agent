@@ -97,7 +97,7 @@ def test_every_route_is_in_the_access_table(built):
     for route in all_routes(built.app):
         for method in route.methods - {"HEAD"}:
             seen.add((method, route.path))
-    assert seen, "the app has no routes"
+    assert {("GET", "/"), ("GET", "/healthz"), ("GET", "/sign-in"), ("POST", "/sign-out")} <= seen
     assert seen <= set(ACCESS), (
         f"routes missing from contracts/routes.md: {sorted(seen - set(ACCESS))}"
     )
@@ -107,13 +107,16 @@ def test_no_data_without_a_session_on_any_session_route(built):
     built.store.positions_rows = [{"symbol": MARKER}]
     client = built.client(follow_redirects=False)
     registered = {(m, r.path) for r in all_routes(built.app) for m in r.methods}
+    checked = []
     for (method, path), rule in ACCESS.items():
         if rule == "open" or (method, path) not in registered:
             continue
+        checked.append((method, path))
         response = client.request(method, path)
         assert response.status_code == 303, (method, path)
         assert response.headers["location"] == "/sign-in"
         assert MARKER not in response.text, (method, path)
+    assert ("GET", "/") in checked and ("POST", "/sign-out") in checked
     assert built.store.read_calls == 0
 
 

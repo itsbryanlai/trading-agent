@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+{% block title %}Overview{% endblock %}
+{% block content %}
+<h1>Overview</h1>
+<p>{{ view.state_text }}</p>
+{% if view.halt_text %}<p>{{ view.halt_text }}</p>{% endif %}
+
+<h2>Account</h2>
+{% if view.snapshot %}
+<table>
+  <tr><th>Equity</th><td class="num">{{ view.snapshot.equity }}</td></tr>
+  <tr><th>Cash</th><td class="num">{{ view.snapshot.cash }}</td></tr>
+  <tr><th>Buying power</th><td class="num">{{ view.snapshot.buying_power }}</td></tr>
+</table>
+<p class="muted">As of {{ view.snapshot.taken_at }} ({{ view.snapshot.age }}).</p>
+{% else %}
+<p>{{ view.no_snapshot_text }}</p>
+{% endif %}
+
+<h2>Positions</h2>
+{% if view.positions %}
+<table>
+  <thead><tr><th>Symbol</th><th class="num">Quantity</th><th class="num">Avg entry price</th><th class="num">Cost</th></tr></thead>
+  <tbody>
+  {% for p in view.positions %}
+  <tr><td>{{ p.symbol }}</td><td class="num">{{ p.qty }}</td><td class="num">{{ p.avg_entry_price }}</td><td class="num">{{ p.cost }}</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% else %}
+<p>No open positions.</p>
+{% endif %}
+
+<h2>Equity curve</h2>
+<nav aria-label="Range">
+  {% for r in ranges %}<a href="/?range={{ r }}"{% if r == range_name %} aria-current="page"{% endif %}>{{ r }}</a>{% endfor %}
+</nav>
+{% if view.chart_empty_text %}
+<p>{{ view.chart_empty_text }}</p>
+{% else %}
+<svg class="chart" viewBox="0 0 600 200" role="img" aria-label="Equity curve for range {{ range_name }}">
+  {% for path in view.chart.paths %}<polyline points="{{ path }}"/>{% endfor %}
+  {% for x, y in view.chart.dots %}<circle cx="{{ x }}" cy="{{ y }}" r="3"/>{% endfor %}
+</svg>
+<p class="muted">Low {{ view.chart.min_label }}, high {{ view.chart.max_label }}. From {{ view.chart_first }} to {{ view.chart_last }}.</p>
+{% endif %}
+{% endblock %}
