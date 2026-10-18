@@ -75,6 +75,20 @@ class Dropped:
     reason: str
 
 
+@dataclass(frozen=True)
+class QueryResult:
+    """One entry's rows for the answer call. Timestamps inside are already in both zones.
+
+    `parameters` are the given parameters with the resolved dates; `cut` is true when any
+    part of the entry had more rows than the cap. A multi-part entry tags each row's `part`.
+    """
+
+    name: str
+    parameters: dict
+    rows: list
+    cut: bool
+
+
 ENTRIES: dict[str, Entry] = {
     entry.name: entry
     for entry in (
