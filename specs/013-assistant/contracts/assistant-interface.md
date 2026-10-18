@@ -63,7 +63,7 @@ Research A18:
 ## Logs
 
 One line per event, at INFO unless noted. The prefix is `assistant:`.
-- **Start**: `assistant: start prompt_version=<v> provider=<p> model=<m>` (currently `0.2`, T030)
+- **Start**: `assistant: start prompt_version=<v> provider=<p> model=<m>` (currently `0.3`, T035)
 - **Skipped at start**: `assistant: skipped N waiting message(s)`. Only if N > 0.
 - **Ignored**: `assistant: ignored N update(s) from other chats`. One line per poll batch.
 - **Fixed reply**: `assistant: replied fixed=<R-id>`

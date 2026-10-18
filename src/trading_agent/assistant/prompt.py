@@ -14,8 +14,9 @@ from datetime import datetime
 from zoneinfo import ZoneInfo
 
 from trading_agent.assistant.answer import ANSWER_SCHEMA, PLAN_SCHEMA
+from trading_agent.assistant.replies import CONTROLS
 
-PROMPT_VERSION = "0.2"
+PROMPT_VERSION = "0.3"
 ET = ZoneInfo("America/New_York")
 
 _COMMON = """\
@@ -72,6 +73,9 @@ Rules:
 - A `settings` result holds the values as deployed with the Assistant, with a `note`. Say they
   are as deployed. `schedule` times are ET wall-clock: give them in the owner's time zone with
   ET alongside.
+- If the question asks the Assistant to do something (pause, resume, buy, sell, cancel, close a
+  position, change a setting), say that it can't. Name where the controls are: {controls_0}, and
+  {controls_1}. Never say or imply that anything was done.
 - Keep the reply short and direct.
 """
 
@@ -91,6 +95,7 @@ Rules:
 
 _SCHEMA_NOTE = "\nJSON Schema of the answer:\n"
 PLAN_SYSTEM = _COMMON + _PLAN + _SCHEMA_NOTE + json.dumps(PLAN_SCHEMA)
+_ANSWER = _ANSWER.format(controls_0=CONTROLS[0], controls_1=CONTROLS[1])
 ANSWER_SYSTEM = _COMMON + _ANSWER + _UNTRUSTED + _SCHEMA_NOTE + json.dumps(ANSWER_SCHEMA)
 REFUSAL_SYSTEM = _COMMON + _REFUSAL + _SCHEMA_NOTE + json.dumps(ANSWER_SCHEMA)
 

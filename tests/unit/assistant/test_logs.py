@@ -132,15 +132,15 @@ def test_no_model_call_sees_a_secret_or_the_chat_id(scenario, marker):
 @pytest.mark.parametrize(
     "shape",
     [
-        "assistant: start prompt_version=0.2 provider=qwen model=qwen3.7-plus",
+        "assistant: start prompt_version=0.3 provider=qwen model=qwen3.7-plus",
         "assistant: skipped 1 waiting message(s)",
         "assistant: telegram getUpdates failed: TelegramUnavailable, retry in 1s",
         "assistant: telegram sendMessage failed: TelegramUnavailable, retry in 2s",
-        "assistant: answered prompt_version=0.2 queries=portfolio_now dropped=none cut=none "
+        "assistant: answered prompt_version=0.3 queries=portfolio_now dropped=none cut=none "
         "tokens=1200/300,1200/300 links_removed=0 messages=1 outcome=answered",
-        "assistant: refused prompt_version=0.2 trigger=keyword word=pause tokens=1200/300 "
+        "assistant: refused prompt_version=0.3 trigger=keyword word=pause tokens=1200/300 "
         "outcome=explained",
-        "assistant: refused prompt_version=0.2 trigger=model_flag tokens=1200/300,1200/300 "
+        "assistant: refused prompt_version=0.3 trigger=model_flag tokens=1200/300,1200/300 "
         "outcome=explained",
         "assistant: replied fixed=R-HELP",
         "outcome=model_failed:unavailable",

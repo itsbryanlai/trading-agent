@@ -29,7 +29,7 @@ Rules:
 | The Portfolio Manager's prompt | `PROMPT_VERSION` in `src/trading_agent/portfolio_manager/prompt.py`, logged with every run | `0.1` |
 | The journal summary's template | `SUMMARY_VERSION` in `src/trading_agent/journal/summary.py`, logged with every run and stored in each row's attribution | `0.1` |
 | The journal attribution's format | `schema_version` in `per_agent_attribution` (a bare integer; a run refuses a version it doesn't know) | `1` |
-| The Assistant's prompts | `PROMPT_VERSION` in `src/trading_agent/assistant/prompt.py`, logged with every answered or refused question ([ADR 0023](../adr/0023-assistant-runs-its-own-service-and-reads-through-a-query-menu.md), [ADR 0024](../adr/0024-assistant-explains-refusals-and-reads-deployed-settings.md), [ADR 0025](../adr/0025-assistant-model-flag-adds-refusals.md)) | `0.2` |
+| The Assistant's prompts | `PROMPT_VERSION` in `src/trading_agent/assistant/prompt.py`, logged with every answered or refused question ([ADR 0023](../adr/0023-assistant-runs-its-own-service-and-reads-through-a-query-menu.md), [ADR 0024](../adr/0024-assistant-explains-refusals-and-reads-deployed-settings.md), [ADR 0025](../adr/0025-assistant-model-flag-adds-refusals.md)) | `0.3` |
 | Any future versioned prompt or interface of an agent | its own constant, logged the same way | — |
 
 ## What it doesn't apply to

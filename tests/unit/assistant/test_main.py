@@ -82,7 +82,7 @@ def test_a_run_answers_a_question_and_stops_on_sigterm_with_exit_zero(env, caplo
         code, telegram, store, seen, *_ = run(updates=[question()])
     # the waiting message was skipped by the drain, not answered
     assert code == 0 and telegram.sent[0][1].startswith("I was offline and skipped 1")
-    assert "assistant: start prompt_version=0.2 provider=qwen model=qwen3.7-plus" in caplog.text
+    assert "assistant: start prompt_version=0.3 provider=qwen model=qwen3.7-plus" in caplog.text
     assert "assistant: stopping (SIGTERM)" in caplog.text
     assert seen["telegram"][0] == FAKE_TOKEN and seen["store"] == FAKE_DB
 

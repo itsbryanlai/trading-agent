@@ -299,7 +299,7 @@ def test_the_question_line_is_logged_without_text(caplog):
     with caplog.at_level(logging.INFO, logger="trading_agent.assistant"):
         run(marker, reply="MARKER-REPLY-4d2")
     text = "\n".join(r.getMessage() for r in caplog.records)
-    assert "assistant: answered prompt_version=0.2 queries=portfolio_now dropped=none" in text
+    assert "assistant: answered prompt_version=0.3 queries=portfolio_now dropped=none" in text
     assert "tokens=1200/300,1200/300" in text and "outcome=answered" in text
     assert "MARKER" not in text
 

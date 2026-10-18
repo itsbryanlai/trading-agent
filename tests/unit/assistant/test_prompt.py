@@ -31,7 +31,18 @@ def exchange(n, reply="a reply"):
 
 
 def test_the_version():
-    assert PROMPT_VERSION == "0.2"
+    assert PROMPT_VERSION == "0.3"
+
+
+def test_the_answer_prompt_has_the_action_rule():
+    from trading_agent.assistant.replies import CONTROLS
+
+    lowered = " ".join(ANSWER_SYSTEM.lower().split())
+    assert "asks the assistant to do something" in lowered
+    assert "pause, resume, buy, sell, cancel, close a position, change a setting" in lowered
+    assert "never say or imply that anything was done" in lowered
+    for controls in CONTROLS:
+        assert controls in " ".join(ANSWER_SYSTEM.split())
 
 
 @pytest.mark.parametrize("system", [PLAN_SYSTEM, ANSWER_SYSTEM, REFUSAL_SYSTEM])
