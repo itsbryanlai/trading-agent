@@ -75,6 +75,6 @@ A confirmation whose `expected` no longer matches the stored value writes nothin
 | Position cost | `qty × avg_entry_price` |
 | Snapshot age | read time − `taken_at` |
 | Equity point per day (1m, all) | last `account_snapshots` row per NYSE trading day |
-| Account index (journal chart) | product of `(1 + account.return)` over the range's rows, × 100 at the first |
+| Account index (journal chart) | `equity_close` ÷ the range's first non-null `equity_close` × 100 (owner, review of T024) |
 | Analyst index (journal chart) | `agents.<name>.index`, rebased so its first in-range point is 100 |
 | Usage totals | per agent, sum of each in-range row's `usage` fields |

@@ -97,7 +97,7 @@ FROM journal WHERE trading_day >= :since ORDER BY trading_day DESC LIMIT :limit 
 The chart and usage totals read every row in the range (at most about 260 a year), not just the page:
 
 ```sql
-SELECT trading_day, per_agent_attribution FROM journal
+SELECT trading_day, equity_close, per_agent_attribution FROM journal
 WHERE trading_day >= :since ORDER BY trading_day;
 ```
 
