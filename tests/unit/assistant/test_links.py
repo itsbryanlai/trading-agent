@@ -52,6 +52,10 @@ def test_ordinary_text_is_kept(text):
         "x.xn--p1ai",
         "EVIL.COM/path?q=1",
         "ftp://evil.example",
+        "x.evil.com",
+        "evil。com",
+        "evil．com",
+        "evil｡com",
     ],
 )
 def test_other_links_are_removed(bad):
@@ -110,3 +114,7 @@ def test_every_fixed_reply_passes_unchanged():
     ]
     for text in samples:
         assert filter_links(text, []) == (text, 0)
+
+
+def test_host_after_dots_is_removed():
+    assert filter_links("see ...evil.com now", []) == (f"see ...{REMOVED} now", 1)
