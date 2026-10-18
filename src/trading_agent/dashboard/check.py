@@ -23,6 +23,7 @@ from trading_agent.dashboard.store import StoreError
 # and a mistyped hash like that would make each sign-in allocate gigabytes.
 EXPECTED_SCRYPT = (auth.SCRYPT_N, auth.SCRYPT_R, auth.SCRYPT_P)
 MIN_SECRET_BYTES = 32
+MIN_SECRET_DISTINCT_BYTES = 16  # 32 copies of one character is not a random secret
 DIGEST_BYTES = 32
 PRIVILEGE_FLAGS = ("rolsuper", "rolcreaterole", "rolcreatedb", "rolbypassrls")
 READ_LOGIN, READ_ROLE = "ta_dashboard_login", "ta_dashboard"
@@ -54,7 +55,9 @@ def password_hash_code(value: str) -> str | None:
 
 
 def session_secret_code(value: str) -> str | None:
-    return None if len(value.encode("utf-8")) >= MIN_SECRET_BYTES else "too_short"
+    raw = value.encode("utf-8")
+    long_enough = len(raw) >= MIN_SECRET_BYTES
+    return None if long_enough and len(set(raw)) >= MIN_SECRET_DISTINCT_BYTES else "too_short"
 
 
 def role_code(

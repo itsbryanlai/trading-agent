@@ -174,15 +174,18 @@ def test_any_other_cost_or_shape_is_malformed(value):
 # --- the session secret ---------------------------------------------------------------------
 
 
+ENOUGH = "0123456789abcdefghijklmnopqrstuv"  # 32 bytes, 32 distinct values
+
+
 @pytest.mark.parametrize(
-    ("secret", "code"), [("x" * 32, None), ("x" * 31, "too_short"), ("", "too_short")]
+    ("secret", "code"), [(ENOUGH, None), (ENOUGH[:31], "too_short"), ("", "too_short")]
 )
 def test_the_secret_needs_32_bytes(secret, code):
     assert check.session_secret_code(secret) == code
 
 
 def test_bytes_not_characters_are_counted():
-    assert check.session_secret_code("é" * 16) is None  # 32 bytes
+    assert check.session_secret_code("é" * 16 + ENOUGH[:16]) is None  # 48 bytes
     assert check.session_secret_code("é" * 15) == "too_short"
 
 
@@ -287,3 +290,25 @@ def test_the_membership_queries_list_every_role_but_the_login_itself():
         assert "pg_has_role(current_user, oid, 'MEMBER')" in text
         assert "rolname <> current_user" in text
         assert "LIKE" not in text  # not only ta_* roles
+
+
+@pytest.mark.parametrize(
+    "secret",
+    ["a" * 32, "ab" * 32, "abcdefgh" * 8, "0123456789abcde" * 4, "é" * 40],
+)
+def test_a_secret_with_fewer_than_16_distinct_bytes_is_too_short(secret):
+    assert len(secret.encode()) >= 32
+    assert check.session_secret_code(secret) == "too_short"
+    assert run(secret=secret)[3].line() == "session_secret: FAILED too_short"
+
+
+@pytest.mark.parametrize(
+    "secret",
+    [
+        "0123456789abcdef" + "0" * 16,  # exactly 16 distinct values
+        "Zx3k9Qm2Lw8Rt5Yp7Vn1Bc4Hd6Jf0Gs+Aa/KkMmNnOoPpQqRrSsTtUuVvWwXxYy",
+    ],
+)
+def test_a_random_looking_secret_passes(secret):
+    assert check.session_secret_code(secret) is None
+    assert run(secret=secret)[3].ok

@@ -169,6 +169,8 @@ def test_stopped_is_logged_even_if_the_server_raises(monkeypatch, caplog):
     ("name", "value", "code"),
     [
         ("DASHBOARD_SESSION_SECRET", "x" * 31, "too_short"),
+        ("DASHBOARD_SESSION_SECRET", "a" * 32, "too_short"),
+        ("DASHBOARD_SESSION_SECRET", "ab" * 40, "too_short"),
         ("DASHBOARD_PASSWORD_HASH", "scrypt$16$8$1$AAAA$AAAA", "malformed"),
         ("DASHBOARD_PASSWORD_HASH", "not a hash MARKER-HASH", "malformed"),
         (
@@ -190,5 +192,6 @@ def test_serving_refuses_a_weak_secret_or_a_malformed_hash(name, value, code, uv
     assert uvicorn_run == []
 
 
-def test_a_thirty_two_byte_secret_is_accepted(uvicorn_run):
-    assert runner.main([], {**SECRETS, "DASHBOARD_SESSION_SECRET": "x" * 32}) == 0
+def test_a_thirty_two_byte_secret_with_variety_is_accepted(uvicorn_run):
+    value = "0123456789abcdefghijklmnopqrstuv"
+    assert runner.main([], {**SECRETS, "DASHBOARD_SESSION_SECRET": value}) == 0
