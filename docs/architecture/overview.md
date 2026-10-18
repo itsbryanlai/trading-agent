@@ -64,7 +64,7 @@ and the pause flag, and writes only its own run records
 | Research | Finnhub news (general + an owner watchlist), own credential; model per [ADR 0018](../adr/0018-qwen-as-a-model-provider.md) | `reports` (own rows) | daily at 08:30 ET ([`specs/007-research-agent`](../../specs/007-research-agent/spec.md)) |
 | Opportunistic Identifier | an owner scan list; quote, profile and fundamentals per name (own read-only Finnhub key, [ADR 0016](../adr/0016-market-data-for-the-llm-agents.md)); the universe floors in `config/risk.yaml`; model per [ADR 0018](../adr/0018-qwen-as-a-model-provider.md) | `reports` (own rows: buys, or one `no_action`) | hourly, 10:00-15:00 ET, shipped disabled ([`specs/011-opportunistic-identifier`](../../specs/011-opportunistic-identifier/spec.md)) |
 | Portfolio Manager | both agents' unexpired reports, portfolio state, live quote (read-only Finnhub key, [ADR 0016](../adr/0016-market-data-for-the-llm-agents.md)), journal, its own decisions from today; model per [ADR 0018](../adr/0018-qwen-as-a-model-provider.md) (Qwen by default) | `decisions` | morning session + event-driven on new reports, ≥30 min apart, none after 15:30 ET ([ADR 0011](../adr/0011-event-driven-portfolio-manager-runs.md)) |
-| Assistant | everything | nothing | on-demand (Telegram) |
+| Assistant | a fixed menu of read-only queries over the shared database, and a fixed list of deployed settings; model per [ADR 0018](../adr/0018-qwen-as-a-model-provider.md) | nothing | its own always-on service, long-polling Telegram ([ADR 0023](../adr/0023-assistant-runs-its-own-service-and-reads-through-a-query-menu.md), [ADR 0024](../adr/0024-assistant-explains-refusals-and-reads-deployed-settings.md), [ADR 0025](../adr/0025-assistant-model-flag-adds-refusals.md), [`docs/specs/assistant-agent.md`](../specs/assistant-agent.md)) |
 
 Full behavior, inputs/outputs, and edge cases for each are in
 [`docs/specs/`](../specs/README.md).
@@ -110,7 +110,7 @@ default, write access is scoped to the table(s) that component owns
 ## Deployment shape (borrowed pattern, not shared code, from `trading-bot`)
 
 - Described as infrastructure as code in `.railway/railway.ts`, applied by the owner; built with Railpack (Python 3.12); services deploy only from the `release/prod` branch ([ADR 0021](../adr/0021-railway-deployment-as-code-observe-only-first.md))
-- One Railway worker service per process, each holding only its own variables: `orchestrator` (with Research and the Portfolio Manager), `risk-gate`, `reference-data`, `execution` and `journal` (a cron job, not a loop)
+- One Railway worker service per process, each holding only its own variables: `orchestrator` (with Research and the Portfolio Manager), `risk-gate`, `reference-data`, `execution`, `journal` (a cron job, not a loop) and `assistant` (always on, answering Telegram)
 - Railway Postgres service for the shared knowledge base
 - The first deployment is observe-only: Execution is deployed, trading is paused before any service starts, and the paper account is flat before Execution first starts. The Portfolio Manager runs while paused (`portfolio_manager.run_while_paused`), and the gate approves no buy while paused. Trading is switched on only after the close ([ADR 0021](../adr/0021-railway-deployment-as-code-observe-only-first.md))
 - A separate Railway web service for the dashboard UI (FastAPI + Jinja2,
