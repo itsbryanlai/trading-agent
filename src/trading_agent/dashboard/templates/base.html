@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{% block title %}Dashboard{% endblock %} · Trading agent</title>
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<header class="top">
+  <span class="brand">Trading agent</span>
+  {% if signed_in %}
+  <nav aria-label="Pages">
+    <a href="/"{% if active == "overview" %} aria-current="page"{% endif %}>Overview</a>
+    <a href="/orders"{% if active == "orders" %} aria-current="page"{% endif %}>Orders</a>
+    <a href="/activity"{% if active == "activity" %} aria-current="page"{% endif %}>Activity</a>
+    <a href="/journal"{% if active == "journal" %} aria-current="page"{% endif %}>Journal</a>
+  </nav>
+  <div class="actions">
+    {% if toggle_label %}<a class="button" href="/toggle">{{ toggle_label }}</a>{% endif %}
+    <form method="post" action="/sign-out">
+      <input type="hidden" name="csrf" value="{{ csrf }}">
+      <button type="submit">Sign out</button>
+    </form>
+  </div>
+  {% endif %}
+</header>
+{% if banner %}<p class="banner" role="status">{{ banner }}</p>{% endif %}
+{% if halt %}<p class="banner halt" role="status">{{ halt }}</p>{% endif %}
+<main>
+{% block content %}{% endblock %}
+</main>
+{% if read_at %}<footer>Read at {{ read_at }}.</footer>{% endif %}
+</body>
+</html>

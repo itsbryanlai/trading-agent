@@ -120,7 +120,7 @@ class PostgresStore:
     def read(self) -> Iterator[Reader]:
         """One connection, one read-only transaction, closed on exit."""
         if not self._slots.acquire(timeout=self._acquire_timeout):
-            raise StoreBusy("database: busy")
+            raise StoreBusy("database: StoreBusy")
         try:
             url = make_conninfo(self._url, connect_timeout=CONNECT_TIMEOUT_SECONDS)
             with self._connect(url) as connection:
