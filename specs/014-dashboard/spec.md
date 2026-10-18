@@ -41,6 +41,11 @@ All recorded in [ADR 0026](../../docs/adr/0026-dashboard-public-service-with-own
 - Q: Is the dashboard's own copy of `schedule.yaml` enough to allow a resume, when the orchestrator may still run the old setting? → A: No. Resume also needs the newest `orchestrator_runs` row for the Portfolio Manager to be `skipped` with detail `trading paused`, which only happens once the orchestrator honours `run_while_paused: false` ([ADR 0028](../../docs/adr/0028-dashboard-resume-needs-the-orchestrator-to-have-skipped-a-pm-run.md), analyze S4). Switch-on can slip a day. Rejected: the file check plus a reminder to read the orchestrator's log.
 - Q: Does allowing a resume during market hours change ADR 0021 §9? → A: No. The runbook still says resume after the close; the dashboard's warning makes a session-time resume a fallback (ADR 0028 §4, analyze S5). Rejected: refusing resume while the market is open.
 
+### Session 2026-10-19 (after the adversarial review)
+
+- Q: If the read login fails while the database and the control login work, can the owner still pause from the dashboard? → A: Yes. `/toggle` then shows a pause-only form (assuming running; a wrong guess is caught by the conditional update as "nothing changed"), and the database-unavailable page links to it (owner, review F1). Rejected: relying on the runbook's manual `UPDATE` alone.
+- Q: Is a session secret of 32 repeated characters acceptable? → A: No. It needs at least 32 bytes and at least 16 distinct bytes (review F6).
+
 ## User Scenarios & Testing *(mandatory)*
 
 The only user is **the owner**, who wants to open one page, from a phone or a laptop, and see what the system holds, what each agent has said and decided, what the gate and the broker did with it, and how each analyst would have done alone. This serves the system's purpose: watching each agent's performance over time with minimal intervention.
@@ -167,7 +172,7 @@ Before a release, the owner runs a check that confirms each credential works and
 - **The deployed setting is missing or unreadable**: resuming is refused, with that reason (fail closed); pausing still works; the banner says the setting could not be read.
 - **Market hours cannot be determined**: the resume confirmation shows the market-hours warning anyway.
 - **The control login fails, or its write fails**: the page says nothing was changed and why in general terms; the read pages keep working.
-- **The read login fails**: pages show a database-unavailable page with no error text; the health check answers unavailable.
+- **The read login fails**: pages show a database-unavailable page with no error text and a link to the toggle; the health check answers unavailable. `/toggle` still offers a pause-only form, and the toggle's outcome page shows its result without the fresh state (review F1, F5).
 - **The toggle pressed twice, or two tabs**: the write applies only if the state is still what the confirmation page showed; otherwise nothing changes.
 - **Pause pressed while already paused** (or resume while running): there is no such button; only the opposite action is offered.
 - **The pause time was never recorded** (no change since the migration): "paused since" reads "start time not recorded"; nothing is inferred from `updated_at`.
@@ -218,7 +223,7 @@ Before a release, the owner runs a check that confirms each credential works and
 
 - **FR-018**: The only write the dashboard can make MUST be setting `system_state.trading_paused` and `updated_at`, through the control login, opened for that one write and closed after it. Only the toggle's confirmation may use that login.
 - **FR-019**: Pressing the toggle MUST show a confirmation page stating the current state, since when, and what the change does; only confirming MUST write.
-- **FR-020**: Pausing MUST always be allowed.
+- **FR-020**: Pausing MUST always be allowed, including when the read login fails: `/toggle` then offers a pause-only form.
 - **FR-021**: Resuming MUST be refused before any write while the deployed `config/schedule.yaml` has `portfolio_manager.run_while_paused: true`, or when that setting cannot be read, with the reason and a pointer to the deployment runbook's switching-on section.
 - **FR-021a**: Resuming MUST also be refused before any write unless the newest `orchestrator_runs` row for `portfolio_manager` has outcome `skipped` and detail exactly `trading paused` (ADR 0028), checked on the confirmation page and again at the write.
 - **FR-022**: The resume confirmation MUST warn when the market is open, or when that cannot be determined, and MUST still allow confirming.
