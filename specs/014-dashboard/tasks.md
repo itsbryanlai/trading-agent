@@ -1,0 +1,194 @@
+---
+
+description: "Task list for the dashboard (feature 014)"
+---
+
+# Tasks: The Dashboard
+
+**Input**: Design documents from `/specs/014-dashboard/`
+
+**Prerequisites**:
+- plan.md, spec.md (with Clarifications), research.md (D1–D22), data-model.md, quickstart.md;
+- contracts/dashboard-interface.md, contracts/routes.md, contracts/queries.md, contracts/toggle.md, contracts/rendering.md;
+- ADRs [0004](../../docs/adr/0004-shared-postgres-role-scoped-credentials.md), [0007](../../docs/adr/0007-assistant-is-separate-read-only-telegram.md), [0008](../../docs/adr/0008-dashboard-stack-and-research-provider.md), [0021](../../docs/adr/0021-railway-deployment-as-code-observe-only-first.md), [0026](../../docs/adr/0026-dashboard-public-service-with-owner-sign-in.md), [0027](../../docs/adr/0027-pause-change-time-recorded-by-the-database.md).
+
+**Tests**: included, written first within each task (Constitution: every logic change is covered by tests). The safety criteria are backed by fixtures and Hypothesis properties of pure modules:
+- SC-003: hostile text never becomes live HTML (T007, T014, T022);
+- SC-004: only the toggle writes, only through the control login (T004, T019, T020);
+- SC-005: resume refused while `run_while_paused` is true (T010, T020);
+- SC-006: no data without a session, on every route (T014).
+
+**Organization**: one phase per user story in spec.md.
+- **Foundational**: the migration, the pure core, the store's state queries and the app shell (headers, auth dependency, route-access table). The safety pieces are here so every story ships with them.
+- **US1** sign-in and overview; **US2** the toggle; **US3** order history; **US4** agent activity; **US5** the journal; **US6** `--check`, logins, deployment, the Assistant's text and docs.
+
+## Format: `[ID] [P?] [Story] Description`
+
+- **[P]**: can run in parallel (different files, no dependency on an incomplete task)
+- **[Story]**: US1–US6
+
+## Conventions every task follows
+
+- **No task reaches the network.** HTTP tests use FastAPI's `TestClient(app, base_url="https://testserver")` (in process, so `Secure` cookies are sent). The store is `tests/fakes/dashboard_store.py` (T013), the control writer `tests/fakes/dashboard_control.py` (T019). The suite-wide network guard in `tests/conftest.py` stays.
+- **Never read, print or grep for real credentials or `.env` files.** Tests set fake values with `monkeypatch.setenv`, e.g. `DASHBOARD_SESSION_SECRET=fake-secret-not-real-0123456789abcdef0123`; a test password hash is made in the test with `auth.hash_password("correct horse battery staple")` and reduced scrypt cost through a parameter (never by changing the production default).
+- **Pure modules** (`auth`, `throttle`, `toggle`, `render`, `timefmt`, `charts`, `attribution`, `pages*`): never import `psycopg`, `fastapi`, `starlette`, `os`, `store`, `control` or `deployed`, and never read the clock or the environment: times and values are arguments.
+- **Imports** from other packages: only `trading_agent.storage.db` and `trading_agent.risk.calendar` (research D3). Never another top-layer package (`assistant`, `orchestrator`, …).
+- **Only `control.py` contains the string `DASHBOARD_CONTROL_DATABASE_URL`** under `src/trading_agent/dashboard/` (plus `__main__.py` passing nothing but `control`'s own reader to `check`). T019's guard test enforces it.
+- **Templates**: Jinja autoescape on; no `<script>`, no `style=` attribute, no outside URL in `href`/`src` other than rendered source links; `|safe` only on `render.markdown()` output. T014's scans enforce it.
+- **Logs** follow contracts/dashboard-interface.md "Logs". Exceptions are logged by type only, never `str(exc)` or `repr(exc)`.
+- **Test clock**: owner zone **Asia/Singapore**.
+
+  | Case | Owner time | UTC | ET | Detail |
+  |---|---|---|---|---|
+  | Default | Tue 2026-10-20 07:00 +08 | Mon 2026-10-19 23:00 | Mon 19:00 EDT | after Monday's close; market closed |
+  | In session | Mon 2026-10-19 23:00 +08 | Mon 15:00 | Mon 11:00 EDT | market open |
+  | Winter | Tue 2026-11-17 07:00 +08 | Mon 2026-11-16 23:00 | Mon 18:00 EST | ET offset −05:00 |
+  | Weekend | Sun 2026-10-25 10:00 +08 | Sun 02:00 | Sat 22:00 EDT | snapshot 2 d old |
+- **Test connections**: integration tests use the rolled-back `conn` fixture (`tests/integration/conftest.py`), `as_role` (`tests/integration/helpers.py`), and the row builders in `tests/integration/storage/factories.py` and `chain.py`. They skip without `TEST_DATABASE_URL`. Use a throwaway `postgres:16` on 127.0.0.1:55432, never the owner's container on port 5433.
+- **Mutation-check only the safety-relevant tests**: T004 (trigger and denied column update), T006 (session and CSRF), T007 (link policy), T010 (toggle table), T014 (route access and CSP), T019 (control writes once, conditionally), T020 (no write on a refused resume), T030 (log guard). Break the code on purpose, confirm a test fails, then restore the file's saved text with a direct edit, never `git checkout`.
+- **Testing in two tiers** (CLAUDE.md): after each task, run that task's tests, `scripts/lint.sh` and `.venv/bin/ruff format --check src tests`. The full unit and integration suites run once, in T030.
+- **Module size**: no module over 600 lines. View models are split by view (`pages.py` for state, banner and overview; `pages_orders.py`, `pages_activity.py`, `pages_journal.py`), refining plan.md's single `pages.py`.
+- **Quality gate**: no `# noqa`, no raised limits.
+- **Commits**: one per task or tight task group, under 15 code files and 600 lines, in the style `Dashboard (feature 014): what changed (Tnnn)`, staged by explicit path, ending with your model's `Co-Authored-By` line. Never stage `src/trading_agent/risk/__main__.py` or `job_*.csv`. Never push.
+- **Not edited**: any other component's package except one string in `assistant/replies.py` (T026) and two rows in `storage/logins.py` (T027); `storage/db.py`; any existing migration; any grant; `config/risk.yaml`; `config/schedule.yaml`.
+
+---
+
+## Phase 1: Setup
+
+- [ ] T001 Create the package, its layer and dependencies:
+  - `src/trading_agent/dashboard/__init__.py`, with a one-paragraph docstring pointing at spec 014 and ADRs 0026 and 0027; empty `templates/` and `static/` directories (a placeholder `static/style.css`);
+  - `pyproject.toml`: the runtime dependencies and pins from research D1 (`fastapi>=0.142.2,<0.143`, `jinja2>=3.1.6,<3.2`, `uvicorn>=0.54,<0.55`, `python-multipart>=0.0.32,<0.1`, `markdown-it-py>=4.2,<5`) and `httpx>=0.28,<0.29` in `dev`; `dashboard` added to the first layer of `[tool.importlinter]` beside `assistant`; `"trading_agent.dashboard" = ["templates/*.html", "static/*.css"]` under `[tool.setuptools.package-data]`;
+  - install them into the shared venv with `.venv/bin/pip install -e '.[dev]'` from the worktree (the editable install points at the main checkout's `src/`; that is expected, tests use `PYTHONPATH=src`);
+  - `tests/unit/dashboard/__init__.py`, `tests/integration/dashboard/__init__.py`;
+  - `tests/unit/dashboard/test_imports.py`: walks `src/trading_agent/dashboard/*.py` with `ast`; fails on an import from another `trading_agent` package except `storage.db` and `risk.calendar`, and on the pure modules importing `psycopg`, `fastapi`, `starlette`, `os`, `store`, `control` or `deployed`, or calling `datetime.now`/`time.time`.
+
+  Run `scripts/lint.sh`.
+- [ ] T002 [P] Config (contracts/dashboard-interface.md "Configuration"): `config/dashboard.yaml` with every key at its shipped value and a one-line comment each; `src/trading_agent/dashboard/config.py` with `load_config(path) -> DashboardConfig` (frozen dataclasses), `DEFAULT_CONFIG_PATH` (repository root `config/dashboard.yaml`, resolved as `assistant/config.py` does), `DashboardConfigError`. Every key required, unknown keys refused, integers not booleans and within the contract's bounds, `owner_time_zone` a valid `ZoneInfo`, `cap_seconds >= first_seconds`. Tests first in `tests/unit/dashboard/test_config.py`: the shipped file loads; each missing key, unknown key, out-of-bounds value, boolean-for-int and bad zone is refused with the key's path in the message.
+
+## Phase 2: Foundational (blocks every story)
+
+- [ ] T003 [P] Migration `src/trading_agent/storage/migrations/0015_trading_paused_changed_at.sql` (ADR 0027, research D22, data-model.md "Schema change"): `ALTER TABLE system_state ADD COLUMN trading_paused_changed_at timestamptz` (nullable, no default, no backfill); the `plpgsql` function `system_state_trading_paused_changed()` setting `NEW.trading_paused_changed_at := now()` only `IF NEW.trading_paused IS DISTINCT FROM OLD.trading_paused`; `BEFORE UPDATE ON system_state FOR EACH ROW` trigger `system_state_trading_paused_changed`; a header comment in the style of `0014`; `COMMENT ON COLUMN`. No `GRANT` or `REVOKE`. Update any test that lists the migrations (`tests/integration/storage/test_migrate.py`).
+- [ ] T004 Integration tests for 0015, in `tests/integration/storage/test_system_state.py` (extend): a fresh database has the column null; `ta_dashboard_control` setting `trading_paused` false→true stamps it with the transaction's `now()`; true→true leaves it; `ta_risk_gate` updating the baseline and the halt succeeds and leaves it; `UPDATE system_state SET trading_paused_changed_at = now()` is `42501` as `ta_dashboard_control`, `ta_risk_gate`, `ta_dashboard` and `ta_assistant`; `ta_orchestrator` still can't select the column (`42501`); `ta_dashboard` and `ta_assistant` can. Confirm `tests/integration/storage/test_grants.py` still passes unchanged (no matrix cell changes). Depends on T003.
+- [ ] T005 [P] `src/trading_agent/dashboard/timefmt.py` (research D19), test first in `tests/unit/dashboard/test_timefmt.py`: `moment(ts, zone) -> "19 Oct 09:12 SGT (18 Oct 21:12 ET)"` (EDT and EST both shown as `ET`; the owner zone's abbreviation from `zoneinfo`); `age(now, ts) -> "3 min old" | "5 h old" | "2 d old"` (under a minute "just now"); `day(d) -> "Mon 19 Oct"`. Naive datetimes raise `ValueError`. Cases from the test clock table, including Winter, and a property: the ET part always equals `ts.astimezone(America/New_York)`.
+- [ ] T006 [P] `src/trading_agent/dashboard/auth.py` (research D4–D6, D11), test first in `tests/unit/dashboard/test_auth.py`:
+  - `hash_password(password, *, salt=None, n=2**15) -> str` and `verify_password(password, stored) -> bool` in the format `scrypt$32768$8$1$<salt b64>$<hash b64>`; `parse_hash(stored)` raising `MalformedHash` (used by `--check`); verification compares with `hmac.compare_digest`; a malformed stored hash verifies as false, never raises;
+  - `sign(secret, session_id) -> cookie value` and `unsign(secret, value) -> session_id | None` (HMAC-SHA256, base64url, `compare_digest`);
+  - `Sessions(max_sessions, lifetime)`: `create(now) -> Session(id, created_at, expires_at, csrf)`, `get(id, now) -> Session | None` (expired → removed, None), `delete(id)`, oldest dropped beyond `max_sessions`, a lock around every operation;
+  - `csrf_ok(session, submitted) -> bool` (`compare_digest`; empty or missing is false).
+  Tests: round trips; a wrong password, a tampered hash, a forged or truncated cookie, another secret, an expired session (12 h + 1 s), a deleted session and the 21st session (drops the oldest) all fail; Hypothesis: `unsign(secret, x)` is None for any `x` not produced by `sign(secret, …)`.
+- [ ] T007 [P] `src/trading_agent/dashboard/render.py` (research D9, contracts/rendering.md), test first in `tests/unit/dashboard/test_render.py`: `markdown(text) -> markupsafe.Markup` with `MarkdownIt("commonmark", {"html": False, "linkify": False, "typographer": False})`, `validateLink` allowing only `http://`/`https://` after strip and lower-case, links rendered with `rel="nofollow noopener noreferrer" target="_blank"`, the `image` renderer emitting the escaped alt text, headings capped at `<h4>`; `link_or_text(title, url) -> Markup` for source titles; `excerpt(text, 300) -> str` (plain). Every row of contracts/rendering.md "Hostile fixtures" is a test case; a Hypothesis property: for any text, the output contains no `<script`, no `<img`, no `<iframe`, no `on[a-z]+=` inside a tag, and every `href` starts with `http://` or `https://`.
+- [ ] T008 [P] `src/trading_agent/dashboard/throttle.py` (research D7), test first in `tests/unit/dashboard/test_throttle.py`: `SignInGate(first_seconds, cap_seconds, tracked_addresses)` with `wait(address, now) -> float` (seconds until an attempt may be checked: site-wide not-before plus that address's), `failed(address, now)`, `succeeded(address)`. Delays double from `first_seconds` to `cap_seconds` per failure count; a success resets site-wide and that address; at most `tracked_addresses` addresses, oldest evicted; a lock around every operation. Tests: 1, 2, 4, …, 30, 30 s; the address delay adds to the site-wide one; another address only sees the site-wide part; after the wait passes `wait` is 0 (never a lockout); eviction; Hypothesis: `wait` is always in `[0, 2 × cap_seconds]`.
+- [ ] T009 [P] `src/trading_agent/dashboard/charts.py` (research D20), test first in `tests/unit/dashboard/test_charts.py`: `polyline(points, width=600, height=200) -> Chart(paths: list[str], dots, min_label, max_label, first_at, last_at)` scaling `(datetime, Decimal)` points into the viewBox, a `None` value breaking the line into a new path, one point → a dot, none → `Chart.empty`; `range_start(range_name, now) -> datetime | None` for `1d` (start of the current or last NYSE session, via `risk.calendar` passed in as a function), `1w`, `1m`, `all` (None); `rebase(series) -> series` (first non-None point = 100). Tests: flat series, negative-free scaling, gaps, single point, empty, rebasing, `1d` on a weekend.
+- [ ] T010 [P] `src/trading_agent/dashboard/toggle.py` (contracts/toggle.md "Decision table"), test first in `tests/unit/dashboard/test_toggle.py`: `available(stored_paused, run_while_paused) -> Pause | Resume | ResumeRefused(reason)`; `decide(expected, target, run_while_paused) -> Write(target) | Refused(reason)` with reasons `run_while_paused`, `unreadable`, `malformed`; `warn_market(market_open: bool | None) -> bool` (True for open or unknown). Every row of the decision table is a parametrised case; a Hypothesis property: no input with `target = running` and `run_while_paused is not False` returns `Write`.
+- [ ] T011 [P] `src/trading_agent/dashboard/deployed.py` (research D14), test first in `tests/unit/dashboard/test_deployed.py`: `run_while_paused(config_dir) -> bool | None` reading `schedule.yaml` with `yaml.safe_load`, returning the value only if it is a real `bool`; a missing file, malformed YAML, a missing section or key, `"true"` as a string or `1` → `None`. A test reads the repository's real `config/schedule.yaml` and gets `True`.
+- [ ] T012 [P] `src/trading_agent/dashboard/address.py` (research D8), test first in `tests/unit/dashboard/test_address.py`: `client_address(headers, peer) -> str`: the last comma-separated entry of `X-Forwarded-For`, stripped, if present and non-empty, else `peer`, else `"unknown"`; at most 64 characters kept. Tests: one entry, several (the last wins, so a forged leftmost entry doesn't change it), blanks, absent header.
+- [ ] T013 `src/trading_agent/dashboard/store.py` and `tests/fakes/dashboard_store.py` (research D12, contracts/queries.md "State", "Overview"): `PostgresStore(url, statement_timeout_seconds)` whose `read() -> context manager` opens one connection via `storage.db.connect`, runs `SET TRANSACTION READ ONLY` and `SET LOCAL statement_timeout`, and yields a reader with `state()`, `positions()`, `latest_snapshot()`, `equity_points(since, daily: bool)`, and `ping()`; `StoreError` wrapping any `psycopg.Error` (type only). The fake returns fixture rows and records each call. Integration tests first in `tests/integration/dashboard/test_store_state.py` as `ta_dashboard`: each method's rows and types against seeded data (`trading_paused_changed_at` included, so depends on T003); `daily=True` returns one row per NYSE day, the last of each; an `INSERT` inside `read()` fails (read-only transaction). Unit test: `StoreError` messages never contain the URL.
+- [ ] T014 The app shell, `src/trading_agent/dashboard/app.py` with `templates/base.html`, `templates/error.html` and `static/style.css` (research D4, D10, D11; contracts/routes.md): `create_app(*, store, control, sessions, gate, config, secret, password_hash, config_dir, clock, market_open) -> FastAPI` (everything injected); a middleware setting every header in contracts/routes.md on every response (`Cache-Control: no-store` except `/static/*`); a `require_session` dependency (cookie → `auth.unsign` → `sessions.get`; pages `303 /sign-in`, `POST`s `403`); a `require_write` dependency adding the CSRF and `Origin` checks; `GET /static/style.css`; handlers for 404, 503 (`StoreError`) and 500 rendering `error.html` with the fixed texts and no detail, logging `dashboard error type=… route=…`; `base.html` with the nav, the banner and halt slots, the toggle button, the sign-out form and the "Read at" footer. Tests first in `tests/unit/dashboard/test_app.py`:
+  - **the route-access table** (SC-006): build the app with all later routes registered (this test grows with each story), enumerate `app.routes`, and assert each is in a table copied from contracts/routes.md "Access rule"; an unlisted route fails; every listed session route returns `303`/`403` and no fixture marker text without a session;
+  - the CSP and other headers on every route, including 404 and 503;
+  - template scans over `templates/*.html`: no `<script`, no `style=`, `|safe` only in the expression that inserts `render.markdown` output;
+  - a forged cookie, an expired session and a missing or wrong CSRF are refused; a cross-origin `Origin` on a `POST` is `403`.
+
+**Checkpoint**: the pure core, the migration and the shell are in; no page shows data yet.
+
+## Phase 3: User Story 1 - Sign in and see the system at a glance (Priority: P1) 🎯 MVP
+
+**Goal**: sign in, sign out, and the overview with state, banner, halt, positions, cash, equity and the curve.
+
+**Independent test**: with seeded positions, snapshots and state, sign in and check every figure; without a session every page redirects (spec US1).
+
+- [ ] T015 [US1] `src/trading_agent/dashboard/routes_auth.py` and `templates/sign_in.html` (contracts/routes.md, research D4, D7, D8), test first in `tests/unit/dashboard/test_routes_auth.py`: `GET /sign-in` (already signed in → `303 /`); `POST /sign-in` asks `gate.wait(address, now)` first: positive → `429` with "Too many attempts. Try again in N seconds." and log `sign_in too_soon wait=N`, the password not checked; else verify: ok → `sessions.create`, `gate.succeeded`, the `__Host-ta_dashboard` cookie exactly as contracts/routes.md, `303 /`, log `sign_in ok`; wrong → `gate.failed`, `200` with "Sign-in failed.", log `sign_in failed site_wait=… address_wait=…`; `POST /sign-out` (CSRF) deletes the session, clears the cookie, `303 /sign-in`. Tests: the cookie's attributes; a replayed cookie after sign-out is treated as no session (US1 scenario 7); the 12 h expiry; too-soon attempts are not counted; the failure page never says which part was wrong; the password never appears in any log line.
+- [ ] T016 [US1] `src/trading_agent/dashboard/pages.py` (state, banner, overview view models), test first in `tests/unit/dashboard/test_pages.py`: `banner(state, run_while_paused, now, zone)` → the FR-011 text or None (paused since from `trading_paused_changed_at`, "start time not recorded" when null, never `updated_at`; "the setting could not be read" when None); `halt_line(state)`; `overview(state, positions, snapshot, points, now, zone)` → positions with `cost = qty × avg_entry_price`, cash and equity with the snapshot's time and age, "No account snapshot yet." when there is none, the chart. Edge cases from spec: no data, one snapshot, stale (Weekend clock), halt active.
+- [ ] T017 [US1] `src/trading_agent/dashboard/routes_pages.py` (overview and health) and `templates/overview.html`, test first in `tests/unit/dashboard/test_routes_overview.py`: `GET /?range=` (unknown range → `1w`), the state and banner on every page through a shared helper in `routes_pages.py`; `GET /healthz` → `200 ok` when `store.read()`'s `ping()` works, `503 unavailable` otherwise, `text/plain`, no other content. Add both to T014's route-access table. Tests: US1 scenarios 1–6 through the client with the fake store; a database failure renders the 503 page with no error text.
+- [ ] T018 [US1] `src/trading_agent/dashboard/__main__.py` (serve and `--hash-password`; contracts/dashboard-interface.md "Command"), test first in `tests/unit/dashboard/test_main.py`: parses flags (unknown → exit 2); `--hash-password` reads twice with `getpass` (monkeypatched), refuses fewer than 16 characters or a mismatch (exit 2), prints only the hash; serving requires the four variables (missing → exit 2 naming the variable, never a value), loads the config, builds `PostgresStore`, `Sessions`, `SignInGate`, the control writer (T019; until then a stub that refuses), and calls `uvicorn.run(app, host="0.0.0.0", port=int(PORT), workers=1, access_log=False, proxy_headers=False)`; logs `dashboard started port=… config_version=…`. Test with `uvicorn.run` monkeypatched: the arguments, and no variable value in any log line.
+
+**Checkpoint**: US1 works with the fake store and against a seeded database.
+
+## Phase 4: User Story 2 - Pause and resume trading safely (Priority: P1)
+
+**Goal**: the guarded toggle (contracts/toggle.md).
+
+**Independent test**: pause and resume through the pages and check `system_state` after each step; with the deployed setting true, resume is refused and nothing changes (spec US2).
+
+- [ ] T019 [US2] `src/trading_agent/dashboard/control.py` and `tests/fakes/dashboard_control.py` (research D13): `ControlWriter.from_env()` reading `DASHBOARD_CONTROL_DATABASE_URL` (the only place in the package); `set_paused(expected: bool, target: bool) -> "written" | "stale"` opening one connection via `storage.db.connect`, running exactly `UPDATE system_state SET trading_paused = %(target)s, updated_at = now() WHERE trading_paused = %(expected)s`, one row → `written`, zero → `stale`, then closing; `ControlError` wrapping `psycopg.Error` by type; `memberships()` for `--check` (contracts/queries.md "`--check`"). The fake records calls. Tests first:
+  - `tests/unit/dashboard/test_control_guard.py`: greps `src/` and fails if `DASHBOARD_CONTROL_DATABASE_URL` appears in any file other than `dashboard/control.py`, `.env.example` and `.railway/railway.ts`; `ast` check that no module except `routes_toggle.py`, `check.py` and `__main__.py` imports `control`;
+  - `tests/integration/dashboard/test_control.py` as a login created in the test that is a member of `ta_dashboard_control` only: `written` then the row reads paused with `trading_paused_changed_at` stamped; a second identical call is `stale`; the same `UPDATE` as `ta_dashboard` is `42501`; an update of a halt column as the control login is `42501`.
+- [ ] T020 [US2] `src/trading_agent/dashboard/routes_toggle.py`, `templates/toggle.html` and `templates/toggle_done.html` (contracts/toggle.md), test first in `tests/unit/dashboard/test_routes_toggle.py`: `GET /toggle` shows the one available action with the exact texts (the market warning from `market_open`, which is injected and counts an exception as open; the halt note); a refused resume shows the refusal with no form; `POST /toggle` (`require_write`) validates `expected`/`target`, re-reads `deployed.run_while_paused` at POST time, calls `toggle.decide`, then `control.set_paused` only on `Write`, logs exactly one line (`toggle paused|resumed at=…`, `toggle refused reason=…`, `toggle failed type=…`), and redirects to `/toggle/done?result=…`; `GET /toggle/done` reads the state fresh. Add the three routes to T014's table. Tests: US2 scenarios 1–6; with `run_while_paused` True or None the fake control is never called; a stale confirmation calls it once and shows "Nothing was changed."; a `ControlError` shows `failed` and the read pages still work; a pause is never refused.
+
+**Checkpoint**: US1 and US2 make a usable dashboard (state plus the one control).
+
+## Phase 5: User Story 3 - Trace every order back to its cause (Priority: P2)
+
+**Goal**: order history (FR-008).
+
+**Independent test**: a rejected decision, an approved-and-filled one, an approved-and-refused one and a stop-loss exit each appear once, traced, with the right outcome (spec US3).
+
+- [ ] T021 [US3] Order history: `orders(symbol, since, until, limit, offset)` in `src/trading_agent/dashboard/store.py` (contracts/queries.md "Order history", exactly that SQL shape), `src/trading_agent/dashboard/pages_orders.py`, the `/orders` route in `routes_pages.py` (query validation per contracts/routes.md), and `templates/orders.html`. Tests first: `tests/integration/dashboard/test_store_orders.py` seeds the four cases with `tests/integration/storage/chain.py` and checks each appears once with its cause and outcome, filters by symbol and dates, and the 51st-row page flag; `tests/unit/dashboard/test_pages_orders.py` and `test_routes_orders.py` cover US3 scenarios 1–5, broker reasons and refusal details escaped, an empty filter and a page past the end. Add `/orders` to T014's table.
+
+## Phase 6: User Story 4 - Read what each agent said and decided (Priority: P2)
+
+**Goal**: agent activity (FR-009, FR-015).
+
+**Independent test**: reports, decisions with cited reports and runs, including hostile rationale text, render as the contract says (spec US4).
+
+- [ ] T022 [US4] Agent activity: `reports(…)`, `decisions(…)`, `runs(…)` in `store.py` (contracts/queries.md "Agent activity"), the merge-and-page logic in `src/trading_agent/dashboard/pages_activity.py` (newest first across the three, exact pages: each query fetches `offset + page_size + 1`), the `/activity` route in `routes_pages.py` and `templates/activity.html` (rationale and reasoning through `render.markdown`, sources through `render.link_or_text`, run `detail` as plain text, problem runs marked, long text in `<details>` with `render.excerpt` as the summary). Tests first: `tests/integration/dashboard/test_store_activity.py` (filters by agent, symbol, dates, `problems`; a decision's `report_ids`); `tests/unit/dashboard/test_pages_activity.py` (merge order and paging with a Hypothesis property: concatenating pages 1..n equals the full sorted list); `tests/unit/dashboard/test_routes_activity.py` (US4 scenarios 1–6, the hostile fixtures through the real page). Add `/activity` to T014's table.
+
+## Phase 7: User Story 5 - Read the journal and per-agent attribution (Priority: P3)
+
+**Goal**: the journal with the comparison chart and usage totals (FR-010, FR-010a, FR-010b).
+
+**Independent test**: seeded rows with a missed session, an unpriced holding and an unknown schema version render as the spec says (spec US5).
+
+- [ ] T023 [P] [US5] `src/trading_agent/dashboard/attribution.py` (research D21), test first in `tests/unit/dashboard/test_attribution.py` with fixtures copied from `specs/012-journal-writer/contracts/attribution.md`: `parse(obj) -> Attribution | Unreadable` for schema version 1 (decimal strings to `Decimal`, unknown keys ignored, a missing required key or another version → `Unreadable`); `comparison(rows) -> {series name: [(day, value|None)]}` (each analyst's `index`, starting on its `started_on`; the account compounded from `account.return`, a null return or unreadable row → None); `usage_totals(rows) -> {agent: {written, argued, no_action, cited, cited_decisions, approved, filled}}`. Tests: US5 scenarios 4 and 5 numerically; missed sessions listed; an agent starting mid-range.
+- [ ] T024 [US5] The journal view: `journal_page(…)` and `journal_range(since)` in `store.py` (contracts/queries.md "Journal"), `src/trading_agent/dashboard/pages_journal.py` (day rows, `charts.rebase` per series, markers for `missed_sessions`, usage totals), the `/journal` route in `routes_pages.py`, `templates/journal.html` (summary through `render.markdown`). Tests first: `tests/integration/dashboard/test_store_journal.py`; `tests/unit/dashboard/test_pages_journal.py` and `test_routes_journal.py` (US5 scenarios 1–5; an unknown version doesn't fail the page). Add `/journal` to T014's table. Depends on T023.
+
+## Phase 8: User Story 6 - Release and check it safely (Priority: P3)
+
+**Goal**: `--check`, the logins, deployment wiring, the Assistant's text, docs.
+
+**Independent test**: `--check` with good values and each one wrong in turn; the health check up and down; the Assistant's refusal text (spec US6).
+
+- [ ] T025 [P] [US6] `src/trading_agent/dashboard/check.py` and `--check` in `__main__.py` (research D16, contracts/dashboard-interface.md "`--check` output"), test first in `tests/unit/dashboard/test_check.py` with fake store and control: six lines in order; each failure's code (`unreachable`, `wrong_role:<role>`, `extra_role:<role>`, `malformed`, `too_short`, `unreadable`); exit 0 only if all ok; nothing written (the fake control's `set_paused` never called); no value or message printed. Integration in `tests/integration/dashboard/test_check.py`: with logins created in the test, a read login in `ta_dashboard` passes and one also in `ta_dashboard_control` fails `database_read: FAILED extra_role:ta_dashboard_control`.
+- [ ] T026 [P] [US6] The Assistant's text (FR-032): `CONTROLS[0]` in `src/trading_agent/assistant/replies.py` becomes `"the dashboard's pause control"`; the same string in `specs/013-assistant/contracts/model-io.md`; update any test pinning the old text (`grep -rn "not built yet" tests src specs docs`); `tests/unit/assistant/test_links.py`'s fixed-reply guard still passes, and add a case asserting neither control contains `.`-joined host-like text, `/` paths or `@`.
+- [ ] T027 [P] [US6] The logins (data-model.md "Logins"): add `Login("ta_dashboard_login", "ta_dashboard")` and `Login("ta_dashboard_control_login", "ta_dashboard_control")` to `src/trading_agent/storage/logins.py` (13 rows; update its comment); update `tests/unit/storage/test_logins.py` (13) and `tests/integration/storage/test_logins.py`; `specs/010-observe-only-deployment/contracts/logins-command.md` gains the two rows.
+- [ ] T028 [P] [US6] Deployment wiring (contracts/dashboard-interface.md "Railway service"): the `dashboard` service in `.railway/railway.ts` exactly as the contract, added to `resources`, with a comment like the assistant's; `.env.example` gains the four `DASHBOARD_*` names with empty values and one comment each; `tests/unit/deploy/test_deployed_shape.py`'s `CONTRACT` gains `dashboard`, and new rules: `healthcheckPath: "/healthz"` required on `dashboard` and forbidden elsewhere; `domains`, `networking`, `tcp`, `tcpProxies` forbidden on every service but `dashboard`; `DASHBOARD_*` names on no other service; with a broken-copy test for each new rule; `specs/010-observe-only-deployment/contracts/service-layout.md` gains the row; `.railway/README.md` gains a bullet. Run `PYTHONPATH=src .venv/bin/python -m pytest tests/unit/deploy -q`.
+- [ ] T029 [P] [US6] Docs, each referencing ADRs 0026 and 0027: `docs/specs/data-model.md` (`system_state` gains `trading_paused_changed_at`, set by the database); `specs/001-data-model/contracts/role-grants.md` (a footnote for the column: readers as data-model.md, no cell change); `docs/architecture/overview.md` (the dashboard as built: public, signed in, one toggle with its guard); `docs/specs/assistant-agent.md` (the controls line); `docs/specs/ui-dashboard.md` (the toggle's guard, the sign-in, link to spec 014); `docs/operations/deployment.md`: a new §10 "Adding the dashboard (feature 014, ADRs 0026–0027)" from quickstart R1–R7, §3 gains "if the release changes the dashboard, run its `--check`", §5 step 2 names the dashboard's resume as the preferred path once step 1 is released (the manual `UPDATE` stays as a fallback), §9's control wording.
+
+## Phase 9: Polish & cross-cutting
+
+- [ ] T030 The log guard (FR-024, FR-029; research D18), in `tests/unit/dashboard/test_logs.py`: put markers in a password, the session secret, a cookie, a CSRF value, both database URLs, a client address in `X-Forwarded-For`, a query string, a rationale, a broker reason and a database exception message; drive every route (sign-in ok/failed/too soon, every page, every toggle outcome, 404, 503, 500) with `caplog` at DEBUG; assert no marker appears and that each toggle `POST` wrote exactly one `dashboard toggle` line.
+- [ ] T031 Performance (SC-007), in `tests/integration/dashboard/test_timings.py`: seed a year (about 3,500 snapshots, 3,000 reports, 1,500 decisions and verdicts, 5,000 runs, 250 journal rows) and assert every store method in contracts/queries.md returns in under 0.5 s on the throwaway database; if one doesn't, stop and flag it (an index would go into `0015` and needs the owner's review).
+- [ ] T032 Final validation: run the full unit suite (`PYTHONPATH=src .venv/bin/python -m pytest -q`, about 6 min, in the background), the integration suite (`-m integration` with `TEST_DATABASE_URL` on the throwaway container), `scripts/lint.sh` and `.venv/bin/ruff format --check src tests`; walk quickstart Part 1 step 3 locally; record the counts below under "T032 results". Remove the container afterwards.
+
+## Phase 10: Convergence
+
+- [ ] T033 Run `/speckit-converge` in a fresh subagent on Sonnet (CLAUDE.local.md). The main session reviews each task it appends here before implementing it.
+
+## Phase 11: Adversarial review
+
+- [ ] T034 Run an adversarial review of `origin/main..014-dashboard` in a fresh subagent on the session's own model: read-only, no network, attacking the sign-in, sessions, CSRF, the toggle's guard, rendering, the control login's isolation, logs and the deployment shape. Findings become tasks here; the owner decides any that change behavior. Then rerun T032.
+
+---
+
+## Dependencies & Execution Order
+
+- **Phase 1** → **Phase 2** → stories. T001 before everything; T002 alongside T003 and T005–T012.
+- **Phase 2**: T003 → T004 and T013. T005–T012 are independent files ([P]). T014 needs T006 (auth) and T013 (store), and its templates.
+- **US1** (T015–T018) needs Phase 2. **US2** (T019–T020) needs US1's shell and T010–T011. **US3**, **US4**, **US5** each need US1 (base template, routes_pages helper) and run in order, since they all edit `store.py`, `routes_pages.py` and T014's route table. T023 can run in parallel with US3/US4 (its own file).
+- **US6**: T025–T029 touch disjoint files ([P]) and can run alongside US3–US5 except T025, which needs T019 (control's `memberships`).
+- **Phase 9** after all stories; **Phase 10** and **11** last.
+
+### Parallel examples
+
+```text
+Phase 2, after T003:  T005 timefmt | T006 auth | T007 render | T008 throttle | T009 charts | T010 toggle | T011 deployed | T012 address
+Phase 8:              T026 assistant text | T027 logins | T028 deployment | T029 docs
+```
+
+## Implementation Strategy
+
+1. **MVP = Phases 1–3 (US1)**: sign in and see state, positions and equity. Review line by line: `auth.py`, `throttle.py`, `app.py`'s dependencies and headers.
+2. **Add US2**: the toggle. Review `control.py`, `toggle.py` and `routes_toggle.py` line by line (the only write).
+3. **US3–US5**: the read views, one phase at a time.
+4. **US6, Polish, Converge, Review**, then the full suites and push.
