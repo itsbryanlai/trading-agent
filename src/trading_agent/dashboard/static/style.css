@@ -84,3 +84,7 @@ input[type="password"], input[type="text"], input[type="date"], select {
   background: transparent;
   color: var(--fg);
 }
+article { padding: 8px 0; border-bottom: 1px solid var(--line); }
+article.problem { border-left: 4px solid var(--down); padding-left: 12px; }
+article.problem strong { color: var(--down); }
+details > summary { cursor: pointer; }

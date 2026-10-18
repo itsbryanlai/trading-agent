@@ -14,7 +14,7 @@ from typing import Annotated
 from fastapi import APIRouter, Query, Request, Response
 from fastapi.responses import PlainTextResponse
 
-from trading_agent.dashboard import charts, deployed, pages, pages_orders, timefmt
+from trading_agent.dashboard import charts, deployed, pages, pages_activity, pages_orders, timefmt
 from trading_agent.dashboard.deps import Deps, SessionDep, get_deps, render
 from trading_agent.dashboard.store import StoreError
 from trading_agent.risk import calendar
@@ -124,3 +124,42 @@ def orders(
         rows = reader.orders(filters.symbol, since, until, size + 1, (filters.page - 1) * size)
     view = pages_orders.orders_view(rows, filters, size, deps.zone)
     return render(deps, "orders.html", view=view, **shell(deps, session, state, now, "orders"))
+
+
+@router.get("/activity")
+def activity(
+    request: Request,
+    session: SessionDep,
+    agent: Annotated[str | None, Query()] = None,
+    problems: Annotated[str | None, Query()] = None,
+    symbol: Annotated[str | None, Query()] = None,
+    day_from: Annotated[str | None, Query(alias="from")] = None,
+    day_to: Annotated[str | None, Query(alias="to")] = None,
+    page: Annotated[str | None, Query()] = None,
+) -> Response:
+    deps = get_deps(request)
+    filters = pages_activity.parse_filters(agent, problems, symbol, day_from, day_to, page)
+    since, until = pages_activity.bounds(filters, deps.zone)
+    plan = pages_activity.plan(filters)
+    size = deps.config.page_size
+    offset = (filters.page - 1) * size
+    limit = offset + size + 1
+    now = deps.clock()
+    with deps.store.read() as reader:
+        state = reader.state()
+        if state is None:
+            raise StoreError("database: NoStateRow")
+        reports = (
+            reader.reports(plan.report_agent, filters.symbol, since, until, limit)
+            if plan.reports
+            else []
+        )
+        decisions = reader.decisions(filters.symbol, since, until, limit) if plan.decisions else []
+        runs = (
+            reader.runs(plan.run_agent, since, until, filters.problems, limit) if plan.runs else []
+        )
+        merged = pages_activity.merge(reports, decisions, runs, offset, size)
+        times = reader.report_times(pages_activity.missing_report_ids(merged))
+    view = pages_activity.activity_view(merged, filters, times, deps.zone)
+    context = shell(deps, session, state, now, "activity")
+    return render(deps, "activity.html", view=view, **context)

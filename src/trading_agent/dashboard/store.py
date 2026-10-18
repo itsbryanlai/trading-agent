@@ -70,6 +70,39 @@ WHERE (%(symbol)s::text IS NULL OR COALESCE(d.symbol, t.symbol) = %(symbol)s::te
 ORDER BY v.evaluated_at DESC, v.id DESC
 LIMIT %(limit)s OFFSET %(offset)s
 """
+_SINCE = "(%(from)s::timestamptz IS NULL OR {col} >= %(from)s::timestamptz)"
+_UNTIL = "(%(to)s::timestamptz IS NULL OR {col} < %(to)s::timestamptz)"
+REPORTS = f"""
+SELECT id, agent, generated_at, symbol, direction, conviction, suggested_size_pct,
+       sources, rationale_md
+FROM reports
+WHERE (%(agent)s::text IS NULL OR agent = %(agent)s::text)
+  AND (%(symbol)s::text IS NULL OR symbol = %(symbol)s::text)
+  AND {_SINCE.format(col="generated_at")} AND {_UNTIL.format(col="generated_at")}
+ORDER BY generated_at DESC, id DESC LIMIT %(limit)s
+"""
+DECISIONS = f"""
+SELECT d.id, d.generated_at, d.symbol, d.direction, d.size_pct, d.reasoning_md,
+       d.quote_at_decision, d.quote_time,
+       COALESCE(array_agg(dr.report_id) FILTER (WHERE dr.report_id IS NOT NULL), '{{}}')
+           AS report_ids
+FROM decisions d LEFT JOIN decision_reports dr ON dr.decision_id = d.id
+WHERE (%(symbol)s::text IS NULL OR d.symbol = %(symbol)s::text)
+  AND {_SINCE.format(col="d.generated_at")} AND {_UNTIL.format(col="d.generated_at")}
+GROUP BY d.id ORDER BY d.generated_at DESC, d.id DESC LIMIT %(limit)s
+"""
+RUNS = f"""
+SELECT id, agent, trading_day, reason, slot_key, slot_at, started_at, finished_at,
+       outcome, detail
+FROM orchestrator_runs
+WHERE (%(agent)s::text IS NULL OR agent = %(agent)s::text)
+  AND {_SINCE.format(col="COALESCE(started_at, slot_at)")}
+  AND {_UNTIL.format(col="COALESCE(started_at, slot_at)")}
+  AND (%(problems)s::boolean = false
+       OR outcome IN ('failed', 'timed_out', 'skipped', 'interrupted'))
+ORDER BY COALESCE(started_at, slot_at) DESC NULLS LAST, id DESC LIMIT %(limit)s
+"""
+REPORT_TIMES = "SELECT id, generated_at FROM reports WHERE id = ANY(%(ids)s::uuid[])"
 PING = "SELECT 1"
 
 
@@ -117,6 +150,31 @@ class Reader:
         """One row per risk verdict, newest first; `until` is exclusive."""
         params = {"symbol": symbol, "from": since, "to": until, "limit": limit, "offset": offset}
         return self._all(ORDER_HISTORY, params)
+
+    def reports(self, agent, symbol, since, until, limit: int) -> list[dict]:
+        params = {"agent": agent, "symbol": symbol, "from": since, "to": until, "limit": limit}
+        return self._all(REPORTS, params)
+
+    def decisions(self, symbol, since, until, limit: int) -> list[dict]:
+        params = {"symbol": symbol, "from": since, "to": until, "limit": limit}
+        return self._all(DECISIONS, params)
+
+    def runs(self, agent, since, until, problems: bool, limit: int) -> list[dict]:
+        params = {
+            "agent": agent,
+            "from": since,
+            "to": until,
+            "problems": problems,
+            "limit": limit,
+        }
+        return self._all(RUNS, params)
+
+    def report_times(self, ids: list) -> dict:
+        """When each of these reports was written, so a decision can link to its day."""
+        if not ids:
+            return {}
+        rows = self._all(REPORT_TIMES, {"ids": [str(i) for i in ids]})
+        return {str(row["id"]): row["generated_at"] for row in rows}
 
     def latest_pm_run(self) -> dict | None:
         """The orchestrator's evidence for a resume (ADR 0028)."""
