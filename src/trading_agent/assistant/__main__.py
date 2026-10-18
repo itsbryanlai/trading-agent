@@ -145,7 +145,7 @@ def _main(
     store = store_factory(settings["database_url"], cfg)
     if args:
         return check.run_checks(
-            telegram, store, plan_model, zone_name=cfg.owner_time_zone,
+            telegram, store, plan_model, answer_model, zone_name=cfg.owner_time_zone,
             config_dir=config_path.parent, now=clock(), out=out,
         )
     memory = Memory(cfg.memory.exchanges, cfg.memory.idle_minutes)

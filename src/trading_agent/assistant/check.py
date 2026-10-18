@@ -16,9 +16,14 @@ from pathlib import Path
 from zoneinfo import ZoneInfo
 
 from trading_agent.assistant import settings_view
-from trading_agent.assistant.answer import PLAN_SCHEMA, parse_plan
+from trading_agent.assistant.answer import ANSWER_SCHEMA, PLAN_SCHEMA, parse_answer, parse_plan
 from trading_agent.assistant.menu import ENTRIES
-from trading_agent.assistant.prompt import PLAN_SYSTEM, plan_document
+from trading_agent.assistant.prompt import (
+    ANSWER_SYSTEM,
+    PLAN_SYSTEM,
+    answer_document,
+    plan_document,
+)
 from trading_agent.assistant.telegram import TokenRejected
 
 FIND_SECONDS = 120
@@ -32,12 +37,16 @@ class UnusablePlan(Exception):
     """The model's answer did not parse as a plan."""
 
 
+class UnusableAnswer(Exception):
+    """The model's answer did not parse as a reply."""
+
+
 class Unavailable(Exception):
     """A settings section or key could not be read."""
 
 
 def run_checks(
-    telegram, store, plan_model, *, zone_name: str, config_dir: Path, now: datetime,
+    telegram, store, plan_model, answer_model, *, zone_name: str, config_dir: Path, now: datetime,
     out: Callable[[str], None] = print,
 ) -> int:
     """Run every check, print one line each, and return 0 or 1."""
@@ -45,7 +54,8 @@ def run_checks(
     for name, check in (
         ("telegram", lambda: telegram.get_me()),
         ("database", lambda: store.known_symbols()),
-        ("model", lambda: _model(plan_model, zone_name, now)),
+        ("model_plan", lambda: _model_plan(plan_model, zone_name, now)),
+        ("model_answer", lambda: _model_answer(answer_model, zone_name, now)),
         ("time_zone", lambda: ZoneInfo(zone_name)),
         ("settings", lambda: _settings(config_dir)),
     ):
@@ -59,11 +69,20 @@ def run_checks(
     return EXIT_FAILED if failed else EXIT_OK
 
 
-def _model(plan_model, zone_name: str, now: datetime) -> None:
+def _model_plan(plan_model, zone_name: str, now: datetime) -> None:
     document = plan_document(now.astimezone(ZoneInfo(zone_name)), "hello", [], ENTRIES)
     reply = plan_model.complete(PLAN_SYSTEM, document, PLAN_SCHEMA)
     if parse_plan(reply.text) is None:
         raise UnusablePlan
+
+
+def _model_answer(answer_model, zone_name: str, now: datetime) -> None:
+    document = answer_document(
+        now.astimezone(ZoneInfo(zone_name)), "hello", [], [], [], True
+    )
+    reply = answer_model.complete(ANSWER_SYSTEM, document, ANSWER_SCHEMA)
+    if parse_answer(reply.text) is None:
+        raise UnusableAnswer
 
 
 def _settings(config_dir: Path) -> None:

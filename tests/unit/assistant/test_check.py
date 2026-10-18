@@ -18,13 +18,16 @@ from trading_agent.llm.ports import ModelUnavailable
 
 NOW = datetime(2026, 10, 20, 7, 0, tzinfo=UTC)
 GOOD_PLAN = {"action_request": False, "queries": []}
+GOOD_ANSWER = {"reply": "Hello."}
 CONFIG_DIR = DEFAULT_CONFIG_PATH.parent
 
 
-def go(*, telegram=None, store=None, model=None, zone="Asia/Singapore", config_dir=CONFIG_DIR):
+def go(*, telegram=None, store=None, model=None, answer=None, zone="Asia/Singapore",
+       config_dir=CONFIG_DIR):
     lines: list[str] = []
     code = check.run_checks(
         telegram or FakeTelegram(), store or FakeStore(), model or FakeModel(GOOD_PLAN),
+        answer or FakeModel(GOOD_ANSWER),
         zone_name=zone, config_dir=config_dir, now=NOW, out=lines.append,
     )
     return code, lines
@@ -34,7 +37,8 @@ def test_a_working_setup_passes_every_check_and_sends_nothing():
     telegram = FakeTelegram()
     code, lines = go(telegram=telegram)
     assert code == 0
-    assert lines == ["telegram: ok", "database: ok", "model: ok", "time_zone: ok", "settings: ok"]
+    assert lines == ["telegram: ok", "database: ok", "model_plan: ok", "model_answer: ok",
+                     "time_zone: ok", "settings: ok"]
     assert telegram.sent == [] and telegram.offsets == []
 
 
@@ -56,7 +60,9 @@ class RejectedTelegram(FakeTelegram):
     [
         ({"telegram": RejectedTelegram()}, "telegram", "TokenRejected"),
         ({"store": failing()}, "database", "StoreError"),
-        ({"model": FakeModel(error=ModelUnavailable("MARKER-SECRET"))}, "model",
+        ({"model": FakeModel(error=ModelUnavailable("MARKER-SECRET"))}, "model_plan",
+         "ModelUnavailable"),
+        ({"answer": FakeModel(error=ModelUnavailable("MARKER-SECRET"))}, "model_answer",
          "ModelUnavailable"),
         ({"zone": "Nowhere/Land"}, "time_zone", "ZoneInfoNotFoundError"),
     ],
@@ -67,12 +73,26 @@ def test_a_failure_names_the_check_and_the_exception_type_only(kwargs, name, kin
     failed = [line for line in lines if line.startswith(f"{name}:")]
     assert failed == [f"{name}: FAILED {kind}"]
     assert "MARKER-SECRET" not in "\n".join(lines)
-    assert len(lines) == 5  # the other checks still run
+    assert len(lines) == 6  # the other checks still run
 
 
 def test_a_model_answer_that_is_not_a_plan_fails():
     code, lines = go(model=FakeModel("not json"))
-    assert code == 1 and "model: FAILED UnusablePlan" in lines
+    assert code == 1 and "model_plan: FAILED UnusablePlan" in lines
+
+
+def test_an_unparseable_answer_fails_model_answer_only():
+    code, lines = go(answer=FakeModel("not json"))
+    assert code == 1 and "model_answer: FAILED UnusableAnswer" in lines
+    assert "model_plan: ok" in lines
+
+
+def test_the_answer_check_uses_the_answer_schema():
+    from trading_agent.assistant.answer import ANSWER_SCHEMA
+
+    answer = FakeModel(GOOD_ANSWER)
+    go(answer=answer)
+    assert answer.calls[0]["schema"] == ANSWER_SCHEMA
 
 
 def test_missing_settings_files_fail_the_settings_check(tmp_path):
@@ -162,7 +182,8 @@ def main(args, telegram, **env_overrides):
     code = runner.main(
         args,
         telegram_factory=lambda token, *, timeout: telegram,
-        model_factory=lambda *a, **k: FakeModel(GOOD_PLAN),
+        model_factory=lambda *a, schema_name, **k: FakeModel(
+            GOOD_ANSWER if schema_name.endswith("answer") else GOOD_PLAN),
         store_factory=lambda url, cfg: FakeStore(),
         sleep=lambda s: None, out=lines.append,
     )
@@ -172,7 +193,7 @@ def main(args, telegram, **env_overrides):
 def test_main_check_runs_the_checks_and_exits_zero(env):
     telegram = FakeTelegram()
     code, lines = main(["--check"], telegram)
-    assert code == 0 and len(lines) == 5 and all(line.endswith("ok") for line in lines)
+    assert code == 0 and len(lines) == 6 and all(line.endswith("ok") for line in lines)
     assert telegram.sent == []
 
 
