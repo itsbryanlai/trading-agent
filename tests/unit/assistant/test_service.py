@@ -360,3 +360,32 @@ def test_every_fixed_reply_logs_its_id_and_is_not_remembered(caplog):
 def test_a_question_through_respond_is_remembered():
     handled, store, *_ = respond_to(upd("what do we hold?"))
     assert handled.outcome.kind == "answered"
+
+
+@pytest.mark.parametrize(
+    ("now", "local_date", "et_offset"),
+    [
+        (NOW, "2026-10-20", "-04:00"),
+        (datetime(2026, 10, 19, 23, 0, tzinfo=SGT), "2026-10-19", "-04:00"),  # a session is open
+        (datetime(2026, 11, 17, 7, 0, tzinfo=SGT), "2026-11-17", "-05:00"),  # winter
+    ],
+)
+def test_the_plan_documents_now_carries_local_et_date_and_zone(now, local_date, et_offset):
+    plan_model = FakeModel(plan_of(choice("portfolio_now")))
+    handle("hi", now=now, config=CONFIG, store=FakeStore(), plan_model=plan_model,
+           answer_model=FakeModel({"reply": "ok"}), memory=Memory(5, 30))
+    stamp = json.loads(plan_model.calls[0]["user"])["now"]
+    assert stamp["local"] == now.isoformat() and stamp["local"].endswith("+08:00")
+    assert stamp["et"].endswith(et_offset)
+    assert stamp["local_date"] == local_date and stamp["time_zone"] == "Asia/Singapore"
+
+
+def test_a_plan_choice_of_the_local_day_reaches_the_store_as_that_days_utc_span():
+    from datetime import UTC
+
+    _, store, *_ = run(plan=plan_of(
+        choice("decisions", symbol="MU", from_date="2026-10-20", to_date="2026-10-20")))
+    (sent,) = store.run_calls[0]
+    assert sent.start == datetime(2026, 10, 19, 16, tzinfo=UTC)
+    assert sent.end == datetime(2026, 10, 20, 16, tzinfo=UTC)
+    assert sent.symbol == "MU"

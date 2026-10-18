@@ -224,3 +224,27 @@ def test_every_valid_choice_is_on_the_menu_and_within_limits(raws, max_queries, 
             assert choice.from_date <= choice.to_date
             assert (choice.to_date - choice.from_date).days + 1 <= max_span
             assert choice.start < choice.end
+
+
+def test_a_plan_choice_of_one_local_day_maps_to_the_utc_span_of_that_day():
+    # T016: Tue 2026-10-20 07:00 +08 is the default clock; the day is 16:00 UTC to 16:00 UTC.
+    (choice,), dropped = run(RawChoice("orders", from_date="2026-10-20", to_date="2026-10-20"))
+    assert not dropped
+    assert choice.start == datetime(2026, 10, 19, 16, tzinfo=UTC)
+    assert choice.end == datetime(2026, 10, 20, 16, tzinfo=UTC)
+
+
+@pytest.mark.parametrize("name", [n for n, e in ENTRIES.items() if e.default_days])
+def test_every_default_ends_on_the_owners_local_today_not_the_utc_date(name):
+    # at 07:00 +08 on Tue the UTC date is still Monday
+    (choice,), _ = run(RawChoice(name), today=date(2026, 10, 20))
+    assert choice.to_date == date(2026, 10, 20)
+    assert choice.end == datetime(2026, 10, 20, 16, tzinfo=UTC)
+
+
+def test_winter_dates_are_the_same_local_days_whatever_the_et_offset():
+    (choice,), _ = run(RawChoice("orders"), today=date(2026, 11, 17))
+    assert choice.start == datetime(2026, 11, 16, 16, tzinfo=UTC)
+    assert choice.start.astimezone(ZoneInfo("America/New_York")).utcoffset().total_seconds() == (
+        -5 * 3600
+    )
