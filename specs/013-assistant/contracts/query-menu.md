@@ -38,7 +38,7 @@ Every row-returning entry is capped at `max_rows_per_query`, newest first, with 
 | `universe` | symbol (required) | latest | — | the latest `instrument_reference` row for the symbol (trading day, security type, exchange, market cap, average daily dollar volume, share price, fetched at) |
 | `settings` | section? | — | — | the allowlisted settings below, as deployed |
 
-The known-symbol query (A10) isn't on the menu. Code runs it at the start of every question.
+The known-symbol query (A10) isn't on the menu. Code runs it after the plan call, and only when `action_request` is false.
 
 ## `settings` allowlist (ADR 0024 §3)
 

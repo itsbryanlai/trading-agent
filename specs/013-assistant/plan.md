@@ -12,7 +12,7 @@
    - `/commands` get the help text;
    - a message starting with an action word is refused, and the model explains the refusal after a fixed line (A7, A8, ADR 0024);
    - anything else is a question.
-2. **Plan**: the first model call picks entries from a fixed query menu (A9).
+2. **Plan**: the first model call picks entries from a fixed query menu, and flags a request to act (A9). A flagged message gets the same refusal as a keyword match, with no data read (A8, ADR 0025).
 3. **Validate and read**: code validates every choice (A10) and runs the valid ones as constant SQL, in one read-only transaction, as `ta_assistant_login` (A15). The `settings` entry reads an allowlist from the deployed config files (A16).
 4. **Answer**: the second model call writes the reply from the results. Code removes any link that isn't a stored report source (A12), caps the reply and splits it into messages (A14).
 
@@ -56,7 +56,7 @@ No new dependency.
 |---|---|
 | Users | 1 chat |
 | Questions | a few to tens a day, no cap (owner) |
-| Model calls | 2 per question, 1 per refusal |
+| Model calls | 2 per question; 1 per keyword refusal, 2 per flagged one |
 | Menu | 10 entries plus the known-symbol query |
 | Rows per question | ≤ 4 queries × 50 rows |
 
@@ -70,9 +70,9 @@ No new dependency.
 | II. Analysts propose, PM decides | The Assistant decides nothing. Its output goes only to the owner's chat, and nothing it writes exists for the PM to read. | Pass |
 | III. Least privilege at the database | No new grant. One new login for the existing read-only `ta_assistant`. Integration tests assert it can't write. Only `ASSISTANT_*` variables live on its service, and the guard test pins this. | Pass |
 | IV. Autonomous, one hard stop | No approval gate added. The breaker is only reported. | Pass |
-| V. Spec and ADR first | ADRs 0023 and 0024 cover the new service, credentials, data flows and the settings source, both accepted 2026-10-17. `docs/specs/assistant-agent.md`, the overview, the service-layout and logins contracts, and the runbook are updated, referencing them. | Pass |
+| V. Spec and ADR first | ADRs 0023 and 0024 cover the new service, credentials, data flows and the settings source, both accepted 2026-10-17; ADR 0025 (accepted 2026-10-18) adds the flag layer and the nine-word default list. `docs/specs/assistant-agent.md`, the overview, the service-layout and logins contracts, and the runbook are updated, referencing them. | Pass |
 | VI. Paper only, US equities | Not affected. | Pass |
-| VII. Assistant and dashboard read-only | The point of the design. Read grants only, no write path in code, refusals by code, and a link filter that limits what an injected reply can do. | Pass |
+| VII. Assistant and dashboard read-only | The point of the design. Read grants only, no write path in code, refusals by code (keywords first, then the plan call's flag, which can only add refusals), and a link filter that limits what an injected reply can do. | Pass |
 | Technology section (v1.1.1) | Qwen or Anthropic per config (ADR 0018). The Telegram bot token is a named credential. One worker service per process, as code. | Pass |
 
 **Re-check after design**: all pass. The design adds:
@@ -148,7 +148,7 @@ the assistant), .railway/README.md, specs/010-observe-only-deployment/contracts/
 ## Things flagged for the owner
 
 1. **`owner_time_zone: Asia/Singapore`** (owner, 2026-10-17). It is required in the config, with no code default.
-2. **Polite action requests aren't caught by code** (A7). "Please pause trading" or "can you sell AAPL?" don't start with an action word, so they reach the model as questions. Its instructions say it can't act and must say so, and no code path can write either way. Adding "please" or "can" to the list would refuse every message starting with them.
+2. **Polite action requests are caught by the plan call's flag** (A7, FR-012b, ADR 0025). "Please pause trading" or "can you sell AAPL?" don't start with an action word; the plan call sets `action_request` and code sends the same refusal, reading no data. If the plan answer is invalid, the flag counts as false and the message reaches the answer call with nothing looked up (accepted residual risk: no code path can write either way).
 3. **Default limits for you to adjust** (contracts/assistant-interface.md):
    - 4 queries a question, 50 rows a query;
    - a 92-day span;

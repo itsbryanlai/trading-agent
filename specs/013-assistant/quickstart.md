@@ -68,6 +68,6 @@ In the private chat, check each of these:
 1. Send `/help`. The reply lists what it answers and the action words.
 2. Ask "what do we hold?". Positions, equity and cash should match `docs/operations/observe-queries.sql`, with times in your zone and ET.
 3. Ask "what did the PM decide today?". The decisions and their verdicts should be listed.
-4. Send "pause trading". The reply should start with "Nothing was done", and `system_state` should be unchanged.
+4. Send "pause trading", then "please pause trading". Both replies should start with "Nothing was done", and `system_state` should be unchanged. The logs should show `trigger=keyword` and `trigger=model_flag`.
 5. Ask "what's the max position size?". It should say 8%, as deployed.
 6. In the logs, `railway logs -s assistant --deployment --lines 20` should show one `answered` or `refused` line per message, with no message text.

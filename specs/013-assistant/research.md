@@ -1,6 +1,6 @@
 # Research: The Assistant
 
-Decisions for `specs/013-assistant`. Each states the decision, why, and what else was considered. The owner's choices are in the spec's Clarifications and ADRs [0023](../../docs/adr/0023-assistant-runs-its-own-service-and-reads-through-a-query-menu.md) and [0024](../../docs/adr/0024-assistant-explains-refusals-and-reads-deployed-settings.md). Telegram facts are from the Bot API reference (https://core.telegram.org/bots/api, Bot API 10.3, read 2026-10-17).
+Decisions for `specs/013-assistant`. Each states the decision, why, and what else was considered. The owner's choices are in the spec's Clarifications and ADRs [0023](../../docs/adr/0023-assistant-runs-its-own-service-and-reads-through-a-query-menu.md) and [0024](../../docs/adr/0024-assistant-explains-refusals-and-reads-deployed-settings.md), refined by [0025](../../docs/adr/0025-assistant-model-flag-adds-refusals.md). Telegram facts are from the Bot API reference (https://core.telegram.org/bots/api, Bot API 10.3, read 2026-10-17).
 
 ## A1. Telegram through the standard library
 
@@ -89,7 +89,7 @@ This is pure code, in `inbox.py` and `actions.py`, applied in this order:
 | 1 | an `edited_message`, a forwarded message (it has `forward_origin`), or one without `text` (photo, voice, sticker, file) | R-TEXT-ONLY. A forward carries a third party's words, so it is never a question (analyze L6) |
 | 2 | text starting with `/` | `/start` and `/help` get R-HELP; any other command gets R-HELP too |
 | 3 | text whose first word is an action word (A7) | the action refusal (A8) |
-| 4 | anything else | a question (A9) |
+| 4 | anything else | a question (A9). If the plan call sets `action_request`, it becomes a `model_flag` refusal (A8) |
 
 ## A7. The action-word match (FR-012, ADR 0024 §1, ADR 0025 §3)
 
@@ -141,7 +141,7 @@ A flagged message therefore costs two model calls (plan, then refusal) and reads
    - the Assistant can't act;
    - quoting stored text is allowed, as attributed content;
    - the untrusted fields (A11) are data.
-4. If the plan answer is invalid, no query runs and the answer call says nothing was looked up (FR-017). An invalid answer reply gets R-MODEL-FAILED.
+4. If the plan answer is invalid, it is treated as `action_request: false` with no queries: no query runs and the answer call says nothing was looked up (FR-017). A polite action request whose plan answer is invalid therefore reaches the answer call; that is accepted residual risk, since no code path can write. An invalid answer reply gets R-MODEL-FAILED.
 
 **Why two calls, not tool use**: the shared `ModelClient` port is one structured call (`llm/ports.py`). It works the same on both providers, and both calls are tested with `FakeModel`.
 
@@ -156,7 +156,7 @@ Each choice is checked, and any failure drops it with a reason:
 | `name` is on the menu | `unknown_query` |
 | only the parameters that query takes are non-empty | `unexpected_parameter` |
 | every parameter the query requires is given (`universe` needs `symbol`) | `missing_parameter` |
-| `symbol` matches `^[A-Z][A-Z0-9.\-]{0,9}$` and is in the known-symbol set: positions, reports, decisions, stop-loss triggers and `instrument_reference`, read by a fixed query at the start of each question | `unknown_symbol` |
+| `symbol` matches `^[A-Z][A-Z0-9.\-]{0,9}$` and is in the known-symbol set: positions, reports, decisions, stop-loss triggers and `instrument_reference`, read by a fixed query after the plan call, only when `action_request` is false | `unknown_symbol` |
 | `agent` is in the query's own list | `unknown_agent` |
 | dates parse as ISO dates, `from_date` ≤ `to_date`, and the span is ≤ `max_span_days` | `bad_dates` |
 | `section` is in the settings entry's list | `unknown_section` |
