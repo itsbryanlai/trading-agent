@@ -72,3 +72,19 @@ def book(started_on: str, index: str, **usage) -> dict:
     base.update(started_on=started_on, index=index)
     base["usage"].update(usage)
     return base
+
+
+def journal_row(
+    trading_day: str, attribution, *, summary="A quiet day.", open_="100000", close="100500"
+) -> dict:
+    """A `journal` row as the store returns it."""
+    from datetime import date
+    from decimal import Decimal
+
+    return {
+        "trading_day": date.fromisoformat(trading_day),
+        "equity_open": Decimal(open_),
+        "equity_close": Decimal(close),
+        "summary_md": summary,
+        "per_agent_attribution": attribution,
+    }

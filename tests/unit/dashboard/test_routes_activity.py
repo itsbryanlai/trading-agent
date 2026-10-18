@@ -47,11 +47,13 @@ class Scan(HTMLParser):
     handle_startendtag = handle_starttag
 
 
-def assert_inert(html: str) -> None:
+def assert_inert(html: str, allow: frozenset[str] = frozenset()) -> None:
     scan = Scan()
     scan.feed(html)
     for tag, attrs in scan.tags:
-        assert tag not in {"script", "img", "iframe", "svg", "object", "embed", "style"}, tag
+        assert tag not in {"script", "img", "iframe", "svg", "object", "embed", "style"} - allow, (
+            tag
+        )
         for name, value in attrs.items():
             assert not name.startswith("on"), (tag, name)
             if name in {"href", "src", "action"}:

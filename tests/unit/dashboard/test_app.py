@@ -119,9 +119,13 @@ def test_no_data_without_a_session_on_any_session_route(built):
         assert response.status_code == 303, (method, path)
         assert response.headers["location"] == "/sign-in"
         assert MARKER not in response.text, (method, path)
-    assert {("GET", "/"), ("GET", "/orders"), ("GET", "/activity"), ("POST", "/sign-out")} <= set(
-        checked
-    )
+    assert {
+        ("GET", "/"),
+        ("GET", "/orders"),
+        ("GET", "/activity"),
+        ("GET", "/journal"),
+        ("POST", "/sign-out"),
+    } <= set(checked)
     assert built.store.read_calls == 0
 
 

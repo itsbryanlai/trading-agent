@@ -128,6 +128,34 @@ def test_every_coordinate_stays_inside_the_box(values, width, height):
     assert chart.empty == (all(v is None for v in values))
 
 
+def test_charts_sharing_a_value_range_share_the_y_axis():
+    low, high = Decimal(100), Decimal(200)
+    small = charts.polyline(_series(100, 110), height=200, value_range=(low, high))
+    big = charts.polyline(_series(100, 200), height=200, value_range=(low, high))
+    assert (small.min_label, small.max_label) == ("100.00", "200.00")
+    ys_small = [y for _, y in _coordinates(small.paths[0])]
+    ys_big = [y for _, y in _coordinates(big.paths[0])]
+    assert ys_small[0] == ys_big[0] == 196.0  # both start on the same baseline
+    assert ys_big[1] == 4.0 and ys_small[1] > 150  # the small one only rises a tenth
+
+
+def test_a_shared_x_axis_comes_from_all_points_including_gaps():
+    full = charts.polyline(_series(1, 2, 3))
+    late = charts.polyline(_series(None, 2, 3), value_range=(Decimal(1), Decimal(3)))
+    assert late.first_at == full.first_at and late.last_at == full.last_at
+    assert _coordinates(late.paths[0])[0][0] == _coordinates(full.paths[0])[1][0]
+
+
+def test_x_position_matches_the_polyline_and_handles_a_zero_span():
+    first, last = T0, T0 + timedelta(hours=2)
+    chart = charts.polyline(_series(1, 2, 3), width=600)
+    xs = [x for x, _ in _coordinates(chart.paths[0])]
+    assert charts.x_position(first, first, last) == xs[0]
+    assert charts.x_position(T0 + timedelta(hours=1), first, last) == xs[1]
+    assert charts.x_position(last, first, last) == xs[2]
+    assert charts.x_position(first, first, first) == 300.0
+
+
 # --- rebase ----------------------------------------------------------------------------------
 
 
