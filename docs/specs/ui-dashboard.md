@@ -17,6 +17,9 @@ entered, modified, or approved from here.
   row's Markdown rationale. Rationales are untrusted, model-written text that
   may quote the news: render them escaped (Markdown without raw HTML, links
   only to `http(s)` URLs), never as raw HTML (`specs/007-research-agent`).
+  Every `orchestrator_runs` row too, with failed, timed-out and skipped runs
+  marked, so a missing report can be told apart from a run that found
+  nothing (`specs/014-dashboard`).
 - **Journal** — the daily narrative summary and the per-agent attribution
   view: how each analyst's ideas would have performed on their own, next to
   the actual blended portfolio result
