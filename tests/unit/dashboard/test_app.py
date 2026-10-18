@@ -220,6 +220,45 @@ def test_error_pages_use_fixed_texts_and_log_the_type_and_route_only(probed, cap
         assert "MARKER-SECRET" not in line and "hunter2" not in line
 
 
+def test_a_500_is_answered_and_never_reaches_the_server_or_the_client(probed, caplog):
+    # `raise_server_exceptions=True`: Starlette's ServerErrorMiddleware would re-raise after its
+    # handler, and uvicorn would then log the message and traceback (research D18).
+    caplog.set_level(logging.DEBUG)
+    with caplog.at_level(logging.DEBUG, logger="uvicorn.error"):
+        client = probed.client(raise_server_exceptions=True)
+        response = client.get("/probe/boom")
+    assert response.status_code == 500
+    assert "Something went wrong." in response.text
+    assert response.headers["content-security-policy"] == CSP
+    assert response.headers["cache-control"] == "no-store"
+    for record in caplog.records:
+        assert record.exc_info is None and record.exc_text is None
+        for text in (record.getMessage(), record.name):
+            assert "MARKER-SECRET" not in text and "hunter2" not in text
+            assert "Traceback" not in text
+    errors = [r.getMessage() for r in caplog.records if r.getMessage().startswith("dashboard")]
+    assert errors == ["dashboard error type=RuntimeError route=/probe/boom"]
+
+
+def test_a_500_after_the_response_started_is_logged_not_raised(built, caplog):
+    from starlette.responses import StreamingResponse
+
+    caplog.set_level(logging.INFO, logger="trading_agent.dashboard")
+
+    @built.app.get("/probe/partial")
+    def partial():
+        def chunks():
+            yield b"first"
+            raise RuntimeError("MARKER-SECRET late")
+
+        return StreamingResponse(chunks())
+
+    built.client(raise_server_exceptions=True).get("/probe/partial")
+    lines = [r.getMessage() for r in caplog.records]
+    assert "dashboard error type=RuntimeError route=/probe/partial" in lines
+    assert all("MARKER-SECRET" not in line for line in lines)
+
+
 def test_the_log_names_the_route_template_never_the_url(probed, caplog):
     caplog.set_level(logging.INFO, logger="trading_agent.dashboard")
     probed.client().get("/probe/boom?secret=MARKER-QUERY")

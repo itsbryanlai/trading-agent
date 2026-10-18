@@ -87,6 +87,7 @@ def create_app(
     app.state.deps = deps
     _add_headers(app)
     _add_error_pages(app, deps)
+    app.add_middleware(UnhandledErrors, deps=deps)  # added last, so outermost
 
     app.state.health = routes_pages.HealthCache(store, clock)
     app.include_router(routes_auth.router)
@@ -111,7 +112,7 @@ def _add_headers(app: FastAPI) -> None:
 def _error_page(
     deps: Deps, request: Request, status_code: int, message: str, *, pause_link: bool = False
 ) -> Response:
-    # The 500 handler runs outside the middleware above, so every page sets its own headers.
+    # The 500 page is sent from outside the middleware above, so every page sets its own headers.
     response = shared.render(
         deps, "error.html", status_code, message=message, pause_link=pause_link
     )
@@ -149,7 +150,35 @@ def _add_error_pages(app: FastAPI, deps: Deps) -> None:
         signed_in = shared.current_session(request) is not None
         return _error_page(deps, request, 503, UNAVAILABLE, pause_link=signed_in)
 
-    @app.exception_handler(Exception)
-    async def failed(request: Request, exc: Exception) -> Response:
-        shared.emit("error", type=type(exc).__name__, route=shared.route_template(request))
-        return _error_page(deps, request, 500, FAILED)
+
+class UnhandledErrors:
+    """The outermost middleware: any other exception becomes the 500 page and one log line.
+
+    Starlette's `ServerErrorMiddleware` re-raises after an `Exception` handler, and uvicorn
+    then logs the message and traceback, which can hold row text or a connection string
+    (research D18). This catches first and does not re-raise.
+    """
+
+    def __init__(self, app, deps: Deps) -> None:
+        self.app = app
+        self.deps = deps
+
+    async def __call__(self, scope, receive, send) -> None:
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+        started = False
+
+        async def tracked(message) -> None:
+            nonlocal started
+            started = started or message["type"] == "http.response.start"
+            await send(message)
+
+        try:
+            await self.app(scope, receive, tracked)
+        except Exception as exc:
+            request = Request(scope)
+            shared.emit("error", type=type(exc).__name__, route=shared.route_template(request))
+            if not started:  # otherwise the response is already on the wire; end it
+                page = _error_page(self.deps, request, 500, FAILED)
+                await page(scope, receive, send)
