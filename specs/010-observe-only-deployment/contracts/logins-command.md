@@ -19,6 +19,8 @@ Run by the owner on their own machine, with `ADMIN_DATABASE_URL` exported in the
 | `ta_owner_control_login` | `ta_dashboard_control` (`trading_paused` only) | the owner: sets the pause during setup, clears it at switch-on |
 | `ta_journal_login` | `ta_journal` | journal service |
 | `ta_assistant_login` | `ta_assistant` (read-only) | assistant service |
+| `ta_dashboard_login` | `ta_dashboard` (read-only) | dashboard service (every page, the health check, `--check`) |
+| `ta_dashboard_control_login` | `ta_dashboard_control` (`trading_paused` only) | dashboard service (the pause toggle's one write, `--check`) |
 
 Each login is `LOGIN`, `INHERIT` and `NOSUPERUSER NOCREATEDB NOCREATEROLE`, and a member of exactly one group role.
 
@@ -52,3 +54,5 @@ Each login is `LOGIN`, `INHERIT` and `NOSUPERUSER NOCREATEDB NOCREATEROLE`, and 
 **Amended 2026-10-09 by feature 012** ([`specs/012-journal-writer`](../../012-journal-writer/spec.md), [ADR 0022](../../../docs/adr/0022-journal-writer-runs-after-the-close-with-its-own-finnhub-key.md)). The table has ten rows: `ta_journal_login` is a member of `ta_journal`, whose role and grants already exist (migrations 0001 and 0004), and is given to the `journal` service as `JOURNAL_DATABASE_URL`. Everything else in this contract is unchanged.
 
 **Amended 2026-10-18 by feature 013** ([`specs/013-assistant`](../../013-assistant/spec.md), [ADR 0023](../../../docs/adr/0023-assistant-runs-its-own-service-and-reads-through-a-query-menu.md) §5). The table has eleven rows: `ta_assistant_login` is a member of `ta_assistant`, whose role and read grants already exist, and is given to the `assistant` service as `ASSISTANT_DATABASE_URL`. Everything else in this contract is unchanged.
+
+**Amended 2026-10-18 by feature 014** ([`specs/014-dashboard`](../../014-dashboard/spec.md), [ADR 0026](../../../docs/adr/0026-dashboard-public-service-with-owner-sign-in.md) §3). The table has thirteen rows: `ta_dashboard_login` is a member of `ta_dashboard` and `ta_dashboard_control_login` of `ta_dashboard_control`, whose roles and grants already exist. They are given to the `dashboard` service as `DASHBOARD_DATABASE_URL` and `DASHBOARD_CONTROL_DATABASE_URL`, and are separate from the owner's `ta_owner_read_login` and `ta_owner_control_login`. Everything else in this contract is unchanged.
