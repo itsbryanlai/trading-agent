@@ -74,6 +74,18 @@ CONTRACT: dict[str, tuple[str, set[str]]] = {
         "python -m trading_agent.journal",
         {"JOURNAL_DATABASE_URL", "JOURNAL_FINNHUB_API_KEY"},
     ),
+    # ADR 0023: always on, its own ASSISTANT_* names only, either provider's key.
+    "assistant": (
+        "python -m trading_agent.assistant",
+        {
+            "ASSISTANT_DATABASE_URL",
+            "ASSISTANT_TELEGRAM_BOT_TOKEN",
+            "ASSISTANT_TELEGRAM_CHAT_ID",
+            "ASSISTANT_DASHSCOPE_API_KEY",
+            "ASSISTANT_QWEN_BASE_URL",
+            "ASSISTANT_ANTHROPIC_API_KEY",
+        },
+    ),
 }
 
 _QUOTES = "\"'`"
@@ -202,6 +214,9 @@ def _whole_file(text: str, blocks: dict[str, str]) -> list[str]:
     for prefix in ("ALPACA_", "EXECUTION_"):
         if prefix in outside:
             found.append(f"{prefix}* appears outside the execution service")
+    assistant = blocks.get("assistant")
+    if "ASSISTANT_" in (text.replace(assistant, "") if assistant else text):
+        found.append("ASSISTANT_* appears outside the assistant service (ADR 0023)")
     if len(re.findall(r"\bgithub\(", text)) != len(re.findall(re.escape(SOURCE), text)):
         found.append('every github() source must be exactly branch: "release/prod"')
     if len(re.findall(r"\bcronSchedule\b", text)) != 1:
@@ -481,3 +496,36 @@ def test_a_journal_variable_on_another_service_is_caught(shipped):
 
 def test_a_journal_service_without_its_key_is_caught(shipped):
     assert _broken(shipped, "      JOURNAL_FINNHUB_API_KEY: preserve(),\n", "")
+
+
+def test_an_assistant_variable_on_another_service_is_caught(shipped):
+    assert _broken(
+        shipped,
+        "RISK_GATE_DATABASE_URL: preserve(),",
+        "RISK_GATE_DATABASE_URL: preserve(),\n      ASSISTANT_TELEGRAM_BOT_TOKEN: preserve(),",
+    )
+
+
+@pytest.mark.parametrize(
+    "name", ["ALPACA_API_KEY_ID", "RESEARCH_DATABASE_URL", "JOURNAL_FINNHUB_API_KEY"]
+)
+def test_another_components_variable_on_the_assistant_is_caught(shipped, name):
+    assert _broken(
+        shipped,
+        "ASSISTANT_DATABASE_URL: preserve(),",
+        f"ASSISTANT_DATABASE_URL: preserve(),\n      {name}: preserve(),",
+    )
+
+
+def test_an_assistant_service_without_its_token_is_caught(shipped):
+    assert _broken(shipped, "      ASSISTANT_TELEGRAM_BOT_TOKEN: preserve(),\n", "")
+
+
+def test_a_cron_schedule_on_the_assistant_is_caught(shipped):
+    start = 'start: "python -m trading_agent.assistant",'
+    assert _broken(shipped, start, start + "\n    " + JOURNAL_DEPLOY + ",")
+
+
+def test_a_restart_policy_on_the_assistant_is_caught(shipped):
+    start = 'start: "python -m trading_agent.assistant",'
+    assert _broken(shipped, start, start + '\n    deploy: { restartPolicyType: "NEVER" },')

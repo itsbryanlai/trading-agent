@@ -14,6 +14,7 @@
 // Railpack runs it before copying src/, so the editable install is the buildCommand.
 // Every service starts from the repository root, on one replica, with Railway's
 // default on-failure restart, except the journal: a daily cron job, never restarted.
+// The assistant is always on (ADR 0023) and holds only ASSISTANT_* names.
 
 import { defineRailway, github, postgres, preserve, project, service } from "railway/iac";
 
@@ -97,7 +98,24 @@ export default defineRailway(() => {
     },
   });
 
+  // Always on (ADR 0023): long-polls Telegram and reads the database through a fixed menu
+  // of queries, as ta_assistant_login. Holds a model key and the bot token, and no broker key.
+  const assistant = service("assistant", {
+    source: github("itsbryanlai/trading-agent", { branch: "release/prod" }),
+    build: { builder: "RAILPACK", buildCommand: "/app/.venv/bin/pip install -e ." },
+    start: "python -m trading_agent.assistant",
+    replicas: 1,
+    env: {
+      ASSISTANT_DATABASE_URL: preserve(),
+      ASSISTANT_TELEGRAM_BOT_TOKEN: preserve(),
+      ASSISTANT_TELEGRAM_CHAT_ID: preserve(),
+      ASSISTANT_DASHSCOPE_API_KEY: preserve(),
+      ASSISTANT_QWEN_BASE_URL: preserve(),
+      ASSISTANT_ANTHROPIC_API_KEY: preserve(),
+    },
+  });
+
   return project("trading-agent", {
-    resources: [db, orchestrator, riskGate, referenceData, execution, journal],
+    resources: [db, orchestrator, riskGate, referenceData, execution, journal, assistant],
   });
 });
