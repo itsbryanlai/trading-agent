@@ -43,6 +43,9 @@ def test_action_words_at_the_start_match(text, word):
         "pauses",
         "selling",
         "Hello",
+        "3 sell orders?",
+        "10 buy",
+        "2nd sell",
     ],
 )
 def test_other_text_does_not_match(text):
@@ -57,7 +60,7 @@ def test_a_word_not_in_the_list_does_not_match():
 def test_a_first_letter_run_off_the_list_never_matches(text):
     import re
 
-    found = re.search(r"[^\W\d_]+", text)
+    found = re.search(r"[^\W_]+", text)
     if found is None or found.group().casefold() not in WORDS:
         assert match(text, WORDS) is None
 

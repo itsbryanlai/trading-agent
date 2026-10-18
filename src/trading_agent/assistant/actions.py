@@ -11,14 +11,15 @@ import json
 import re
 
 TRIGGERS = ("keyword", "model_flag")
-_FIRST_WORD = re.compile(r"[^\W\d_]+")
+_FIRST_WORD = re.compile(r"[^\W_]+")
 
 
 def match(text: str, action_words) -> str | None:
     """The configured action word the text starts with, or None.
 
-    Leading whitespace, punctuation and digits are skipped; the first run of letters is
-    compared case-insensitively. "Pause!" and "  cancel the order" match; "please pause" does not.
+    Leading whitespace and punctuation are skipped; the first run of letters or digits is
+    compared case-insensitively, so a number is a first word that is never on the list.
+    "Pause!" and "  cancel the order" match; "please pause" and "3 sell orders?" do not.
     """
     found = _FIRST_WORD.search(text)
     if found is None:
