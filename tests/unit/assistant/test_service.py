@@ -158,10 +158,24 @@ def test_every_choice_dropped_runs_no_query():
     assert store.run_calls == []
 
 
-def test_a_settings_choice_is_not_run_yet():  # TODO T015
+def test_a_settings_choice_reads_files_and_makes_no_store_run():
     _, store, _, answer_model, _ = run(plan=plan_of(choice("settings", section="risk")))
     assert store.run_calls == []
-    assert [d["query"] for d in answer_doc(answer_model)["dropped"]] == ["settings"]
+    doc = answer_doc(answer_model)
+    assert doc["dropped"] == [] and doc["nothing_looked_up"] is False
+    (result,) = doc["results"]
+    assert result["query"] == "settings" and result["parameters"] == {"section": "risk"}
+    assert set(result["rows"][0]) == {"risk"}
+
+
+def test_settings_and_a_database_entry_keep_the_choices_order():
+    _, store, _, answer_model, _ = run(
+        plan=plan_of(choice("settings"), choice("portfolio_now"))
+    )
+    assert [c.name for c in store.run_calls[0]] == ["portfolio_now"]
+    assert [r["query"] for r in answer_doc(answer_model)["results"]] == [
+        "settings", "portfolio_now"
+    ]
 
 
 def test_the_flag_hands_off_before_any_store_call():

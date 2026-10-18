@@ -10,10 +10,12 @@ Refusals keep to A8: an agent-flagged request returns before any store call.
 from __future__ import annotations
 
 from datetime import datetime
+from pathlib import Path
 
-from trading_agent.assistant import replies
+from trading_agent.assistant import replies, settings_view
 from trading_agent.assistant.actions_flow import refuse
 from trading_agent.assistant.answer import ANSWER_SCHEMA, PLAN_SCHEMA, parse_answer, parse_plan
+from trading_agent.assistant.config import DEFAULT_CONFIG_PATH
 from trading_agent.assistant.inbox import ActionRequest, Command, TextOnly, classify
 from trading_agent.assistant.links import filter_links
 from trading_agent.assistant.menu import ENTRIES, Dropped, QueryResult, ValidChoice, validate
@@ -35,7 +37,6 @@ from trading_agent.llm.ports import (
 )
 
 UNUSABLE = "unusable"
-_NOT_YET = Dropped("settings", "not_available_yet")  # TODO T015: settings come from files
 
 
 def respond(update: dict, *, now: datetime, config, **parts) -> Handled:
@@ -55,7 +56,8 @@ def respond(update: dict, *, now: datetime, config, **parts) -> Handled:
 
 
 def handle(
-    message_text: str, *, now: datetime, config, store, plan_model, answer_model, memory
+    message_text: str, *, now: datetime, config, store, plan_model, answer_model, memory,
+    config_dir: Path | None = None,
 ) -> Handled:
     """Answer one question. `now` carries the owner's ZoneInfo."""
     limits = config.limits
@@ -96,10 +98,7 @@ def handle(
                 max_span_days=limits.max_span_days,
                 max_queries=limits.max_queries_per_question,
             )
-            runnable = [c for c in valid if c.name != "settings"]  # TODO T015
-            dropped += [_NOT_YET] * (len(valid) - len(runnable))
-            valid = runnable
-            results = store.run(valid) if valid else []
+            results = _run(valid, store, config_dir or DEFAULT_CONFIG_PATH.parent)
     except StoreError as exc:
         return done(replies.database(), Outcome("database", detail=type(exc).__name__,
                                                   plan_tokens=plan_tokens))
@@ -133,6 +132,22 @@ def handle(
     parts = replies.split(text)
     memory.add(now, message_text, text)
     return done(parts, Outcome("answered", links_removed=removed, messages=len(parts), **seen))
+
+
+def _run(valid: list[ValidChoice], store, config_dir: Path) -> list[QueryResult]:
+    """Database entries through the store in one snapshot; `settings` from the files (A16).
+    Results keep the order of the choices."""
+    database = [c for c in valid if c.name != "settings"]
+    from_db = iter(store.run(database) if database else [])
+    results: list[QueryResult] = []
+    for choice in valid:
+        if choice.name == "settings":
+            given = {"section": choice.section} if choice.section else {}
+            data = settings_view.read(config_dir, choice.section or None)
+            results.append(QueryResult("settings", given, [data], False))
+        else:
+            results.append(next(from_db))
+    return results
 
 
 def _category(exc: ModelError) -> str:
