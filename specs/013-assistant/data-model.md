@@ -24,7 +24,7 @@ The `settings` allowlist (contracts/query-menu.md), from `config/*.yaml` in the 
 | Entity | Fields | Lifetime and rules |
 |---|---|---|
 | `Update` | update_id, kind (`message` or `edited_message`), chat id, chat type, date, text or none | one poll batch. Only the authorised private chat's updates are kept past classification (A5) |
-| `Inbound` | one of: `TextOnly`, `Command`, `ActionRequest(matched_word)`, `Question(text)` | one message (A6) |
+| `Inbound` | one of: `TextOnly`, `Command`, `ActionRequest(matched_word)`, `Question(text)` | one message (A6). A `Question` the plan call flags becomes a `model_flag` refusal (A8) |
 | `QueryChoice` | name, symbol, agent, from_date, to_date, section | one question. It is either `Valid` (with UTC bounds) or `Dropped(reason)` (A10) |
 | `QueryResult` | name, parameters, rows (dicts, timestamps in both zones), cut | one question. Rows are capped, and untrusted fields are cut (A11) |
 | `Exchange` | asked_at, question, reply | in the `Memory` deque: at most `memory.exchanges`, cleared after `memory.idle_minutes` of quiet and on restart. Refusals and fixed replies are not stored (A13) |

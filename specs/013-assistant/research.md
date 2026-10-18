@@ -91,24 +91,29 @@ This is pure code, in `inbox.py` and `actions.py`, applied in this order:
 | 3 | text whose first word is an action word (A7) | the action refusal (A8) |
 | 4 | anything else | a question (A9) |
 
-## A7. The action-word match (FR-012, ADR 0024 §1)
+## A7. The action-word match (FR-012, ADR 0024 §1, ADR 0025 §3)
 
-**Decision**: take the text and strip leading whitespace and punctuation. The first word is the first run of letters, compared case-insensitively with `action_words` from config. "Pause!", "SELL AAPL" and "  cancel the order" match. "Why did the PM sell MU?", "Is trading paused?" and "please pause trading" don't.
+**Decision**: take the text and strip leading whitespace and punctuation. The first word is the first run of letters, compared case-insensitively with `action_words` from config. "Pause!", "SELL AAPL" and "  cancel the order" match. "Why did the PM sell MU?", "Is trading paused?", "Stop-loss triggers this week?" and "please pause trading" don't. The default list no longer has `stop` or `close` (ADR 0025 §3).
 
-**Flagged for the owner**: a polite form such as "please pause trading" or "can you sell AAPL?" is not caught by code. It reaches the model as a question. The answer prompt says the Assistant can't act and must say so (A9). Nothing can change either way, because no code path writes. Adding words such as "please" to the list would refuse every message starting with them.
+**Second layer (ADR 0025 §2)**: a polite form such as "please pause trading", "can you sell AAPL?" or "stop trading" is not caught by the keyword check. The plan call's `action_request` flag catches it (A9), and code sends the same refusal. Nothing could change either way, because no code path writes; the flag narrows the chance of a misleading reply.
 
-## A8. The action refusal (FR-012, ADR 0024 §2)
+## A8. The action refusal (FR-012, FR-012b, ADR 0024 §2, ADR 0025 §2)
+
+Two triggers lead here: a keyword match (before any model call), or the plan call's `action_request: true` (before any query, including the known-symbol query).
 
 1. Code builds the fixed first line, R-REFUSED-LINE.
 2. One model call, with `REFUSAL_SYSTEM`, gets a JSON document holding only:
    - `message`: the owner's text;
-   - `matched_word`;
+   - `trigger`: `keyword` or `model_flag`;
+   - `matched_word`: the word, or `""` for `model_flag`;
    - `action_words`: the list;
    - `controls`: the fixed list of where the controls live.
 
    No query runs. No history, setting value, query result or stored model text is included.
 3. The model returns `{"reply": …}` (contracts/model-io.md). The sent text is the fixed line, a blank line, then the reply after the link filter (A12).
-4. If the model call fails or the reply is invalid, code sends R-REFUSED-FALLBACK: the fixed line, the list and the controls.
+4. If the model call fails or the reply is invalid, code sends R-REFUSED-FALLBACK (keyword) or R-REFUSED-FALLBACK-FLAG (model flag): the fixed line, the list and the controls.
+
+A flagged message therefore costs two model calls (plan, then refusal) and reads no data.
 
 ## A9. A question: two calls (FR-006, FR-007)
 
@@ -118,8 +123,8 @@ This is pure code, in `inbox.py` and `actions.py`, applied in this order:
    - the recent exchanges (A13);
    - the query menu: names, what each returns and its parameters (contracts/query-menu.md).
 
-   The model returns `{"queries": [{"name", "symbol", "agent", "from_date", "to_date", "section"}]}`. Every parameter is present as a plain string, with `""` for "not given", as strict JSON Schema needs. No nullable types: the other agents' schemas use none, so Qwen's strict mode is only relied on for plain types (analyze M11).
-2. **Validation** in code (`menu.py`, A10). Valid choices run in one read-only transaction. Invalid ones are recorded with a reason.
+   The model returns `{"action_request": bool, "queries": [{"name", "symbol", "agent", "from_date", "to_date", "section"}]}`. If `action_request` is true, the queries are ignored and the refusal (A8) follows. Every parameter is present as a plain string, with `""` for "not given", as strict JSON Schema needs. No nullable types: the other agents' schemas use none, so Qwen's strict mode is only relied on for plain types (analyze M11).
+2. **Validation** in code (`menu.py`, A10), after the plan call: the known-symbol query runs only now, so a flagged message reads nothing. Valid choices run in one read-only transaction. Invalid ones are recorded with a reason.
 3. **Answer call** (`ANSWER_SYSTEM`, schema `assistant_answer`). The document holds:
    - the question, `now` and the exchanges;
    - the results, each with its query, its parameters, its rows and a `cut` flag;

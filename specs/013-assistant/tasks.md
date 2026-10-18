@@ -10,7 +10,7 @@ description: "Task list for the Assistant (feature 013)"
 **Prerequisites**:
 - plan.md, spec.md (with Clarifications), research.md (A1–A21), data-model.md, quickstart.md;
 - contracts/assistant-interface.md, contracts/query-menu.md, contracts/model-io.md, contracts/replies.md;
-- ADRs [0004](../../docs/adr/0004-shared-postgres-role-scoped-credentials.md), [0007](../../docs/adr/0007-assistant-is-separate-read-only-telegram.md), [0018](../../docs/adr/0018-qwen-as-a-model-provider.md), [0021](../../docs/adr/0021-railway-deployment-as-code-observe-only-first.md), [0023](../../docs/adr/0023-assistant-runs-its-own-service-and-reads-through-a-query-menu.md), [0024](../../docs/adr/0024-assistant-explains-refusals-and-reads-deployed-settings.md).
+- ADRs [0004](../../docs/adr/0004-shared-postgres-role-scoped-credentials.md), [0007](../../docs/adr/0007-assistant-is-separate-read-only-telegram.md), [0018](../../docs/adr/0018-qwen-as-a-model-provider.md), [0021](../../docs/adr/0021-railway-deployment-as-code-observe-only-first.md), [0023](../../docs/adr/0023-assistant-runs-its-own-service-and-reads-through-a-query-menu.md), [0024](../../docs/adr/0024-assistant-explains-refusals-and-reads-deployed-settings.md), [0025](../../docs/adr/0025-assistant-model-flag-adds-refusals.md).
 
 **Tests**: included, written first within each task (Constitution: every logic change is covered by tests). The safety criteria are backed by fixtures and Hypothesis properties of pure modules:
 - SC-002: no writes;
@@ -95,9 +95,9 @@ description: "Task list for the Assistant (feature 013)"
   - `inbox.classify(update, action_words) -> TextOnly | Command | ActionRequest(matched_word) | Question(text)`, in A6's order. An edited message, a message with `forward_origin`, and one without `text` are all `TextOnly`;
   - `inbox.count_skippable(updates, chat_id) -> int`: the `message`s from the authorised chat (A4);
   - `actions.match(text, action_words) -> str | None`: strip leading whitespace and punctuation, take the first run of letters, compare case-insensitively;
-  - `actions.refusal_document(text, word, action_words, controls) -> str`: JSON with exactly `message`, `matched_word`, `action_words` and `controls` (contracts/model-io.md).
+  - `actions.refusal_document(text, trigger, word, action_words, controls) -> str`: JSON with exactly `message`, `trigger` (`keyword` or `model_flag`), `matched_word` (`""` for `model_flag`), `action_words` and `controls` (contracts/model-io.md).
 
-  Cases: "Pause!", "SELL AAPL" and "  cancel the order" match; "Why did the PM sell MU?", "is trading paused?" and "please pause trading" don't. A group chat with any ID, a channel, and another private chat are not authorised.
+  Cases: "Pause!", "SELL AAPL" and "  cancel the order" match; "Why did the PM sell MU?", "is trading paused?", "Stop-loss triggers this week?", "close price of MU?" and "please pause trading" don't (the default list has no `stop` or `close`, ADR 0025 §3). A group chat with any ID, a channel, and another private chat are not authorised.
 
   Hypothesis property: for any text whose first letter-run is not on the list, `match` is `None`.
 - [ ] T005 [P] `src/trading_agent/assistant/links.py` (research A12), test first in `tests/unit/assistant/test_links.py`: `filter_links(reply, allowed_urls) -> (text, removed_count)`.
@@ -113,7 +113,7 @@ description: "Task list for the Assistant (feature 013)"
 
   **Mutation-check**: add `deployment.md` back to `CONTROLS`; the guard must fail.
 - [ ] T006 [P] `src/trading_agent/assistant/replies.py` (contracts/replies.md, research A14), test first in `tests/unit/assistant/test_replies.py`:
-  - each fixed reply as a function returning text: `help_text(action_words, time_zone)`, `text_only()`, `refused_line()`, `refused_fallback(word, action_words, controls)`, `skipped(n)`, `too_much()`, `database()`, `model_failed(category)`;
+  - each fixed reply as a function returning text: `help_text(action_words, time_zone)`, `text_only()`, `refused_line()`, `refused_fallback(word, action_words, controls)`, `refused_flag_fallback(action_words, controls)`, `skipped(n)`, `too_much()`, `database()`, `model_failed(category)`;
   - the `CONTROLS` constant, exactly the two strings in contracts/model-io.md (no file name, analyze H1);
   - `cap(text, max_chars)`, which appends "…(cut)";
   - `split(text, limit_units=4000) -> list[str]`: UTF-16 code units, split at the last newline or space before the limit, otherwise hard-split.
@@ -121,7 +121,7 @@ description: "Task list for the Assistant (feature 013)"
   Hypothesis: the joined parts equal the input modulo the split whitespace, and every part is at most 4,000 UTF-16 units, including emoji-heavy text.
 - [ ] T007 [P] `src/trading_agent/assistant/memory.py` (research A13), test first in `tests/unit/assistant/test_memory.py`: `Memory(max_exchanges, idle_minutes)` with `add(asked_at, question, reply)` and `recent(now) -> list[Exchange]`. It keeps the newest N and clears everything when the newest is older than the idle period. Covers the 07:00/07:31 case and `max_exchanges=0`.
 - [ ] T008 [P] `src/trading_agent/assistant/answer.py` (contracts/model-io.md), test first in `tests/unit/assistant/test_answer.py`:
-  - `PLAN_SCHEMA` and `ANSWER_SCHEMA` (strict: every property required, `additionalProperties: false`, nullable parameters);
+  - `PLAN_SCHEMA` and `ANSWER_SCHEMA` (strict: every property required, `additionalProperties: false`, no nullable types; `PLAN_SCHEMA` has a boolean `action_request` and the `queries` list);
   - `parse_plan(text) -> list[RawChoice] | None` (`None` when invalid). Every parameter is a plain string, `""` meaning not given; there are no nullable types in either schema (analyze M11);
   - `parse_answer(text) -> str | None` (`None` when invalid or empty).
 
@@ -169,8 +169,8 @@ description: "Task list for the Assistant (feature 013)"
 **Independent test**: with `FakeTelegram`, two `FakeModel`s and the fake store holding a portfolio and a day's decisions, each US1 question gets a reply stating exactly the stored figures, each with its time.
 
 - [ ] T012 [US1] `src/trading_agent/assistant/service.py`, the question flow, test first in `tests/unit/assistant/test_service.py`. It is `handle(message_text, *, now, config, store, plan_model, answer_model, memory) -> Handled(replies, outcome)`:
-  1. Read the known symbols.
-  2. Build the plan document (`fit`), call `plan_model.complete(PLAN_SYSTEM, doc, PLAN_SCHEMA)`, then `parse_plan`.
+  1. Build the plan document (`fit`), call `plan_model.complete(PLAN_SYSTEM, doc, PLAN_SCHEMA)`, then `parse_plan`. If `action_request` is true, stop here and hand off to the refusal (T019) with trigger `model_flag`: no store call of any kind.
+  2. Read the known symbols.
   3. Run `menu.validate`, then `store.run`.
   4. Build the answer document. If it doesn't fit, return R-TOO-MUCH with no answer call.
   5. Call `answer_model.complete`, then `parse_answer`.
@@ -247,11 +247,13 @@ description: "Task list for the Assistant (feature 013)"
   - every fixed reply logs `replied fixed=<R-id>` and is not added to memory.
 - [ ] T019 [US3] The action refusal (ADR 0024 §2, research A8), in `service.py`, test first in `tests/unit/assistant/test_refusal.py`:
   - for "pause trading" and "sell AAPL", the store gets **no call at all** (not even `known_symbols`), and the plan model gets none;
-  - exactly one call goes to the answer model, with `REFUSAL_SYSTEM` and a document of exactly the four keys;
+  - exactly one call goes to the answer model, with `REFUSAL_SYSTEM` and a document of exactly the five keys, `trigger: keyword`;
   - the sent text starts with `refused_line()`, then a blank line, then the filtered reply;
   - an injected link in the model's refusal reply is removed;
   - a model error or an invalid reply sends `refused_fallback`;
-  - "why did the PM sell MU?" takes the question flow;
+  - **the model flag (ADR 0025 §2)**: for "please pause trading", a scripted plan answer with `action_request: true` and a non-empty `queries` list gives no store call at all (not even `known_symbols`), one refusal call with `trigger: model_flag` and `matched_word: ""`, the same fixed first line, and `refused_flag_fallback` when that call fails; the log line says `trigger=model_flag`;
+  - the flag never removes a keyword refusal: "pause trading" is refused before the plan model is called, whatever it would answer;
+  - "why did the PM sell MU?" and "Stop-loss triggers this week?", with `action_request: false`, take the question flow;
   - the refusal is not added to memory.
 
   **Mutation-check**: make the refusal run `known_symbols` first; the test must fail.
@@ -272,7 +274,7 @@ description: "Task list for the Assistant (feature 013)"
   - every variable's value (`MARKER-SECRET`);
   - the chat ID (`987654321`).
 
-  Then run, through the loop with `caplog` at DEBUG: an answered question, a refusal, a fixed reply, a model failure, a database failure, a Telegram error, an ignored chat and a drain. Assert that no log record contains any marker. Also assert that `MARKER-SECRET` and `987654321` appear in no `FakeModel.calls[*]` system or user text (FR-015, analyze M8). Also assert the documented line shapes (`answered prompt_version=0.1 queries=…`, `refused prompt_version=0.1 action word=…`).
+  Then run, through the loop with `caplog` at DEBUG: an answered question, a refusal, a fixed reply, a model failure, a database failure, a Telegram error, an ignored chat and a drain. Assert that no log record contains any marker. Also assert that `MARKER-SECRET` and `987654321` appear in no `FakeModel.calls[*]` system or user text (FR-015, analyze M8). Also assert the documented line shapes (`answered prompt_version=0.1 queries=…`, `refused prompt_version=0.1 trigger=…`).
 
   **Mutation-check**: log `str(exc)` in the Telegram error path; the test must fail.
 
@@ -314,7 +316,7 @@ description: "Task list for the Assistant (feature 013)"
 
   **Mutation-check**: grant `ta_assistant` `UPDATE (trading_paused)` on `system_state` inside the test transaction; the test must fail.
 - [ ] T027 [P] Docs, each referencing ADRs 0023 and 0024:
-  - **`docs/specs/assistant-agent.md`**: the `ASSISTANT_*` names replacing ADR 0007's, long polling, the query menu and settings, code-refused actions explained by the model, offline messages skipped, owner time with ET, and source links only;
+  - **`docs/specs/assistant-agent.md`**: the `ASSISTANT_*` names replacing ADR 0007's, long polling, the query menu and settings, code-refused actions explained by the model with the plan call's flag as a second layer (ADR 0025), offline messages skipped, owner time with ET, and source links only;
   - **`docs/architecture/overview.md`**: the Assistant's row (its own service);
   - **`docs/operations/deployment.md`**: new §9 "Adding the assistant service" (quickstart steps 2–5), and the release checklist mentions `--check`;
   - **`specs/010-observe-only-deployment/contracts/logins-command.md`**: the eleventh row;

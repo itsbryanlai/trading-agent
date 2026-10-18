@@ -38,7 +38,7 @@ Every key is required, and unknown keys are refused (exit 2). It's changed only 
 | `model.max_output_tokens` | 2000 | 1000–64000 (`llm.settings`) |
 | `model.timeout_seconds` | 45 | 10–120 |
 | `model.anthropic_effort` | `low` | `low`, `medium` or `high` |
-| `action_words` | `[pause, resume, unpause, stop, halt, buy, sell, close, cancel, trade, liquidate]` | 1–30 lowercase words, letters only, no duplicates |
+| `action_words` | `[pause, resume, unpause, halt, buy, sell, cancel, trade, liquidate]` (ADR 0025 §3) | 1–30 lowercase words, letters only, no duplicates |
 | `memory.exchanges` | 5 | 0–20 |
 | `memory.idle_minutes` | 30 | 1–240 |
 | `limits.max_queries_per_question` | 4 | 1–10 |
@@ -67,7 +67,7 @@ One line per event, at INFO unless noted. The prefix is `assistant:`.
 - **Skipped at start**: `assistant: skipped N waiting message(s)`. Only if N > 0.
 - **Ignored**: `assistant: ignored N update(s) from other chats`. One line per poll batch.
 - **Fixed reply**: `assistant: replied fixed=<R-id>`
-- **Refusal**: `assistant: refused prompt_version=<v> action word=<word> tokens=<in>/<out> outcome=explained|fallback`. The word is one from the configured list, never the message.
+- **Refusal**: `assistant: refused prompt_version=<v> trigger=keyword word=<word>|trigger=model_flag tokens=<in>/<out>[,<in>/<out>] outcome=explained|fallback`. The word is one from the configured list, never the message. A `model_flag` refusal logs both calls' tokens.
 - **Question**: `assistant: answered prompt_version=<v> queries=<name,…|none> dropped=<name:reason,…|none> cut=<name,…|none> tokens=<plan in>/<out>,<answer in>/<out> links_removed=<n> messages=<n> outcome=<answered|too_much|model_failed:<category>|database>`
 - **Send abandoned**: `assistant: send abandoned at part <k>/<n>` (WARNING).
 - **Telegram**: `assistant: telegram <method> failed: <status or exception type>` (WARNING), with `retry in <s>s` where it applies.
