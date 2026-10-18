@@ -366,6 +366,24 @@ def test_a_refused_outcome_shows_the_reason_from_fresh_reads(tmp_path):
     assert "Nothing was changed." in page and "still has run_while_paused: true" in page
 
 
+@pytest.mark.parametrize(
+    ("result", "heading"),
+    [
+        ("paused", "Trading paused."),
+        ("resumed", "Trading resumed."),
+        ("stale", "Nothing was changed."),
+        ("refused", "Nothing was changed."),
+        ("failed", "Nothing was changed."),
+    ],
+)
+def test_the_outcome_page_without_a_read_still_shows_its_result(tmp_path, result, heading):
+    built = build(store=failing_store(), config_dir=schedule(tmp_path))
+    response = get(built, f"/toggle/done?result={result}")
+    assert response.status_code == 200
+    assert f"<h1>{heading}</h1>" in response.text
+    assert "The current state couldn't be read." in response.text
+
+
 def test_an_unknown_result_is_a_404(tmp_path):
     built, _, _ = make(tmp_path)
     for value in ("", "bogus", "<script>"):

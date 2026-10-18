@@ -134,6 +134,20 @@ def apply(
     return _done(word)
 
 
+def _unread_shell(deps: Deps, session, now) -> dict:
+    """The shell's slots when no state could be read: no banner, no state, only the basics."""
+    return {
+        "signed_in": True,
+        "csrf": session.csrf,
+        "active": "toggle",
+        "read_at": timefmt.moment(now, deps.zone),
+        "unread": True,
+        "now_text": "",
+        "state_text": "",
+        "refusal": GENERIC_REFUSAL,
+    }
+
+
 def _read_fresh(deps: Deps):
     with deps.store.read() as reader:
         state = reader.state()
@@ -152,7 +166,14 @@ def done(
         raise HTTPException(404)
     deps = get_deps(request)
     now = deps.clock()
-    state, skipped = _read_fresh(deps)
+    heading = {"paused": "Trading paused.", "resumed": "Trading resumed."}.get(
+        result, "Nothing was changed."
+    )
+    try:
+        state, skipped = _read_fresh(deps)
+    except StoreError:  # the result is still known; only the fresh state is missing (FR-020)
+        context = _unread_shell(deps, session, now)
+        return render(deps, "toggle_done.html", **{**context, "result": result, "heading": heading})
     paused = state["trading_paused"]
     refusal = GENERIC_REFUSAL
     if result == "refused":
@@ -160,9 +181,8 @@ def done(
         refusal = REFUSALS.get(getattr(action, "reason", ""), GENERIC_REFUSAL)
     page = {
         "result": result,
-        "heading": {"paused": "Trading paused.", "resumed": "Trading resumed."}.get(
-            result, "Nothing was changed."
-        ),
+        "heading": heading,
+        "unread": False,
         "now_text": "paused" if paused else "running",
         "state_text": pages.state_text(state, deps.zone),
         "refusal": refusal,
