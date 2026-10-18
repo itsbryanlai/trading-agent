@@ -9,7 +9,9 @@ Exit codes (research A18): 0 stopped by SIGTERM; 2 refused to start (arguments, 
 missing or malformed variable, a rejected bot token); 3 the database failed repeatedly;
 4 crashed, so an escaped exception is never Python's own exit 1.
 
-TODO T023: `--check` and `--find-chat-id`. Until then any argument exits 2.
+Modes (check.py): `--check` makes one of each call and prints a line per check, exit 0 or 1;
+`--find-chat-id` needs only the token and prints each message's chat id. Any other argument
+exits 2.
 """
 
 from __future__ import annotations
@@ -25,7 +27,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
-from trading_agent.assistant import loop, service
+from trading_agent.assistant import check, loop, service
 from trading_agent.assistant.config import (
     DEFAULT_CONFIG_PATH,
     AssistantConfig,
@@ -107,19 +109,24 @@ def main(
     config_path: Path = DEFAULT_CONFIG_PATH,
     clock: Callable[[], datetime] = lambda: datetime.now(UTC),
     sleep: Callable[[float], None] = time.sleep,
+    out: Callable[[str], None] = print,
 ) -> int:
     try:
         return _main(
-            argv, telegram_factory, model_factory, store_factory, config_path, clock, sleep
+            argv, telegram_factory, model_factory, store_factory, config_path, clock, sleep, out
         )
     except Exception as exc:  # a crash: never Python's default exit 1 (research A18)
         log.critical("assistant: exiting: crashed: %s", type(exc).__name__)
         return EXIT_CRASHED
 
 
-def _main(argv, telegram_factory, model_factory, store_factory, config_path, clock, sleep) -> int:
+def _main(
+    argv, telegram_factory, model_factory, store_factory, config_path, clock, sleep, out
+) -> int:
     args = list(sys.argv[1:] if argv is None else argv)
-    if args:
+    if args == ["--find-chat-id"]:
+        return _find_chat_id(telegram_factory, out)
+    if args not in ([], ["--check"]):
         log.critical("assistant: exiting: unknown arguments")
         return EXIT_REFUSED
     try:
@@ -136,6 +143,11 @@ def _main(argv, telegram_factory, model_factory, store_factory, config_path, clo
     )
     plan_model, answer_model = _models(cfg, settings, model_factory)
     store = store_factory(settings["database_url"], cfg)
+    if args:
+        return check.run_checks(
+            telegram, store, plan_model, zone_name=cfg.owner_time_zone,
+            config_dir=config_path.parent, now=clock(), out=out,
+        )
     memory = Memory(cfg.memory.exchanges, cfg.memory.idle_minutes)
 
     def respond(update: dict):
@@ -174,6 +186,19 @@ def _main(argv, telegram_factory, model_factory, store_factory, config_path, clo
         signal.signal(signal.SIGTERM, previous)
     log.info("assistant: stopping (SIGTERM)")
     return EXIT_OK
+
+
+def _find_chat_id(telegram_factory, out) -> int:
+    """Setup mode: only the token is needed, and it is never printed."""
+    try:
+        token = require_env(TOKEN_VARIABLE)
+        if not is_valid_token(token):
+            raise ConfigError(f"{TOKEN_VARIABLE} is malformed")
+    except ConfigError as exc:
+        log.critical("assistant: refusing to start: %s", exc)
+        return EXIT_REFUSED
+    telegram = telegram_factory(token, timeout=check.POLL_SECONDS + HTTP_MARGIN_SECONDS)
+    return check.find_chat_id(telegram, out=out)
 
 
 def _settings(cfg: AssistantConfig) -> dict:
