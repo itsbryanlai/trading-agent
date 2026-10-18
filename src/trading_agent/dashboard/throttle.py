@@ -70,6 +70,13 @@ class SignInGate:
             self._in_flight = True
             return Acquired()
 
+    def waits(self, address: str, now: datetime) -> tuple[int, int]:
+        """The site-wide and the address's remaining delays in whole seconds (for the log)."""
+        with self._lock:
+            site = self._remaining(self._site, now)
+            mine = self._remaining(self._addresses.get(address), now)
+        return math.ceil(site), math.ceil(mine)
+
     def release(self, address: str, ok: bool, now: datetime) -> None:
         with self._lock:
             self._in_flight = False

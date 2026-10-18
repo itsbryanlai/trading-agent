@@ -59,8 +59,8 @@ class Built:
         return session, {"Cookie": f"{COOKIE_NAME}={auth.sign(SECRET, session.id)}"}
 
 
-def build(*, store: FakeStore | None = None, market_open=lambda now: False) -> Built:
-    config = load_config()
+def build(*, store: FakeStore | None = None, market_open=lambda now: False, config=None) -> Built:
+    config = config or load_config()
     clock = Clock()
     store = store or FakeStore()
     control = SimpleNamespace(calls=[])
@@ -84,3 +84,12 @@ def build(*, store: FakeStore | None = None, market_open=lambda now: False) -> B
         market_open=market_open,
     )
     return Built(app, clock, store, control, sessions, gate, password_hash)
+
+
+def all_routes(app: FastAPI) -> list:
+    """The app's routes with included routers flattened (no prefixes are used)."""
+    found = []
+    for route in app.routes:
+        original = getattr(route, "original_router", None)
+        found.extend(original.routes if original is not None else [route])
+    return found

@@ -184,3 +184,14 @@ def test_a_wait_is_always_between_zero_and_twice_the_cap(first, extra, steps):
             assert 1 <= outcome.seconds <= max(2 * cap, 1)
         else:
             gate.release(f"a{address}", ok, now)
+
+
+def test_waits_reports_the_two_parts_for_the_log():
+    gate = _gate()
+    assert gate.waits("a", NOW) == (0, 0)
+    _fail(gate, "a", NOW)
+    _fail(gate, "a", NOW + timedelta(seconds=2))
+    now = NOW + timedelta(seconds=2)
+    assert gate.waits("a", now) == (2, 2)
+    assert gate.waits("b", now) == (2, 0)
+    assert gate.waits("a", now + timedelta(seconds=5)) == (0, 0)

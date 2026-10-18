@@ -15,7 +15,7 @@ from pathlib import Path
 import pytest
 from fastapi.responses import PlainTextResponse
 
-from tests.unit.dashboard.helpers import SECRET, Built, build
+from tests.unit.dashboard.helpers import SECRET, Built, all_routes, build
 from trading_agent.dashboard import app as app_module
 from trading_agent.dashboard import auth, deps, render
 from trading_agent.dashboard.deps import SessionDep, WriteDep, origin_ok
@@ -94,7 +94,7 @@ def probed(built):
 
 def test_every_route_is_in_the_access_table(built):
     seen = set()
-    for route in built.app.routes:
+    for route in all_routes(built.app):
         for method in route.methods - {"HEAD"}:
             seen.add((method, route.path))
     assert seen, "the app has no routes"
@@ -106,7 +106,7 @@ def test_every_route_is_in_the_access_table(built):
 def test_no_data_without_a_session_on_any_session_route(built):
     built.store.positions_rows = [{"symbol": MARKER}]
     client = built.client(follow_redirects=False)
-    registered = {(m, r.path) for r in built.app.routes for m in r.methods}
+    registered = {(m, r.path) for r in all_routes(built.app) for m in r.methods}
     for (method, path), rule in ACCESS.items():
         if rule == "open" or (method, path) not in registered:
             continue
