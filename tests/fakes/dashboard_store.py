@@ -55,6 +55,22 @@ class FakeReader:
         self._record("orders", symbol, since, until, limit, offset)
         return list(self._store.order_rows[offset : offset + limit])
 
+    def reports(self, agent, symbol, since, until, limit):
+        self._record("reports", agent, symbol, since, until, limit)
+        return list(self._store.report_rows[:limit])
+
+    def decisions(self, symbol, since, until, limit):
+        self._record("decisions", symbol, since, until, limit)
+        return list(self._store.decision_rows[:limit])
+
+    def runs(self, agent, since, until, problems, limit):
+        self._record("runs", agent, since, until, problems, limit)
+        return list(self._store.run_rows[:limit])
+
+    def report_times(self, ids):
+        self._record("report_times", tuple(ids))
+        return {str(i): t for i, t in self._store.report_times_map.items() if i in ids}
+
     def latest_pm_run(self):
         self._record("latest_pm_run")
         return self._store.pm_run
@@ -74,6 +90,10 @@ class FakeStore:
         points: list[dict] | None = None,
         pm_run: dict | None = None,
         order_rows: list[dict] | None = None,
+        report_rows: list[dict] | None = None,
+        decision_rows: list[dict] | None = None,
+        run_rows: list[dict] | None = None,
+        report_times_map: dict | None = None,
         error: Exception | None = None,
         ping_ok: bool = True,
     ) -> None:
@@ -83,6 +103,10 @@ class FakeStore:
         self.points = points or []
         self.pm_run = pm_run
         self.order_rows = order_rows or []
+        self.report_rows = report_rows or []
+        self.decision_rows = decision_rows or []
+        self.run_rows = run_rows or []
+        self.report_times_map = report_times_map or {}
         self.error = error
         self.ping_ok = ping_ok
         self.calls: list[tuple[str, tuple]] = []
