@@ -13,5 +13,6 @@ These replies are written in code, with no model call (spec Key Entities). They 
 | R-TOO-MUCH | the answer document would exceed `max_input_chars` | That needs more data than I can read at once. Please narrow it: one symbol, one agent, or a shorter period. |
 | R-DATABASE | the database could not be read (A15) | I can't read the data right now. Please try again in a few minutes. |
 | R-MODEL-FAILED | a model call raised, or its answer failed validation | I couldn't answer that: the model {category}. Please try again. `{category}` is one of: was unavailable, refused, rejected the request, was cut off, gave an unusable answer. |
+| R-INTERNAL | handling a message raised an unexpected exception (T036) | Something went wrong answering that. Please try again. |
 
 `{controls}` is the same fixed list as the refusal call's `controls` (contracts/model-io.md). It changes when the dashboard ships. Every fixed reply must pass the link filter (A12) unchanged with no allowed URLs, so none contains a file name, domain or `@name`; a test pins this.

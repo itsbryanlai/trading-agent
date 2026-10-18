@@ -186,7 +186,13 @@ def test_the_database_failing_repeatedly_exits_three(env, caplog):
 
 
 def test_a_crash_exits_four_and_logs_the_type_only(env, caplog):
-    code, *_ = run(plan=FakeModel(error=ValueError("MARKER-SECRET")), telegram=_late_question())
+    class Crashing(Telegram):
+        def get_updates(self, offset, timeout, allowed_updates, limit):
+            if timeout > 0:
+                raise ValueError("MARKER-SECRET")
+            return super().get_updates(offset, timeout, allowed_updates, limit)
+
+    code, *_ = run(telegram=Crashing())
     assert code == 4
     assert "ValueError" in caplog.text and "MARKER-SECRET" not in caplog.text
 

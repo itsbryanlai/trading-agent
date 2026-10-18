@@ -72,6 +72,7 @@ One line per event, at INFO unless noted. The prefix is `assistant:`.
 - **Send abandoned**: `assistant: send abandoned at part <k>/<n>` (WARNING).
 - **Telegram**: `assistant: telegram <method> failed: <status or exception type>` (WARNING), with `retry in <s>s` where it applies.
 - **Database**: `assistant: database failed: <exception type> (consecutive <n>/<max>)` (ERROR).
+- **Message failed**: `assistant: message failed: <exception type>` (ERROR). Handling one message raised; the owner gets R-INTERNAL, the update is confirmed and polling continues. The exception's text is never logged.
 - **Stop**: `assistant: stopping (SIGTERM)`, or `assistant: exiting: <reason>` (CRITICAL).
 
 No line contains a message's text, a reply, a prompt, a query result, a variable's value or a chat ID (FR-021). Railway labels these stderr lines "error"; read the text.

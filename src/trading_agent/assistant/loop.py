@@ -14,6 +14,7 @@ from collections.abc import Callable
 
 from trading_agent.assistant import replies
 from trading_agent.assistant.inbox import authorised, count_skippable
+from trading_agent.assistant.outcome import Handled, Outcome
 from trading_agent.assistant.telegram import (
     Conflict,
     FloodControl,
@@ -31,6 +32,7 @@ POLL_FLOOD_CAP = 300
 SEND_FLOOD_CAP = 60
 SEND_RETRY_WAIT = 2
 BACKOFF_CAP = 60
+INTERNAL = "R-INTERNAL"
 
 
 class DatabaseLost(Exception):
@@ -83,10 +85,11 @@ def poll(
                     ignored += 1
                     offset = max(offset, uid + 1)
                     continue
-                handled = respond(update)
+                handled = _respond(respond, update)
                 send(telegram, chat_id, handled.replies, sleep)
                 offset = max(offset, uid + 1)
-                failures = _count_database(handled.outcome, failures, max_failures)
+                if handled.outcome.detail != INTERNAL:
+                    failures = _count_database(handled.outcome, failures, max_failures)
                 if stop.is_set():
                     break
             if ignored:
@@ -95,6 +98,17 @@ def poll(
         _confirm(telegram, offset, confirmed)
         raise
     _confirm(telegram, offset, confirmed)
+
+
+def _respond(respond: Callable, update: dict) -> Handled:
+    """Handle one message; any failure but the two fatal ones becomes a fixed reply."""
+    try:
+        return respond(update)
+    except (TokenRejected, DatabaseLost):
+        raise
+    except Exception as exc:
+        log.error("assistant: message failed: %s", type(exc).__name__)
+        return Handled([replies.internal_error()], Outcome("fixed", detail=INTERNAL))
 
 
 def run(

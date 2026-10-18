@@ -96,6 +96,10 @@ def database() -> str:
     return "I can't read the data right now. Please try again in a few minutes."
 
 
+def internal_error() -> str:
+    return "Something went wrong answering that. Please try again."
+
+
 def model_failed(category: str) -> str:
     if category not in MODEL_FAILURES:
         raise ValueError("unknown model failure category")

@@ -116,6 +116,7 @@ def test_every_fixed_reply_passes_unchanged():
         replies.skipped(7),
         replies.too_much(),
         replies.database(),
+        replies.internal_error(),
         *(replies.model_failed(c) for c in replies.MODEL_FAILURES),
     ]
     for text in samples:

@@ -330,3 +330,33 @@ def test_a_good_answer_resets_the_database_count():
     telegram = StopWhenEmpty(threading.Event(), [message(n) for n in range(1, 6)])
     drive([], respond, telegram=telegram, max_failures=3)  # does not raise
     assert len(telegram.sent) == 5
+
+
+# --- a message that crashes the handler (T036, review L1) --------------------------------
+
+
+def test_an_exception_from_respond_gets_the_fixed_reply_and_the_loop_continues(caplog):
+    caplog.set_level(logging.INFO)
+    private_text = "text-inside-the-exception"
+
+    def respond(update):
+        if update["update_id"] == 1:
+            raise ValueError(private_text)
+        return answered(f"re:{update['message']['text']}")
+
+    telegram, _, _ = drive([message(1, "one"), message(2, "two")], respond)
+    assert [text for _, text in telegram.sent] == [replies.internal_error(), "re:two"]
+    assert "assistant: message failed: ValueError" in caplog.text
+    assert private_text not in caplog.text
+    assert [r.levelno for r in caplog.records if "message failed" in r.getMessage()] == [
+        logging.ERROR
+    ]
+
+
+def test_a_rejected_token_or_lost_database_from_respond_still_propagates():
+    for error in (TokenRejected(), loop.DatabaseLost("x")):
+        def respond(update, error=error):
+            raise error
+
+        with pytest.raises(type(error)):
+            drive([message(1)], respond)
