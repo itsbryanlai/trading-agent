@@ -129,7 +129,9 @@ def test_scenario_hostile_text_is_inert_on_the_real_page():
     assert_inert(text)
     assert "&lt;script&gt;alert(1)&lt;/script&gt;" in text
     assert "&lt;img src=x onerror=alert(1)&gt;" in text
-    assert "{{ 7*7 }}" in text and "49" not in text.replace("49m", "")
+    # The literal survives, so the template never evaluated it. (No "49" check: random ids
+    # and times on the page can contain those digits, which made this test flaky.)
+    assert "{{ 7*7 }}" in text
     assert 'href="https://news.example/a?b=1&amp;c=2"' in text
     scan = Scan()
     scan.feed(text)
