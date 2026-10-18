@@ -25,8 +25,11 @@ STRANGER = 999
 def message(update_id, text="hi", chat_id=OWNER, chat_type="private"):
     return {
         "update_id": update_id,
-        "message": {"message_id": update_id, "chat": {"id": chat_id, "type": chat_type},
-                    "text": text},
+        "message": {
+            "message_id": update_id,
+            "chat": {"id": chat_id, "type": chat_type},
+            "text": text,
+        },
     }
 
 
@@ -69,8 +72,16 @@ def drive(updates, respond=None, *, telegram=None, sleep=None, max_failures=3, o
         seen.append(update)
         return answered(f"re:{update['message']['text']}")
 
-    loop.poll(telegram, chat_id=OWNER, offset=offset, long_poll_seconds=50,
-              max_failures=max_failures, respond=respond or default, sleep=sleep, stop=stop)
+    loop.poll(
+        telegram,
+        chat_id=OWNER,
+        offset=offset,
+        long_poll_seconds=50,
+        max_failures=max_failures,
+        respond=respond or default,
+        sleep=sleep,
+        stop=stop,
+    )
     return telegram, seen, sleep
 
 
@@ -124,8 +135,12 @@ def test_updates_are_answered_in_order_and_the_offset_confirms_them():
 
 
 def test_other_chats_are_ignored_without_a_reply_and_logged_once_per_batch(caplog):
-    batch = [message(1, "mine"), message(2, chat_id=STRANGER),
-             message(3, chat_id=STRANGER, chat_type="group"), message(4, chat_id=-100)]
+    batch = [
+        message(1, "mine"),
+        message(2, chat_id=STRANGER),
+        message(3, chat_id=STRANGER, chat_type="group"),
+        message(4, chat_id=-100),
+    ]
     with caplog.at_level(logging.INFO, logger="trading_agent.assistant"):
         telegram, seen, _ = drive(batch, offset=1)
     assert [u["update_id"] for u in seen] == [1]
@@ -154,8 +169,16 @@ def test_sigterm_finishes_the_current_message_then_returns():
         stop.set()  # SIGTERM arrives while the message is being answered
         return answered("done")
 
-    loop.poll(telegram, chat_id=OWNER, offset=1, long_poll_seconds=50, max_failures=3,
-              respond=respond, sleep=Sleeps(), stop=stop)
+    loop.poll(
+        telegram,
+        chat_id=OWNER,
+        offset=1,
+        long_poll_seconds=50,
+        max_failures=3,
+        respond=respond,
+        sleep=Sleeps(),
+        stop=stop,
+    )
     assert handled == [1]
     assert telegram.sent == [(OWNER, "done")]  # the reply was still sent
     assert [u["update_id"] for u in telegram.queue] == [2, 3]  # waiting, not lost
@@ -177,8 +200,15 @@ def test_run_drains_then_answers_only_new_messages():
 
     telegram = Telegram([message(1), message(2)])
     telegram.drained = False
-    loop.run(telegram, chat_id=OWNER, long_poll_seconds=50, max_failures=3,
-             respond=lambda u: answered("re:" + u["message"]["text"]), sleep=Sleeps(), stop=stop)
+    loop.run(
+        telegram,
+        chat_id=OWNER,
+        long_poll_seconds=50,
+        max_failures=3,
+        respond=lambda u: answered("re:" + u["message"]["text"]),
+        sleep=Sleeps(),
+        stop=stop,
+    )
     assert telegram.sent == [(OWNER, replies.skipped(2)), (OWNER, "re:fresh")]
 
 
@@ -328,8 +358,16 @@ def test_a_rejected_token_while_polling_raises():
     telegram = FakeTelegram()
     telegram.fail_updates = [TokenRejected("telegram: HTTP 401")]
     with pytest.raises(TokenRejected):
-        loop.poll(telegram, chat_id=OWNER, offset=1, long_poll_seconds=50, max_failures=3,
-                  respond=lambda u: answered("x"), sleep=Sleeps(), stop=threading.Event())
+        loop.poll(
+            telegram,
+            chat_id=OWNER,
+            offset=1,
+            long_poll_seconds=50,
+            max_failures=3,
+            respond=lambda u: answered("x"),
+            sleep=Sleeps(),
+            stop=threading.Event(),
+        )
 
 
 def test_errors_are_logged_by_type_only(caplog):
@@ -357,8 +395,9 @@ def test_database_failures_in_a_row_raise_database_lost_after_replying(caplog):
 
 
 def test_a_good_answer_resets_the_database_count():
-    outcomes = iter([database_down, database_down, lambda u: answered("ok"),
-                     database_down, database_down])
+    outcomes = iter(
+        [database_down, database_down, lambda u: answered("ok"), database_down, database_down]
+    )
 
     def respond(update):
         return next(outcomes)(update)
@@ -391,6 +430,7 @@ def test_an_exception_from_respond_gets_the_fixed_reply_and_the_loop_continues(c
 
 def test_a_rejected_token_or_lost_database_from_respond_still_propagates():
     for error in (TokenRejected(), loop.DatabaseLost("x")):
+
         def respond(update, error=error):
             raise error
 

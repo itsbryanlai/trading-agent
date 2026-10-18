@@ -42,8 +42,16 @@ def reason(choice, **kw):
 
 def test_the_menu_has_the_ten_entries_with_a_returns_line():
     assert list(ENTRIES) == [
-        "portfolio_now", "account_history", "decisions", "reports", "orders", "stop_losses",
-        "journal", "agent_runs", "universe", "settings",
+        "portfolio_now",
+        "account_history",
+        "decisions",
+        "reports",
+        "orders",
+        "stop_losses",
+        "journal",
+        "agent_runs",
+        "universe",
+        "settings",
     ]
     assert all(e.returns and "\n" not in e.returns for e in ENTRIES.values())
 
@@ -181,21 +189,44 @@ def test_an_unknown_name_is_not_echoed_in_the_dropped_list():
 
 def test_the_reasons_are_a10s_in_order():
     assert REASONS == (
-        "unknown_query", "unexpected_parameter", "missing_parameter", "unknown_symbol",
-        "unknown_agent", "bad_dates", "unknown_section", "duplicate", "too_many",
+        "unknown_query",
+        "unexpected_parameter",
+        "missing_parameter",
+        "unknown_symbol",
+        "unknown_agent",
+        "bad_dates",
+        "unknown_section",
+        "duplicate",
+        "too_many",
     )
 
 
 _text = st.one_of(
     st.just(""),
-    st.sampled_from(["MU", "AAPL", "ZZ", "research", "risk", "2026-10-01", "2026-10-20",
-                     "2025-01-01", "bad", "portfolio_now"]),
+    st.sampled_from(
+        [
+            "MU",
+            "AAPL",
+            "ZZ",
+            "research",
+            "risk",
+            "2026-10-01",
+            "2026-10-20",
+            "2025-01-01",
+            "bad",
+            "portfolio_now",
+        ]
+    ),
     st.text(max_size=12),
 )
 _raw = st.builds(
     RawChoice,
     st.one_of(st.sampled_from(list(ENTRIES) + ["x"]), st.text(max_size=8)),
-    _text, _text, _text, _text, _text,
+    _text,
+    _text,
+    _text,
+    _text,
+    _text,
 )
 
 
@@ -207,9 +238,7 @@ def test_every_valid_choice_is_on_the_menu_and_within_limits(raws, max_queries, 
     assert len(set(valid)) == len(valid)
     for choice in valid:
         entry = ENTRIES[choice.name]
-        given_keys = {
-            k for k in ("symbol", "agent", "section") if getattr(choice, k) != ""
-        }
+        given_keys = {k for k in ("symbol", "agent", "section") if getattr(choice, k) != ""}
         assert given_keys <= set(entry.takes)
         assert set(entry.required) <= given_keys
         if choice.symbol:
@@ -253,12 +282,14 @@ def test_winter_dates_are_the_same_local_days_whatever_the_et_offset():
 def test_symbols_to_check_are_the_well_formed_ones_on_entries_that_take_a_symbol():
     from trading_agent.assistant.menu import symbols_to_check
 
-    found = symbols_to_check([
-        RawChoice("decisions", symbol="MU"),
-        RawChoice("universe", symbol="BRK.B"),
-        RawChoice("decisions", symbol="mu"),
-        RawChoice("portfolio_now", symbol="NVDA"),
-        RawChoice("drop_table", symbol="TSLA"),
-        RawChoice("decisions"),
-    ])
+    found = symbols_to_check(
+        [
+            RawChoice("decisions", symbol="MU"),
+            RawChoice("universe", symbol="BRK.B"),
+            RawChoice("decisions", symbol="mu"),
+            RawChoice("portfolio_now", symbol="NVDA"),
+            RawChoice("drop_table", symbol="TSLA"),
+            RawChoice("decisions"),
+        ]
+    )
     assert found == {"MU", "BRK.B"}

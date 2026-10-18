@@ -33,8 +33,10 @@ def env(monkeypatch):
 
 
 def question(update_id=1, text="what do we hold?"):
-    return {"update_id": update_id, "message": {"message_id": 1, "text": text,
-            "chat": {"id": 4242, "type": "private"}}}
+    return {
+        "update_id": update_id,
+        "message": {"message_id": 1, "text": text, "chat": {"id": 4242, "type": "private"}},
+    }
 
 
 class Telegram(FakeTelegram):
@@ -47,14 +49,27 @@ class Telegram(FakeTelegram):
         return got
 
 
-def run(args=(), *, updates=(), store=None, plan=None, answer=None, telegram=None,
-        config_path=None):
+def run(
+    args=(), *, updates=(), store=None, plan=None, answer=None, telegram=None, config_path=None
+):
     seen: dict = {"models": []}
     telegram = telegram or Telegram(list(updates))
     store = store if store is not None else FakeStore(rows={"portfolio_now": [{"x": 1}]})
-    plan_model = plan or FakeModel({"action_request": False, "queries": [
-        {"name": "portfolio_now", "symbol": "", "agent": "", "from_date": "", "to_date": "",
-         "section": ""}]})
+    plan_model = plan or FakeModel(
+        {
+            "action_request": False,
+            "queries": [
+                {
+                    "name": "portfolio_now",
+                    "symbol": "",
+                    "agent": "",
+                    "from_date": "",
+                    "to_date": "",
+                    "section": "",
+                }
+            ],
+        }
+    )
     answer_model = answer or FakeModel({"reply": "You hold MU."})
 
     def telegram_factory(token, *, timeout):
@@ -63,17 +78,23 @@ def run(args=(), *, updates=(), store=None, plan=None, answer=None, telegram=Non
 
     def model_factory(provider, key, settings, *, base_url=None, schema_name):
         seen["models"].append((provider, key, base_url, schema_name))
-        return plan_model if schema_name.endswith("plan") or provider == "anthropic" \
-            else answer_model
+        return (
+            plan_model if schema_name.endswith("plan") or provider == "anthropic" else answer_model
+        )
 
     def store_factory(url, config):
         seen["store"] = url
         return store
 
     kwargs = {"config_path": config_path} if config_path is not None else {}
-    code = runner.main(list(args), telegram_factory=telegram_factory,
-                       model_factory=model_factory, store_factory=store_factory,
-                       sleep=lambda s: None, **kwargs)
+    code = runner.main(
+        list(args),
+        telegram_factory=telegram_factory,
+        model_factory=model_factory,
+        store_factory=store_factory,
+        sleep=lambda s: None,
+        **kwargs,
+    )
     return code, telegram, store, seen, plan_model, answer_model
 
 
@@ -118,8 +139,13 @@ def test_anthropic_builds_one_client_for_both_calls(env, monkeypatch, tmp_path):
 
 @pytest.mark.parametrize(
     "variable",
-    ["ASSISTANT_DATABASE_URL", "ASSISTANT_TELEGRAM_BOT_TOKEN", "ASSISTANT_TELEGRAM_CHAT_ID",
-     "ASSISTANT_DASHSCOPE_API_KEY", "ASSISTANT_QWEN_BASE_URL"],
+    [
+        "ASSISTANT_DATABASE_URL",
+        "ASSISTANT_TELEGRAM_BOT_TOKEN",
+        "ASSISTANT_TELEGRAM_CHAT_ID",
+        "ASSISTANT_DASHSCOPE_API_KEY",
+        "ASSISTANT_QWEN_BASE_URL",
+    ],
 )
 def test_a_missing_variable_is_named_and_refuses_to_start(env, monkeypatch, caplog, variable):
     monkeypatch.delenv(variable)
@@ -251,17 +277,28 @@ def test_the_production_factories_are_the_real_clients():
     assert isinstance(store, PostgresStore) and FAKE_DB not in repr(store)  # no connection made
 
 
-def test_a_settings_question_reads_the_config_directory_beside_the_config_file(
-    env, tmp_path
-):
+def test_a_settings_question_reads_the_config_directory_beside_the_config_file(env, tmp_path):
     for name in ("assistant.yaml",):
         (tmp_path / name).write_text((runner.DEFAULT_CONFIG_PATH.parent / name).read_text())
     (tmp_path / "risk.yaml").write_text("max_position_pct: 7\nuniverse: {}\n")
-    plan = FakeModel({"action_request": False, "queries": [
-        {"name": "settings", "symbol": "", "agent": "", "from_date": "", "to_date": "",
-         "section": "risk"}]})
+    plan = FakeModel(
+        {
+            "action_request": False,
+            "queries": [
+                {
+                    "name": "settings",
+                    "symbol": "",
+                    "agent": "",
+                    "from_date": "",
+                    "to_date": "",
+                    "section": "risk",
+                }
+            ],
+        }
+    )
     code, _, _, _, _, answer_model = run(
-        telegram=_late_question(), plan=plan, config_path=tmp_path / "assistant.yaml")
+        telegram=_late_question(), plan=plan, config_path=tmp_path / "assistant.yaml"
+    )
     assert code == 0
     sent = answer_model.calls[0]["user"]
     assert '"max_position_pct":7' in sent

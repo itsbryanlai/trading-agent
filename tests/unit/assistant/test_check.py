@@ -22,13 +22,25 @@ GOOD_ANSWER = {"reply": "Hello."}
 CONFIG_DIR = DEFAULT_CONFIG_PATH.parent
 
 
-def go(*, telegram=None, store=None, model=None, answer=None, zone="Asia/Singapore",
-       config_dir=CONFIG_DIR):
+def go(
+    *,
+    telegram=None,
+    store=None,
+    model=None,
+    answer=None,
+    zone="Asia/Singapore",
+    config_dir=CONFIG_DIR,
+):
     lines: list[str] = []
     code = check.run_checks(
-        telegram or FakeTelegram(), store or FakeStore(), model or FakeModel(GOOD_PLAN),
+        telegram or FakeTelegram(),
+        store or FakeStore(),
+        model or FakeModel(GOOD_PLAN),
         answer or FakeModel(GOOD_ANSWER),
-        zone_name=zone, config_dir=config_dir, now=NOW, out=lines.append,
+        zone_name=zone,
+        config_dir=config_dir,
+        now=NOW,
+        out=lines.append,
     )
     return code, lines
 
@@ -37,8 +49,15 @@ def test_a_working_setup_passes_every_check_and_sends_nothing():
     telegram = FakeTelegram()
     code, lines = go(telegram=telegram)
     assert code == 0
-    assert lines == ["telegram: ok", "telegram_webhook: ok", "database: ok", "model_plan: ok",
-                     "model_answer: ok", "time_zone: ok", "settings: ok"]
+    assert lines == [
+        "telegram: ok",
+        "telegram_webhook: ok",
+        "database: ok",
+        "model_plan: ok",
+        "model_answer: ok",
+        "time_zone: ok",
+        "settings: ok",
+    ]
     assert telegram.sent == [] and telegram.offsets == []
 
 
@@ -60,10 +79,16 @@ class RejectedTelegram(FakeTelegram):
     [
         ({"telegram": RejectedTelegram()}, "telegram", "TokenRejected"),
         ({"store": failing()}, "database", "StoreError"),
-        ({"model": FakeModel(error=ModelUnavailable("MARKER-SECRET"))}, "model_plan",
-         "ModelUnavailable"),
-        ({"answer": FakeModel(error=ModelUnavailable("MARKER-SECRET"))}, "model_answer",
-         "ModelUnavailable"),
+        (
+            {"model": FakeModel(error=ModelUnavailable("MARKER-SECRET"))},
+            "model_plan",
+            "ModelUnavailable",
+        ),
+        (
+            {"answer": FakeModel(error=ModelUnavailable("MARKER-SECRET"))},
+            "model_answer",
+            "ModelUnavailable",
+        ),
         ({"zone": "Nowhere/Land"}, "time_zone", "ZoneInfoNotFoundError"),
     ],
 )
@@ -101,8 +126,10 @@ def test_missing_settings_files_fail_the_settings_check(tmp_path):
 
 
 def update(update_id, chat_id=-100, kind="group", text="hi"):
-    return {"update_id": update_id, "message": {"message_id": 1, "text": text,
-            "chat": {"id": chat_id, "type": kind}}}
+    return {
+        "update_id": update_id,
+        "message": {"message_id": 1, "text": text, "chat": {"id": chat_id, "type": kind}},
+    }
 
 
 class Clock:
@@ -183,9 +210,11 @@ def main(args, telegram, **env_overrides):
         args,
         telegram_factory=lambda token, *, timeout: telegram,
         model_factory=lambda *a, schema_name, **k: FakeModel(
-            GOOD_ANSWER if schema_name.endswith("answer") else GOOD_PLAN),
+            GOOD_ANSWER if schema_name.endswith("answer") else GOOD_PLAN
+        ),
         store_factory=lambda url, cfg: FakeStore(),
-        sleep=lambda s: None, out=lines.append,
+        sleep=lambda s: None,
+        out=lines.append,
     )
     return code, lines
 
@@ -213,8 +242,12 @@ def test_main_check_without_a_variable_exits_two(env, monkeypatch):
 
 
 def test_main_find_chat_id_needs_only_the_token(env, monkeypatch):
-    for name in ("ASSISTANT_DATABASE_URL", "ASSISTANT_TELEGRAM_CHAT_ID",
-                 "ASSISTANT_DASHSCOPE_API_KEY", "ASSISTANT_QWEN_BASE_URL"):
+    for name in (
+        "ASSISTANT_DATABASE_URL",
+        "ASSISTANT_TELEGRAM_CHAT_ID",
+        "ASSISTANT_DASHSCOPE_API_KEY",
+        "ASSISTANT_QWEN_BASE_URL",
+    ):
         monkeypatch.delenv(name)
     telegram = FakeTelegram([update(1, 4242, "private")])
     monkeypatch.setattr(check, "FIND_SECONDS", 0.05)

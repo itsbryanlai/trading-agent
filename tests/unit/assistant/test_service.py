@@ -38,16 +38,32 @@ def plan_of(*choices, action=False):
     return {"action_request": action, "queries": list(choices)}
 
 
-def run(question="what do we hold?", plan=None, reply="You hold MU and AAPL.", *, store=None,
-        plan_model=None, answer_model=None, memory=None, config=CONFIG):
+def run(
+    question="what do we hold?",
+    plan=None,
+    reply="You hold MU and AAPL.",
+    *,
+    store=None,
+    plan_model=None,
+    answer_model=None,
+    memory=None,
+    config=CONFIG,
+):
     store = store if store is not None else FakeStore(rows={"portfolio_now": [{"x": 1}]})
     if plan is None:
         plan = plan_of(choice("portfolio_now"))
     plan_model = plan_model or FakeModel(plan)
     answer_model = answer_model or FakeModel({"reply": reply})
     memory = memory or Memory(5, 30)
-    handled = handle(question, now=NOW, config=config, store=store, plan_model=plan_model,
-                     answer_model=answer_model, memory=memory)
+    handled = handle(
+        question,
+        now=NOW,
+        config=config,
+        store=store,
+        plan_model=plan_model,
+        answer_model=answer_model,
+        memory=memory,
+    )
     return handled, store, plan_model, answer_model, memory
 
 
@@ -87,8 +103,10 @@ def test_a_paused_system_state_is_passed_on_as_stored():
 
 
 def test_three_decisions_with_verdicts_are_passed_on():
-    rows = [{"symbol": s, "verdict": v} for s, v in (("MU", "approved"), ("AAPL", "rejected"),
-                                                      ("MU", "approved"))]
+    rows = [
+        {"symbol": s, "verdict": v}
+        for s, v in (("MU", "approved"), ("AAPL", "rejected"), ("MU", "approved"))
+    ]
     _, *_, answer_model, _ = run(
         "what did the PM decide today?",
         plan=plan_of(choice("decisions")),
@@ -102,8 +120,12 @@ def test_three_decisions_with_verdicts_are_passed_on():
 def test_a_decisions_price_carries_its_quote_time_in_both_zones_not_generated_at():
     quote_time = {"owner": "2026-10-19T23:59:58+08:00", "et": "2026-10-19T11:59:58-04:00"}
     generated = {"owner": "2026-10-20T02:00:00+08:00", "et": "2026-10-19T14:00:00-04:00"}
-    row = {"symbol": "MU", "quote_at_decision": "112.40", "quote_time": quote_time,
-           "generated_at": generated}
+    row = {
+        "symbol": "MU",
+        "quote_at_decision": "112.40",
+        "quote_time": quote_time,
+        "generated_at": generated,
+    }
     _, *_, answer_model, _ = run(
         plan=plan_of(choice("decisions", symbol="MU")),
         store=FakeStore(rows={"decisions": [row]}),
@@ -169,12 +191,11 @@ def test_a_settings_choice_reads_files_and_makes_no_store_run():
 
 
 def test_settings_and_a_database_entry_keep_the_choices_order():
-    _, store, _, answer_model, _ = run(
-        plan=plan_of(choice("settings"), choice("portfolio_now"))
-    )
+    _, store, _, answer_model, _ = run(plan=plan_of(choice("settings"), choice("portfolio_now")))
     assert [c.name for c in store.run_calls[0]] == ["portfolio_now"]
     assert [r["query"] for r in answer_doc(answer_model)["results"]] == [
-        "settings", "portfolio_now"
+        "settings",
+        "portfolio_now",
     ]
 
 
@@ -246,7 +267,7 @@ def test_oldest_exchanges_are_dropped_before_too_much():
     handled, _, _, answer_model, _ = run(store=store, memory=memory)
     kept = [e["question"] for e in answer_doc(answer_model)["exchanges"]]
     assert handled.outcome.kind == "answered"
-    assert len(kept) < 3 and kept == ["q1", "q2", "q3"][3 - len(kept):]
+    assert len(kept) < 3 and kept == ["q1", "q2", "q3"][3 - len(kept) :]
 
 
 @pytest.mark.parametrize(
@@ -274,7 +295,11 @@ def test_each_model_error_gives_its_category_from_either_call(error, code, text,
 def test_the_failure_codes_and_texts_are_mapped_in_one_place():
     assert set(replies.FAILURE_TEXT.values()) == set(replies.MODEL_FAILURES)
     assert set(replies.FAILURE_TEXT) == {
-        "unavailable", "refused", "rejected", "truncated", "unusable"
+        "unavailable",
+        "refused",
+        "rejected",
+        "truncated",
+        "unusable",
     }
 
 
@@ -319,8 +344,15 @@ def respond_to(update, store=None):
 
     store = store if store is not None else FakeStore()
     plan_model, answer_model = FakeModel(plan_of()), FakeModel({"reply": "ok"})
-    handled = respond(update, now=NOW, config=CONFIG, store=store, plan_model=plan_model,
-                      answer_model=answer_model, memory=Memory(5, 30))
+    handled = respond(
+        update,
+        now=NOW,
+        config=CONFIG,
+        store=store,
+        plan_model=plan_model,
+        answer_model=answer_model,
+        memory=Memory(5, 30),
+    )
     return handled, store, plan_model, answer_model
 
 
@@ -342,11 +374,21 @@ def test_every_fixed_reply_logs_its_id_and_is_not_remembered(caplog):
     from trading_agent.assistant.service import respond
 
     with caplog.at_level(logging.INFO, logger="trading_agent.assistant"):
-        for update in (upd("/start"), upd("/whatever"), upd(None, photo=[{}]),
-                       upd("x", forward_origin={"type": "user"})):
-            respond(update, now=NOW, config=CONFIG, store=FakeStore(),
-                    plan_model=FakeModel(plan_of()), answer_model=FakeModel({"reply": "r"}),
-                    memory=memory)
+        for update in (
+            upd("/start"),
+            upd("/whatever"),
+            upd(None, photo=[{}]),
+            upd("x", forward_origin={"type": "user"}),
+        ):
+            respond(
+                update,
+                now=NOW,
+                config=CONFIG,
+                store=FakeStore(),
+                plan_model=FakeModel(plan_of()),
+                answer_model=FakeModel({"reply": "r"}),
+                memory=memory,
+            )
     lines = [r.getMessage() for r in caplog.records]
     assert lines == [
         "assistant: replied fixed=R-HELP",
@@ -372,8 +414,15 @@ def test_a_question_through_respond_is_remembered():
 )
 def test_the_plan_documents_now_carries_local_et_date_and_zone(now, local_date, et_offset):
     plan_model = FakeModel(plan_of(choice("portfolio_now")))
-    handle("hi", now=now, config=CONFIG, store=FakeStore(), plan_model=plan_model,
-           answer_model=FakeModel({"reply": "ok"}), memory=Memory(5, 30))
+    handle(
+        "hi",
+        now=now,
+        config=CONFIG,
+        store=FakeStore(),
+        plan_model=plan_model,
+        answer_model=FakeModel({"reply": "ok"}),
+        memory=Memory(5, 30),
+    )
     stamp = json.loads(plan_model.calls[0]["user"])["now"]
     assert stamp["local"] == now.isoformat() and stamp["local"].endswith("+08:00")
     assert stamp["et"].endswith(et_offset)
@@ -383,8 +432,9 @@ def test_the_plan_documents_now_carries_local_et_date_and_zone(now, local_date, 
 def test_a_plan_choice_of_the_local_day_reaches_the_store_as_that_days_utc_span():
     from datetime import UTC
 
-    _, store, *_ = run(plan=plan_of(
-        choice("decisions", symbol="MU", from_date="2026-10-20", to_date="2026-10-20")))
+    _, store, *_ = run(
+        plan=plan_of(choice("decisions", symbol="MU", from_date="2026-10-20", to_date="2026-10-20"))
+    )
     (sent,) = store.run_calls[0]
     assert sent.start == datetime(2026, 10, 19, 16, tzinfo=UTC)
     assert sent.end == datetime(2026, 10, 20, 16, tzinfo=UTC)
