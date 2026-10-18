@@ -22,6 +22,14 @@ All recorded in [ADR 0026](../../docs/adr/0026-dashboard-public-service-with-own
 - Q: Health and release checks? → A: An unauthenticated health check that shows no data, and an owner-run pre-release check, every line of which must read `ok`.
 - Q: The Assistant's text? → A: It names "the dashboard's pause control" without "(not built yet)", and keeps the runbook as its second control.
 
+### Session 2026-10-18 (clarify)
+
+- Q: Where does "paused since" come from, given the Risk Gate also sets `system_state.updated_at` each trading day (baseline, halt)? → A: A new column, `trading_paused_changed_at`, stamped by a database trigger whenever `trading_paused` actually changes, by any path (the dashboard or the runbook's manual `UPDATE`); no role gains a write grant. It is empty until the first change after the migration, shown as "start time not recorded". This adds a migration, which ADR 0026 ruled out, so it is recorded in ADR 0027 before `/speckit-plan`. Rejected: no "since when"; showing `updated_at` labelled as the state's last change.
+- Q: Can a session be revoked? → A: Yes. The dashboard keeps its live sessions in its own memory; the cookie carries only a random session ID, still signed with the session secret. Signing out deletes the session on the server, so a copied cookie stops working at once. A restart or redeploy ends every session. Nothing is written to the database or the container's disk. Rejected: signed cookies alone (a copied cookie works until it expires); a "sign out everywhere" button.
+- Q: How are repeated failed sign-ins slowed? → A: Two delays, both in memory: a site-wide one (1 s, 2 s, 4 s … capped at 30 s, reset by a successful sign-in) and, on top of it, a per-address one on the same curve for the address the failures came from. A long password backs both: the command that makes the hash refuses one shorter than 16 characters. Nobody can lock the owner out; the worst a stranger causes is a 30-second wait for the owner on a fresh address. Rejected: per-address only (evaded by rotating addresses); a lockout (lets anyone lock the owner out).
+- Q: Does agent activity include the orchestrator's runs, which `docs/specs/ui-dashboard.md` doesn't name? → A: Yes, every run, inline with the reports and decisions: agent, why it was due, slot, start and finish, outcome, with failed, timed-out and skipped runs marked and a filter for them. `docs/specs/ui-dashboard.md` gains the same line. Rejected: only the problem runs; leaving runs out.
+- Q: Does the journal show performance over time? → A: Yes. Above the day rows, a comparison chart: one line per analyst from its stored `index`, and an account line compounded from each day's `account.return`, each rebased to 100 at its own first point in the range, with missed sessions marked; the same ranges as the equity curve. Beside it, each analyst's usage totals over the range (reports written, argued, `no_action`, cited, decisions citing them, approved, filled), summed from each row's `usage`. Rejected: day rows only; the chart without usage totals.
+
 ## User Scenarios & Testing *(mandatory)*
 
 The only user is **the owner**, who wants to open one page, from a phone or a laptop, and see what the system holds, what each agent has said and decided, what the gate and the broker did with it, and how each analyst would have done alone. This serves the system's purpose: watching each agent's performance over time with minimal intervention.
@@ -39,11 +47,12 @@ The owner opens the dashboard's address, signs in with their password, and lands
 **Acceptance Scenarios**:
 
 1. **Given** no session, **When** the owner opens any page, **Then** they are sent to the sign-in page, and no data is shown.
-2. **Given** the sign-in page, **When** the owner enters the right password, **Then** they land on the overview; **When** they enter a wrong one, **Then** they see a generic "sign-in failed" message, and each further failure waits longer before answering.
+2. **Given** the sign-in page, **When** the owner enters the right password, **Then** they land on the overview; **When** they enter a wrong one, **Then** they see a generic "sign-in failed" message, and each further failure waits longer before answering, up to 30 s site-wide plus up to 30 s more from the same address.
 3. **Given** trading is paused and the deployed schedule lets the Portfolio Manager run while paused, **When** any page loads, **Then** a banner says trading is paused, since when, that the Portfolio Manager still runs, and that the gate rejects every buy.
 4. **Given** positions and snapshots exist, **When** the overview loads, **Then** each position shows symbol, quantity, average entry price and cost; cash and equity show the latest snapshot's values with its time and age; and the curve plots the snapshots for the chosen range.
 5. **Given** the halt was triggered for today's trading day, **When** the overview loads, **Then** it says new orders are halted for the rest of the session and clear at the next trading day.
 6. **Given** a session older than about 12 hours, **When** the owner loads a page, **Then** they are sent to sign in again.
+7. **Given** the owner signed out, **When** a request arrives with that session's old cookie, **Then** it is treated as having no session.
 
 ---
 
@@ -99,12 +108,15 @@ The owner opens agent activity and sees every report from both analysts, includi
 3. **Given** a rationale containing `<script>`, raw HTML, a `javascript:` or `data:` link, or an image, **When** it renders, **Then** the HTML shows as text, the non-http(s) link shows as plain text, the image is not loaded, and no script runs.
 4. **Given** long text, **When** a list loads, **Then** each entry shows a short opening with the rest expandable without leaving the page.
 5. **Given** filters for agent, symbol and date, **When** the owner applies them, **Then** only matching rows show.
+6. **Given** a Research run that timed out with no report, **When** activity loads, **Then** the run shows with its slot, times and "timed out", marked, and the filter for problem runs shows it.
 
 ---
 
 ### User Story 5 - Read the journal and per-agent attribution (Priority: P3)
 
 The owner opens the journal and sees each trading day's summary and attribution: the account's return next to each analyst's own book (its index, day return and holdings), with sessions missed and symbols carried at their last price called out.
+
+Above the rows, a chart compares each analyst's book with the account over the chosen range, and each analyst's usage totals show how much of its work the PM used.
 
 **Why this priority**: Attribution answers "how is each agent doing", but it is daily and rests on the views above.
 
@@ -115,6 +127,8 @@ The owner opens the journal and sees each trading day's summary and attribution:
 1. **Given** journal rows, **When** the journal loads, **Then** each day shows opening and closing equity, the account's return, the summary, and per agent its index, day return and holdings with weights.
 2. **Given** a row with missed sessions or unpriced holdings, **When** it renders, **Then** those are named on that day.
 3. **Given** a row whose attribution has a schema version the dashboard does not know, **When** it renders, **Then** the summary still shows and the attribution says it cannot be displayed, without failing the page.
+4. **Given** a month of journal rows, **When** the owner picks the 1-month range, **Then** the chart shows a line per analyst and one for the account, each starting at 100, and the usage totals equal the sums of those rows' counts.
+5. **Given** an analyst whose book started mid-range, **When** the chart renders, **Then** its line starts at 100 on its `started_on` day, while the others start on the range's first day.
 
 ---
 
@@ -144,7 +158,11 @@ Before a release, the owner runs a check that confirms each credential works and
 - **The read login fails**: pages show a database-unavailable page with no error text; the health check answers unavailable.
 - **The toggle pressed twice, or two tabs**: the write applies only if the state is still what the confirmation page showed; otherwise nothing changes.
 - **Pause pressed while already paused** (or resume while running): there is no such button; only the opposite action is offered.
+- **The pause time was never recorded** (no change since the migration): "paused since" reads "start time not recorded"; nothing is inferred from `updated_at`.
 - **The halt is active**: resuming the manual pause does not clear the halt, and the page says new orders stay halted until the next trading day.
+- **The service restarts or is redeployed**: every session ends; the next page load asks the owner to sign in again.
+- **Signed out, then an old cookie is replayed**: it is refused like no session at all.
+- **Someone guesses passwords all day from many addresses**: each guess waits up to 30 s site-wide, and the owner, signing in from their own address, waits at most 30 s; nothing locks them out. A restart resets both delays.
 - **Session expires on the confirmation page**: confirming sends the owner to sign in, and nothing is written.
 - **Unknown symbol or date in a filter, or a page past the end**: an empty list, not an error.
 - **Broker reasons and refusal details**: shown escaped as plain text.
@@ -158,17 +176,20 @@ Before a release, the owner runs a check that confirms each credential works and
 
 - **FR-001**: The dashboard MUST require a signed-in session for every page and action except the sign-in page and the health check.
 - **FR-002**: Sign-in MUST check the owner's password against a stored hash only; the password itself MUST never be stored, logged or shown.
-- **FR-003**: A session MUST expire about 12 hours after sign-in, and MUST be carried only in a cookie that page scripts cannot read, is sent only over HTTPS, and is not sent on requests from other sites. Signing out MUST end it in that browser.
-- **FR-004**: Each failed sign-in MUST make the next attempt wait longer, and the failure message MUST NOT say which part was wrong.
+- **FR-003**: A session MUST expire about 12 hours after sign-in, and MUST be carried only in a cookie that page scripts cannot read, is sent only over HTTPS, and is not sent on requests from other sites. The dashboard MUST keep live sessions in its own memory, with the cookie carrying only a random session ID; signing out MUST delete the session on the server, after which that cookie MUST be refused. A restart MUST end every session.
+- **FR-004**: Each failed sign-in MUST lengthen two delays held in memory before the next sign-in answers: a site-wide one and one for the client's address (as the platform reports it), each doubling from 1 s up to 30 s, the two added together. A successful sign-in MUST reset the site-wide delay and that address's. Sign-in MUST never be refused outright for too many failures, and the failure message MUST NOT say which part was wrong.
+- **FR-004a**: The command that makes the password hash MUST refuse a password shorter than 16 characters, read it without echoing it, and print only the hash.
 - **FR-005**: Every request that writes MUST carry a cross-site check value tied to the session, and MUST be refused without one.
 
 **Views**
 
-- **FR-006**: The overview MUST show the pause state and since when, whether the daily-loss halt is active for the current trading day, positions (symbol, quantity, average entry price, cost), and cash and equity from the latest account snapshot with its time and age.
+- **FR-006**: The overview MUST show the pause state and since when (from `trading_paused_changed_at`, or "start time not recorded" while it is empty; never from `updated_at`), whether the daily-loss halt is active for the current trading day, positions (symbol, quantity, average entry price, cost), and cash and equity from the latest account snapshot with its time and age.
 - **FR-007**: The equity curve MUST plot recorded account snapshots: every snapshot for a range of a week or less, and the last snapshot of each trading day for longer ranges, with at least 1 day, 1 week, 1 month and all-time ranges.
 - **FR-008**: Order history MUST list every risk verdict with its cause (decision or stop-loss trigger), its verdict and rejection rule, and its outcome (the order with status, prices, fills and broker reason, or Execution's refusal with its reason, or none).
-- **FR-009**: Agent activity MUST list every report from both analysts, including `no_action` runs, with their sources; every Portfolio Manager decision with the reports it drew on; and the orchestrator's runs with their outcome.
+- **FR-009**: Agent activity MUST list every report from both analysts, including `no_action` runs, with their sources; every Portfolio Manager decision with the reports it drew on; and every orchestrator run (agent, why it was due, slot, start and finish, outcome, and its detail escaped as plain text), with failed, timed-out and skipped runs marked and filterable.
 - **FR-010**: The journal MUST show each trading day's equity, summary and per-agent attribution as defined by `specs/012-journal-writer/contracts/attribution.md`, and MUST show a row with an unknown schema version without failing.
+- **FR-010a**: Above the day rows, the journal MUST show a comparison chart for the chosen range (the equity curve's ranges): one line per analyst from its stored `index`, and an account line compounded from each day's `account.return`, each rebased to 100 at its own first point in the range, with missed sessions marked. Rows with an unknown schema version, or a null return, MUST leave a gap rather than a guessed value.
+- **FR-010b**: Beside the chart, the journal MUST show each analyst's usage totals over the range (written, argued, `no_action`, cited, decisions citing them, approved, filled), summed from each row's `usage`.
 - **FR-011**: While trading is paused, every page MUST show a banner saying so, since when, whether the deployed schedule lets the Portfolio Manager run while paused, and that the gate rejects every buy.
 - **FR-012**: Lists MUST show newest first, 50 rows a page, filterable by date range, and by symbol and agent where they apply; long text MUST be collapsed with the rest expandable on the same page.
 - **FR-013**: Every time MUST be shown in Asia/Singapore with ET alongside; every page MUST show when it was read.
@@ -207,8 +228,8 @@ Before a release, the owner runs a check that confirms each credential works and
 
 ### Key Entities
 
-- **Owner session**: proof the owner signed in, with its sign-in time and expiry, and the cross-site check value for writes. Held in the browser; nothing is stored in the database.
-- **Pause state**: `system_state.trading_paused` and `updated_at`, the only data the dashboard writes.
+- **Owner session**: a random ID in the browser's cookie, and, in the dashboard's memory only, its sign-in time, expiry and cross-site check value. Deleted on sign-out, expiry or restart; nothing is stored in the database or on disk.
+- **Pause state**: `system_state.trading_paused` and `updated_at`, the only data the dashboard writes, and `trading_paused_changed_at`, set by the database itself whenever `trading_paused` changes (empty until the first change after it is added).
 - **Deployed run-while-paused setting**: `portfolio_manager.run_while_paused` from the schedule deployed with the service; read only.
 - **Read data**: positions, account snapshots, reports and their sources, decisions and the reports they cite, risk verdicts, stop-loss triggers, orders, Execution's refusals, orchestrator runs, journal rows and their attribution, and the computed halt state, all through the read-only login.
 
@@ -230,8 +251,9 @@ Before a release, the owner runs a check that confirms each credential works and
 - One user, the owner. No accounts, roles or invitations.
 - The owner signs in from a recent mobile or desktop browser over HTTPS on the platform's generated address. A custom domain is out of scope.
 - The dashboard has no live prices: positions show cost from average entry price, and equity comes from the latest snapshot. Market value per position is out of scope.
-- The orchestrator's runs are included in agent activity because failed, timed-out and skipped runs explain missing reports; `docs/specs/ui-dashboard.md` names only reports and decisions, so this is an addition to confirm in `/speckit-clarify`.
-- Sign-out ends the session in that browser only; ending every session at once means changing the session secret.
+- The orchestrator's runs are in agent activity because failed, timed-out and skipped runs explain missing reports; `docs/specs/ui-dashboard.md` is updated to say so (clarify, 2026-10-18).
+- Ending every session at once means restarting the service; there is no "sign out everywhere" button.
 - The runbook's manual `UPDATE` as the owner's control login stays valid, and bypasses the toggle's guard; the runbook will name the dashboard as the preferred path.
+- One migration adds `trading_paused_changed_at` and its trigger ([ADR 0027](../../docs/adr/0027-pause-change-time-recorded-by-the-database.md)); the release runs the migrate step in the runbook's release checklist.
 - Switching on is unchanged: this feature does not change `run_while_paused`, the pause or any risk setting.
 - Depends on: the existing tables, views and grants (`specs/001-data-model`); the journal's attribution contract (`specs/012-journal-writer`); the logins command (`specs/010-observe-only-deployment`); the Assistant's fixed replies (`specs/013-assistant`).
