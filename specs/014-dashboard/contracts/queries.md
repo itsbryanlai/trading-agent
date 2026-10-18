@@ -79,7 +79,10 @@ SELECT id, agent, trading_day, reason, slot_key, slot_at, started_at, finished_a
        outcome, detail
 FROM orchestrator_runs
 WHERE … AND (:problems = false OR outcome IN ('failed', 'timed_out', 'skipped', 'interrupted'))
-ORDER BY COALESCE(started_at, slot_at) DESC, id DESC LIMIT :n;
+ORDER BY COALESCE(started_at, slot_at) DESC NULLS LAST, id DESC LIMIT :n;
+
+-- only when a decision on the page cites a report that isn't on it (its owner-zone day link)
+SELECT id, generated_at FROM reports WHERE id = ANY(:ids::uuid[]);
 ```
 
 `agent=research` or `opportunistic_identifier` shows that agent's reports and runs; `portfolio_manager` shows decisions and PM runs; `runs` shows runs only. `problems=1` shows runs only, problem outcomes only. A decision links to its cited reports by anchor on the same page when they are shown, and otherwise by `/activity?…` for that report's day.
