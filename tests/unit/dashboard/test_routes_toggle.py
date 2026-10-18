@@ -92,7 +92,9 @@ def test_a_null_start_time_reads_not_recorded(tmp_path):
 @pytest.mark.parametrize(("market", "warned"), [(lambda n: True, True), (lambda n: False, False)])
 def test_the_market_warning_follows_the_calendar(tmp_path, market, warned):
     built, _, _ = make(tmp_path, state=PAUSED_STATE, market_open=market)
-    assert ("The market is open." in get(built).text) is warned
+    text = get(built).text
+    assert ("The market is open." in text) is warned
+    assert "The market may be open." not in text
 
 
 def test_an_unknown_market_state_still_warns(tmp_path):
@@ -101,7 +103,8 @@ def test_an_unknown_market_state_still_warns(tmp_path):
 
     built, _, _ = make(tmp_path, state=PAUSED_STATE, market_open=broken)
     text = get(built).text
-    assert "The market is open." in text and "Confirm resume" in text
+    assert "The market may be open." in text and "The market is open." not in text
+    assert "Confirm resume" in text
 
 
 def test_the_halt_note_appears_only_with_the_halt(tmp_path):
