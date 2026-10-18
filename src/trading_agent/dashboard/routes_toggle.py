@@ -75,11 +75,13 @@ def confirm(request: Request, session: SessionDep) -> Response:
     setting = deployed.run_while_paused(deps.config_dir)
     action = toggle.available(state["trading_paused"], setting, skipped)
     changed = state["trading_paused_changed_at"]
+    market = _market_open(deps, now)
     page = {
         "action": type(action).__name__.lower(),
         "refusal": REFUSALS.get(getattr(action, "reason", ""), GENERIC_REFUSAL),
         "since": None if changed is None else timefmt.moment(changed, deps.zone),
-        "market_warning": toggle.warn_market(_market_open(deps, now)),
+        "market_warning": toggle.warn_market(market),
+        "market_unknown": market is None,
         "halt": pages.halt_line(state),
     }
     context = shell(deps, session, state, now, "toggle")

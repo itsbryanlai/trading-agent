@@ -14,7 +14,7 @@
 {% elif action == "resume" %}
 <h1>Resume trading?</h1>
 <p>Trading has been paused {% if since %}since {{ since }}{% else %}(start time not recorded){% endif %}. Resuming lets the next approved buy be submitted.</p>
-{% if market_warning %}<p><strong>The market is open.</strong> An approved buy could be submitted within minutes. The deployment runbook resumes after the close.</p>{% endif %}
+{% if market_warning %}<p><strong>{% if market_unknown %}The market may be open.{% else %}The market is open.{% endif %}</strong> An approved buy could be submitted within minutes. The deployment runbook resumes after the close.</p>{% endif %}
 {% if halt %}<p>The daily-loss halt stays active until the next trading day; resuming doesn't clear it.</p>{% endif %}
 <form method="post" action="/toggle">
   <input type="hidden" name="csrf" value="{{ csrf }}">
