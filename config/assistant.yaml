@@ -1,0 +1,53 @@
+# Settings for the Assistant (python -m trading_agent.assistant).
+#
+# Schema: specs/013-assistant/contracts/assistant-interface.md ("Configuration").
+# Every key is required and unknown keys are rejected; a bad file means the service
+# refuses to start (exit 2). Changed only through code review.
+
+# The owner's time zone, for "today" and for the times shown in replies.
+owner_time_zone: Asia/Singapore
+
+model:
+  # Which provider answers: qwen or anthropic.
+  provider: qwen
+  # The model name; for anthropic it starts with claude-.
+  name: qwen3.7-plus
+  # Most tokens one model call may produce.
+  max_output_tokens: 2000
+  # Seconds before one model call is abandoned.
+  timeout_seconds: 45
+  # Reasoning effort when the provider is anthropic: low, medium or high.
+  anthropic_effort: low
+
+# First words that make a message an action request, which is refused and explained.
+action_words: [pause, resume, unpause, halt, buy, sell, cancel, trade, liquidate]
+
+memory:
+  # Past question and answer pairs kept as context.
+  exchanges: 5
+  # Minutes of silence after which the memory is cleared.
+  idle_minutes: 30
+
+limits:
+  # Most database queries one question may run.
+  max_queries_per_question: 4
+  # Most rows one query may return.
+  max_rows_per_query: 50
+  # Longest date span, in days, one query may cover.
+  max_span_days: 92
+  # Most characters of query results given to the model.
+  max_input_chars: 60000
+  # Longest piece of free text from the database given to the model, in characters.
+  text_field_chars: 1500
+  # Longest reply, in characters, before it is cut.
+  max_reply_chars: 12000
+
+polling:
+  # Seconds one Telegram long poll waits for a message.
+  long_poll_seconds: 50
+
+database:
+  # Seconds before a query is cancelled by the database.
+  statement_timeout_seconds: 10
+  # Failures in a row after which the service exits.
+  max_consecutive_failures: 3

@@ -131,7 +131,8 @@ For every later release:
 2. Open a pull request from `main` into `release/prod`. CI must be green.
 3. Merge it. Railway redeploys the services from `release/prod`.
 4. If `.railway/` changed: from a clean checkout of `release/prod`, after `PYTHONPATH=src .venv/bin/python -m pytest tests/unit/deploy -q` passes, run `railway config plan`, read it, then `railway config apply`.
-5. Watch each service's logs start cleanly (section 7 if one doesn't).
+5. If the release changes the assistant, run its `--check` (section 9, step 3) with the release's values before merging; every line must read `ok`.
+6. Watch each service's logs start cleanly (section 7 if one doesn't).
 
 ## 4. Observing, and the post-deploy check
 
@@ -216,3 +217,15 @@ The `journal` service is a cron job: it runs once after each weekday's close, wr
 5. **Plan and apply.** From a clean checkout of `release/prod`, after the guard test passes, run `railway config plan`. It must show one new service, `journal`, with the cron schedule `30 0,22 * * *` (22:30 UTC and a 00:30 UTC retry slot), restart policy `NEVER` and only `JOURNAL_DATABASE_URL` and `JOURNAL_FINNHUB_API_KEY`. Then `railway config apply`, and set the two values in the Railway dashboard.
 
 The service runs whether or not trading is paused. A failed run is never restarted: read the log (the exit code names the reason, section 7), fix the cause and run it again by hand the same evening. The 00:30 UTC start is a second attempt and does nothing if the first wrote. Running it again by hand for a session that has a row does nothing; `--replace` rewrites that session's row.
+
+## 9. Adding the assistant service (feature 013, ADRs 0023-0025)
+
+The `assistant` service is always on: it long-polls Telegram, reads the database through a fixed query menu and answers the owner's private chat. Decisions: [ADR 0023](../adr/0023-assistant-runs-its-own-service-and-reads-through-a-query-menu.md), [ADR 0024](../adr/0024-assistant-explains-refusals-and-reads-deployed-settings.md), [ADR 0025](../adr/0025-assistant-model-flag-adds-refusals.md). Behavior: [`docs/specs/assistant-agent.md`](../specs/assistant-agent.md). There is no migration. Type every secret step directly in your own terminal tab (section 1).
+
+1. **Create the bot and find the chat ID.** Create a bot with @BotFather, message it from your private chat, and with the token exported (`read -rs`) run `PYTHONPATH=src .venv/bin/python -m trading_agent.assistant --find-chat-id`. Note the `chat.id` shown with `chat.type=private`: it is `ASSISTANT_TELEGRAM_CHAT_ID`. Do this before the service is deployed.
+2. **Create the login and get the model key.** Release the code first (section 3), then enable the database's public proxy, export `ADMIN_DATABASE_URL`, and run `logins` as in step 7 of section 2. It creates only the missing login, `ta_assistant_login`, and prints its string once. Store it in your password manager, then disable the proxy and unset the variable. For the model use a DashScope key and endpoint (`ASSISTANT_DASHSCOPE_API_KEY`, `ASSISTANT_QWEN_BASE_URL`), or an Anthropic key with `model.provider: anthropic`.
+3. **Check.** With every `ASSISTANT_*` value exported (`ASSISTANT_DATABASE_URL` through the proxy, with `sslmode=require` and the host override), run `PYTHONPATH=src .venv/bin/python -m trading_agent.assistant --check`. Every one of its seven lines must read `ok`: `telegram` (the bot token), `telegram_webhook` (no webhook set, which would block polling), `database`, `model_plan` and `model_answer` (both model clients, including the plan schema's boolean in the provider's strict mode), `time_zone` and `settings`. Nothing is sent to the chat. Any other result: do not deploy, and raise it. Run it again for any release that changes the assistant.
+4. **Plan and apply.** From a clean checkout of `release/prod`, after the guard test passes, run `railway config plan`. It must show one new service, `assistant`, always on, with only the six `ASSISTANT_*` variables. Then `railway config apply`, and set the values in the Railway dashboard (the provider you do not use stays unset).
+5. **First conversation.** In the private chat send `/help`, ask "what do we hold?", then send "pause trading" and "please pause trading". Both refusals must start with the fixed "nothing was done" line, and `system_state` must be unchanged. `railway logs -s assistant --deployment --lines 20` shows one `answered` or `refused` line per message and no message text.
+
+The service runs whether or not trading is paused. Messages sent while it was down are skipped, with one note saying how many.
