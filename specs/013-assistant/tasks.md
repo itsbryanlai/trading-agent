@@ -66,14 +66,14 @@ description: "Task list for the Assistant (feature 013)"
 
 ## Phase 1: Setup
 
-- [ ] T001 Create the package and its layer:
+- [x] T001 Create the package and its layer:
   - `src/trading_agent/assistant/__init__.py`, with a one-paragraph docstring pointing at spec 013 and ADRs 0023, 0024 and 0025;
   - add `assistant` to the first layer of `[tool.importlinter]` in `pyproject.toml`, beside `journal`;
   - `tests/unit/assistant/__init__.py` and `tests/integration/assistant/__init__.py`;
   - `tests/unit/assistant/test_imports.py`: walks `src/trading_agent/assistant/*.py` with `ast` and fails on any import outside the conventions' list. It also fails on the pure modules importing `psycopg`, `urllib`, `os`, `signal`, `telegram`, `store`, `loop` or `service`, or calling `datetime.now`.
 
   Run `scripts/lint.sh`.
-- [ ] T002 [P] Config (contracts/assistant-interface.md "Configuration"):
+- [x] T002 [P] Config (contracts/assistant-interface.md "Configuration"):
   - `config/assistant.yaml`, with every key at its default and a one-line comment each, including `owner_time_zone: Asia/Singapore`;
   - `src/trading_agent/assistant/config.py`, with `load_config(path) -> AssistantConfig` (frozen dataclasses), `DEFAULT_CONFIG_PATH` (repository root `config/assistant.yaml`, as `journal/config.py` resolves it), `AssistantConfigError`, and `provider_variables` from `llm.settings.provider_variables("ASSISTANT_", provider)`. The rules:
     - every key is required, unknown keys are refused, and integers are not booleans and stay within the contract's bounds;
