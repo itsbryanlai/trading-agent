@@ -92,6 +92,7 @@ def render(deps: Deps, template: str, status_code: int = 200, **context: object)
         "halt": None,
         "toggle_label": None,
         "read_at": None,
+        "pause_link": False,
         **context,
     }
     return HTMLResponse(deps.templates.get_template(template).render(page), status_code)

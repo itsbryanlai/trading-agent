@@ -149,9 +149,66 @@ def test_the_page_needs_a_session(tmp_path):
     assert response.status_code == 303 and store.read_calls == 0
 
 
-def test_a_database_failure_is_the_503_page(tmp_path):
+def test_a_database_failure_is_the_503_page_elsewhere(tmp_path):
     built = build(store=failing_store(), config_dir=schedule(tmp_path))
-    assert get(built).status_code == 503
+    assert get(built, "/").status_code == 503
+
+
+# --- the pause-only fallback when the read login fails (FR-020) -----------------------------
+
+
+def test_without_a_read_the_toggle_page_offers_only_the_pause(tmp_path):
+    built = build(store=failing_store(), config_dir=schedule(tmp_path))
+    response = get(built)
+    text = response.text
+    assert response.status_code == 200
+    assert "<h1>Pause trading?</h1>" in text
+    assert (
+        "The current state couldn't be read. Pausing is still available: if trading is "
+        "already paused, nothing will change." in text
+    )
+    assert 'name="expected" value="running"' in text and 'name="target" value="paused"' in text
+    assert 'name="csrf"' in text and "Confirm pause" in text
+    assert "Confirm resume" not in text
+    assert (
+        'name="expected" value="paused"' not in text and 'name="target" value="running"' not in text
+    )
+    assert 'class="banner' not in text
+
+
+def test_the_fallback_form_carries_the_sessions_csrf(tmp_path):
+    built = build(store=failing_store(), config_dir=schedule(tmp_path))
+    session, cookie = built.sign_in()
+    text = built.client().get("/toggle", headers=cookie).text
+    assert f'name="csrf" value="{session.csrf}"' in text
+
+
+def test_the_fallback_pause_writes_once_and_logs(tmp_path, caplog):
+    caplog.set_level(logging.INFO, logger="trading_agent.dashboard")
+    control = FakeControl()
+    built = build(store=failing_store(), control=control, config_dir=schedule(tmp_path))
+    assert post(built, PAUSE).headers["location"] == "/toggle/done?result=paused"
+    assert control.calls == [(False, True)]
+    assert toggle_lines(caplog) == ["dashboard toggle paused at=2026-10-19T23:00:00+00:00"]
+
+
+def test_the_fallback_pause_of_an_already_paused_system_changes_nothing(tmp_path, caplog):
+    caplog.set_level(logging.INFO, logger="trading_agent.dashboard")
+    control = FakeControl(result="stale")
+    built = build(store=failing_store(), control=control, config_dir=schedule(tmp_path))
+    response = post(built, PAUSE)
+    assert response.headers["location"] == "/toggle/done?result=stale"
+    assert toggle_lines(caplog) == ["dashboard toggle refused reason=stale"]
+    page = get(built, "/toggle/done?result=stale").text
+    assert "Nothing was changed." in page
+
+
+def test_the_database_unavailable_page_links_to_the_toggle_when_signed_in(tmp_path):
+    built = build(store=failing_store(), config_dir=schedule(tmp_path))
+    response = get(built, "/")
+    assert response.status_code == 503
+    assert "Database unavailable." in response.text
+    assert '<a class="button" href="/toggle">Pause trading</a>' in response.text.split("<main>")[1]
 
 
 # --- POST: the allowed paths ----------------------------------------------------------------

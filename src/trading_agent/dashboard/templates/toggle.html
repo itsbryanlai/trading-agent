@@ -1,9 +1,13 @@
 {% extends "base.html" %}
 {% block title %}Pause or resume trading{% endblock %}
 {% block content %}
-{% if action == "pause" %}
+{% if action == "pause" or action == "fallback" %}
 <h1>Pause trading?</h1>
+{% if action == "fallback" %}
+<p>The current state couldn't be read. Pausing is still available: if trading is already paused, nothing will change.</p>
+{% else %}
 <p>Trading is running. Pausing stops new buys at the gate. Sells and stop-loss exits continue. The PM keeps running while run_while_paused is true.</p>
+{% endif %}
 <form method="post" action="/toggle">
   <input type="hidden" name="csrf" value="{{ csrf }}">
   <input type="hidden" name="expected" value="running">

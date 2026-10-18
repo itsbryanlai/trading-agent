@@ -67,11 +67,18 @@ def _market_open(deps: Deps, now) -> bool | None:
 def confirm(request: Request, session: SessionDep) -> Response:
     deps = get_deps(request)
     now = deps.clock()
-    with deps.store.read() as reader:
-        state = reader.state()
-        if state is None:
-            raise StoreError("database: NoStateRow")
-        skipped = _pm_skipped(reader)
+    try:
+        with deps.store.read() as reader:
+            state = reader.state()
+            if state is None:
+                raise StoreError("database: NoStateRow")
+            skipped = _pm_skipped(reader)
+    except StoreError:
+        # The read login failed: pausing never depends on a read, so offer it alone (FR-020).
+        # Resume is never offered here, and the form assumes `running`; a wrong guess is
+        # caught by the writer's conditional update as "nothing changed".
+        context = _unread_shell(deps, session, now)
+        return render(deps, "toggle.html", **{**context, "action": "fallback"})
     setting = deployed.run_while_paused(deps.config_dir)
     action = toggle.available(state["trading_paused"], setting, skipped)
     changed = state["trading_paused_changed_at"]

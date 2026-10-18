@@ -108,9 +108,13 @@ def _add_headers(app: FastAPI) -> None:
         return apply_headers(await call_next(request), request.url.path)
 
 
-def _error_page(deps: Deps, request: Request, status_code: int, message: str) -> Response:
+def _error_page(
+    deps: Deps, request: Request, status_code: int, message: str, *, pause_link: bool = False
+) -> Response:
     # The 500 handler runs outside the middleware above, so every page sets its own headers.
-    response = shared.render(deps, "error.html", status_code, message=message)
+    response = shared.render(
+        deps, "error.html", status_code, message=message, pause_link=pause_link
+    )
     return apply_headers(response, request.url.path)
 
 
@@ -141,7 +145,9 @@ def _add_error_pages(app: FastAPI, deps: Deps) -> None:
     @app.exception_handler(StoreError)
     async def database_unavailable(request: Request, exc: StoreError) -> Response:
         shared.emit("error", type=_database_error_type(exc), route=shared.route_template(request))
-        return _error_page(deps, request, 503, UNAVAILABLE)
+        # Pausing needs no read, so a signed-in owner is offered it (FR-020).
+        signed_in = shared.current_session(request) is not None
+        return _error_page(deps, request, 503, UNAVAILABLE, pause_link=signed_in)
 
     @app.exception_handler(Exception)
     async def failed(request: Request, exc: Exception) -> Response:
