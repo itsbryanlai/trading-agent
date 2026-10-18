@@ -34,6 +34,11 @@ All recorded in [ADR 0026](../../docs/adr/0026-dashboard-public-service-with-own
 
 - Q: Can a sustained attacker still hold off the owner's sign-in under the two delays? → A: Yes, accepted by the owner (research D7). To cap guessing, an attempt arriving before the delay has passed is answered at once ("try again in N seconds") without being checked; a scripted attacker firing the moment each wait ends wins most races for the next slot, so while the attack lasts the owner's sign-in can be held off. It ends when the attack stops, and there is still no fixed lockout. Signed-in sessions, the runbook's manual `UPDATE` and the failure log lines are the fallbacks. This corrects the clarify answer's "the worst a stranger causes is a 30-second wait". Rejected: sleeping before checking (parallel requests defeat the cap); a second factor now (ADR 0026 deferred it).
 
+### Session 2026-10-18 (after `/speckit-analyze`)
+
+- Q: Is the dashboard's own copy of `schedule.yaml` enough to allow a resume, when the orchestrator may still run the old setting? → A: No. Resume also needs the newest `orchestrator_runs` row for the Portfolio Manager to be `skipped` with detail `trading paused`, which only happens once the orchestrator honours `run_while_paused: false` ([ADR 0028](../../docs/adr/0028-dashboard-resume-needs-the-orchestrator-to-have-skipped-a-pm-run.md), analyze S4). Switch-on can slip a day. Rejected: the file check plus a reminder to read the orchestrator's log.
+- Q: Does allowing a resume during market hours change ADR 0021 §9? → A: No. The runbook still says resume after the close; the dashboard's warning makes a session-time resume a fallback (ADR 0028 §4, analyze S5). Rejected: refusing resume while the market is open.
+
 ## User Scenarios & Testing *(mandatory)*
 
 The only user is **the owner**, who wants to open one page, from a phone or a laptop, and see what the system holds, what each agent has said and decided, what the gate and the broker did with it, and how each analyst would have done alone. This serves the system's purpose: watching each agent's performance over time with minimal intervention.
@@ -73,6 +78,7 @@ The owner presses the one control, sees a confirmation page stating the current 
 1. **Given** trading is running, **When** the owner presses "Pause trading" and confirms, **Then** `trading_paused` becomes true, `updated_at` is set, the page shows the new state, and one log line records a pause and its time.
 2. **Given** trading is paused, **When** the owner presses "Resume trading", **Then** a confirmation page shows how long it has been paused and that new buys become possible; nothing is written until they confirm.
 3. **Given** the deployed schedule has `portfolio_manager.run_while_paused: true`, **When** the owner tries to resume, **Then** it is refused before any write: the page says step 1 of switching on is not released, and points to the deployment runbook's section on switching trading on.
+3a. **Given** the deployed setting is false but the Portfolio Manager's newest run is not `skipped` with `trading paused` (the orchestrator hasn't honoured it yet), **When** the owner tries to resume, **Then** it is refused before any write, saying the orchestrator hasn't yet skipped a PM run for the pause.
 4. **Given** that setting is false and the market is open, **When** the owner opens the resume confirmation, **Then** it warns that resuming during the session lets the next approved buy be submitted, and still allows confirming.
 5. **Given** the confirmation page was opened while paused, **When** the state changes elsewhere before the owner confirms, **Then** confirming changes nothing and shows the current state.
 6. **Given** a write request with a missing or wrong cross-site check, or no session, **When** it arrives, **Then** it is refused and nothing is written.
@@ -168,6 +174,7 @@ Before a release, the owner runs a check that confirms each credential works and
 - **Signed out, then an old cookie is replayed**: it is refused like no session at all.
 - **Someone guesses passwords all day from many addresses**: at most one guess is checked per site-wide wait (up to 30 s), about 2,880 a day. Without such an attacker the owner waits at most 30 s; with one firing the moment each wait ends, the owner's attempts mostly get "try again in N seconds" until the attack stops (accepted, research D7). There is no fixed lockout; signed-in sessions keep working. A restart resets both delays.
 - **Session expires on the confirmation page**: confirming sends the owner to sign in, and nothing is written.
+- **The orchestrator is stopped, disabled or still on the old setting**: no PM run has been skipped for the pause, so resume is refused (fail closed); pausing still works.
 - **Unknown symbol or date in a filter, or a page past the end**: an empty list, not an error.
 - **Broker reasons and refusal details**: shown escaped as plain text.
 - **Daylight-saving changes**: times are converted per moment, so ET is right on both sides of a change.
@@ -195,13 +202,13 @@ Before a release, the owner runs a check that confirms each credential works and
 - **FR-010a**: Above the day rows, the journal MUST show a comparison chart for the chosen range (the equity curve's ranges): one line per analyst from its stored `index`, and an account line compounded from each day's `account.return`, each rebased to 100 at its own first point in the range, with missed sessions marked. Rows with an unknown schema version, or a null return, MUST leave a gap rather than a guessed value.
 - **FR-010b**: Beside the chart, the journal MUST show each analyst's usage totals over the range (written, argued, `no_action`, cited, decisions citing them, approved, filled), summed from each row's `usage`.
 - **FR-011**: While trading is paused, every page MUST show a banner saying so, since when, whether the deployed schedule lets the Portfolio Manager run while paused, and that the gate rejects every buy.
-- **FR-012**: Lists MUST show newest first, 50 rows a page, filterable by date range, and by symbol and agent where they apply; long text MUST be collapsed with the rest expandable on the same page.
+- **FR-012**: Lists MUST show newest first, 50 rows a page, filterable by date range (the journal by its chart range), and by symbol and agent where they apply; long text MUST be collapsed with the rest expandable on the same page.
 - **FR-013**: Every time MUST be shown in Asia/Singapore with ET alongside; every page MUST show when it was read.
 - **FR-014**: Pages MUST work without running any script.
 
 **Untrusted text**
 
-- **FR-015**: Report rationales, decision reasoning, journal summaries and source titles MUST be rendered as Markdown with raw HTML shown as text; a link MUST be kept only if it is `http` or `https`, otherwise shown as plain text; images MUST NOT be loaded.
+- **FR-015**: Report rationales, decision reasoning and journal summaries MUST be rendered as Markdown with raw HTML shown as text; a link MUST be kept only if it is `http` or `https`, otherwise shown as plain text; images MUST NOT be loaded. Source titles MUST be escaped plain text, linked only when their URL is `http(s)`.
 - **FR-016**: Broker reasons, refusal details and every other stored value MUST be shown escaped as plain text.
 - **FR-017**: Every response MUST tell the browser to run no script, load nothing from another origin, submit forms only to the dashboard, and refuse to be shown inside another site's frame.
 
@@ -211,6 +218,7 @@ Before a release, the owner runs a check that confirms each credential works and
 - **FR-019**: Pressing the toggle MUST show a confirmation page stating the current state, since when, and what the change does; only confirming MUST write.
 - **FR-020**: Pausing MUST always be allowed.
 - **FR-021**: Resuming MUST be refused before any write while the deployed `config/schedule.yaml` has `portfolio_manager.run_while_paused: true`, or when that setting cannot be read, with the reason and a pointer to the deployment runbook's switching-on section.
+- **FR-021a**: Resuming MUST also be refused before any write unless the newest `orchestrator_runs` row for `portfolio_manager` has outcome `skipped` and detail exactly `trading paused` (ADR 0028), checked on the confirmation page and again at the write.
 - **FR-022**: The resume confirmation MUST warn when the market is open, or when that cannot be determined, and MUST still allow confirming.
 - **FR-023**: Confirming MUST change the state only if it is still what the confirmation page showed; otherwise nothing MUST change and the current state MUST be shown.
 - **FR-024**: Each toggle MUST write one log line with its direction and time, and nothing else about the request.
@@ -228,7 +236,7 @@ Before a release, the owner runs a check that confirms each credential works and
 - **FR-030**: An unauthenticated health check MUST answer `ok` when the read login can query the database and unavailable otherwise, with no other data.
 - **FR-031**: An owner-run check MUST print one line per item, each `ok` or the reason it is not: the read login is a member of only the read role and can query; the control login is a member of only the control role; the password hash is well formed; the session secret is long enough; the deployed setting is readable. It MUST write nothing and print no credential.
 - **FR-032**: The Assistant's refusals MUST name "the dashboard's pause control" without "(not built yet)", and keep the runbook's switching-on and switching-off sections as the second control; neither may contain a file name, domain or `@name`.
-- **FR-033**: The deployment description MUST give the dashboard its own always-on service holding only its four variables, and the only public address in the system; the deployed-shape guard MUST enforce this.
+- **FR-033**: The deployment description MUST give the dashboard its own always-on service holding only its four variables, and the only service with a declared public address; the deployed-shape guard MUST enforce this.
 
 ### Key Entities
 
