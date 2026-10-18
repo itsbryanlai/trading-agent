@@ -29,6 +29,7 @@ from trading_agent.dashboard.config import (
     DashboardConfigError,
     load_config,
 )
+from trading_agent.dashboard.control import ControlWriter, control_login_configured
 from trading_agent.dashboard.store import PostgresStore
 from trading_agent.dashboard.throttle import SignInGate
 from trading_agent.risk import calendar
@@ -42,23 +43,6 @@ REQUIRED = (
     "DASHBOARD_SESSION_SECRET",
     "PORT",
 )
-
-
-def control_login_configured(environ: Mapping[str, str]) -> str | None:
-    """The name of the control login's variable if it is missing, else None.
-
-    A presence check only: nothing here reads the value. T019 moves this into control.py,
-    the one module allowed to name that variable.
-    """
-    name = "DASHBOARD_CONTROL_DATABASE_URL"
-    return None if environ.get(name) else name
-
-
-class _NoControl:
-    """The control writer until T019: every write is refused, so nothing can change state."""
-
-    def set_paused(self, expected: bool, target: bool) -> str:
-        raise RuntimeError("the control writer is not built yet")
 
 
 def _fail(message: str) -> int:
@@ -85,7 +69,7 @@ def _build(config: DashboardConfig, environ: Mapping[str, str]):
         store=PostgresStore(
             environ["DASHBOARD_DATABASE_URL"], config.database.statement_timeout_seconds
         ),
-        control=_NoControl(),
+        control=ControlWriter.from_env(environ),
         sessions=auth.Sessions(config.max_sessions, timedelta(hours=config.session_hours)),
         gate=SignInGate(
             config.sign_in_delay.first_seconds,

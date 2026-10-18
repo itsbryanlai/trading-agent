@@ -129,9 +129,12 @@ def test_the_store_gets_the_read_url_and_the_configured_timeout(monkeypatch, uvi
     assert seen["args"] == (SECRETS["DASHBOARD_DATABASE_URL"], 10)
 
 
-def test_until_the_control_writer_exists_every_write_is_refused():
-    with pytest.raises(RuntimeError):
-        runner._NoControl().set_paused(False, True)
+def test_the_app_gets_the_control_writer_from_the_environment(uvicorn_run):
+    runner.main([], SECRETS)
+    ((app, _),) = uvicorn_run
+    control = app.state.deps.control
+    assert isinstance(control, runner.ControlWriter)
+    assert "MARKER" not in repr(control)
 
 
 def test_the_started_and_stopped_lines_hold_no_variable_value(uvicorn_run, caplog):
