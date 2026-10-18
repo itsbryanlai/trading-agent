@@ -14,7 +14,7 @@ from typing import Annotated
 from fastapi import APIRouter, Query, Request, Response
 from fastapi.responses import PlainTextResponse
 
-from trading_agent.dashboard import charts, deployed, pages, timefmt
+from trading_agent.dashboard import charts, deployed, pages, pages_orders, timefmt
 from trading_agent.dashboard.deps import Deps, SessionDep, get_deps, render
 from trading_agent.dashboard.store import StoreError
 from trading_agent.risk import calendar
@@ -101,3 +101,26 @@ def overview(
 def healthz(request: Request) -> Response:
     ok = request.app.state.health.ok()
     return PlainTextResponse("ok" if ok else "unavailable", status_code=200 if ok else 503)
+
+
+@router.get("/orders")
+def orders(
+    request: Request,
+    session: SessionDep,
+    symbol: Annotated[str | None, Query()] = None,
+    day_from: Annotated[str | None, Query(alias="from")] = None,
+    day_to: Annotated[str | None, Query(alias="to")] = None,
+    page: Annotated[str | None, Query()] = None,
+) -> Response:
+    deps = get_deps(request)
+    filters = pages_orders.parse_filters(symbol, day_from, day_to, page)
+    since, until = pages_orders.bounds(filters, deps.zone)
+    size = deps.config.page_size
+    now = deps.clock()
+    with deps.store.read() as reader:
+        state = reader.state()
+        if state is None:
+            raise StoreError("database: NoStateRow")
+        rows = reader.orders(filters.symbol, since, until, size + 1, (filters.page - 1) * size)
+    view = pages_orders.orders_view(rows, filters, size, deps.zone)
+    return render(deps, "orders.html", view=view, **shell(deps, session, state, now, "orders"))

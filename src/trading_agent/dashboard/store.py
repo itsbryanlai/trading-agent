@@ -51,6 +51,25 @@ SELECT outcome, detail, slot_key, COALESCE(started_at, slot_at) AS at
 FROM orchestrator_runs WHERE agent = 'portfolio_manager'
 ORDER BY COALESCE(started_at, slot_at) DESC NULLS LAST, id DESC LIMIT 1
 """
+ORDER_HISTORY = """
+SELECT v.id, v.evaluated_at, v.trading_day, v.verdict, v.rejection_rule, v.approved_order,
+       d.id AS decision_id, d.generated_at AS decided_at, d.symbol AS d_symbol,
+       d.direction, d.size_pct, d.quote_at_decision, d.quote_time,
+       t.id AS trigger_id, t.symbol AS t_symbol, t.observed_price, t.observed_at,
+       o.id AS order_id, o.status, o.limit_price, o.fill_qty, o.fill_price,
+       o.broker_reason, o.submitted_at,
+       r.reason AS refusal_reason, r.details AS refusal_details, r.refused_at
+FROM risk_verdicts v
+LEFT JOIN decisions d ON d.id = v.decision_id
+LEFT JOIN stop_loss_triggers t ON t.id = v.stop_loss_trigger_id
+LEFT JOIN orders o ON o.risk_verdict_id = v.id
+LEFT JOIN execution_refusals r ON r.risk_verdict_id = v.id
+WHERE (%(symbol)s::text IS NULL OR COALESCE(d.symbol, t.symbol) = %(symbol)s::text)
+  AND (%(from)s::timestamptz IS NULL OR v.evaluated_at >= %(from)s::timestamptz)
+  AND (%(to)s::timestamptz IS NULL OR v.evaluated_at < %(to)s::timestamptz)
+ORDER BY v.evaluated_at DESC, v.id DESC
+LIMIT %(limit)s OFFSET %(offset)s
+"""
 PING = "SELECT 1"
 
 
@@ -86,6 +105,18 @@ class Reader:
     def equity_points(self, since: datetime | None, daily: bool) -> list[dict]:
         query = EQUITY_DAILY if daily else EQUITY_POINTS
         return self._all(query, {"since": NO_LOWER_BOUND if since is None else since})
+
+    def orders(
+        self,
+        symbol: str | None,
+        since: datetime | None,
+        until: datetime | None,
+        limit: int,
+        offset: int,
+    ) -> list[dict]:
+        """One row per risk verdict, newest first; `until` is exclusive."""
+        params = {"symbol": symbol, "from": since, "to": until, "limit": limit, "offset": offset}
+        return self._all(ORDER_HISTORY, params)
 
     def latest_pm_run(self) -> dict | None:
         """The orchestrator's evidence for a resume (ADR 0028)."""
