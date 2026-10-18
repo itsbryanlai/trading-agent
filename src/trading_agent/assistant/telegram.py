@@ -95,6 +95,10 @@ class TelegramClient:
         return result
 
     def _call(self, method: str, body: dict):
+        # The typed error is raised after the `except` blocks, so it carries no __context__
+        # or __cause__: the original exception's text and traceback hold the token's URL.
+        failure: TelegramError | None = None
+        raw = b""
         try:
             request = Request(
                 f"{API_ROOT}/bot{self._token}/{method}",
@@ -105,9 +109,11 @@ class TelegramClient:
             with self._open(request, timeout=self._timeout) as response:
                 raw = response.read()
         except HTTPError as exc:
-            raise _failure(exc.code, _payload(_read(exc))) from None
+            failure = _failure(exc.code, _payload(_read(exc)))
         except (OSError, ValueError, HTTPException) as exc:  # InvalidURL is an HTTPException
-            raise TelegramUnavailable(f"telegram: {type(exc).__name__}") from None
+            failure = TelegramUnavailable(f"telegram: {type(exc).__name__}")
+        if failure is not None:
+            raise failure
         payload = _payload(raw)
         if payload.get("ok") is True and "result" in payload:
             return payload["result"]

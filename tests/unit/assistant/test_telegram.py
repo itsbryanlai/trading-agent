@@ -182,6 +182,22 @@ def test_no_exception_or_client_text_contains_the_token():
     assert "fake-not-real" not in repr(TelegramClient(TOKEN, timeout=1))
 
 
+@pytest.mark.parametrize(
+    "outcome",
+    [_http(401), _http(409), _http(429), _http(500), URLError(TOKEN), InvalidURL(TOKEN),
+     ValueError(TOKEN), OSError(TOKEN), TimeoutError(TOKEN)],
+)
+def test_a_raised_error_carries_no_exception_context(outcome):
+    import traceback
+
+    client, _ = _client(outcome)
+    with pytest.raises(Exception) as caught:
+        client.get_me()
+    error = caught.value
+    assert error.__context__ is None and error.__cause__ is None
+    assert TOKEN not in "".join(traceback.format_exception(error))
+
+
 @pytest.mark.parametrize("token", ["123456:ABC-def_1", "000000:fake-not-real"])
 def test_valid_tokens(token):
     assert is_valid_token(token)
