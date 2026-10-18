@@ -21,7 +21,8 @@ _SCHEME_OR_WWW = r"(?:[A-Za-z][A-Za-z0-9+.\-]*://|www\.)\S*"
 # not match). Covers IDN hosts and xn-- punycode. An optional path/query follows.
 _DOT = "[.\u3002\uff0e\uff61]"
 _HOST = r"(?<![\w\-])(?:[\w\-]+" + _DOT + r")+[^\W\d_]{2,}[\w\-]*(?:[/?#]\S*)?"
-_USERNAME = r"(?<![\w@])@\w{5,32}(?!\w)"
+# Telegram links 4-character usernames and some 3-character inline bots such as @gif.
+_USERNAME = r"(?<![\w@])@\w{3,32}(?!\w)"
 # A host is tried before a username so "@name.com" leaves no host-like tail behind.
 _OTHER = re.compile(f"{_SCHEME_OR_WWW}|(?:@?{_HOST})|{_USERNAME}")
 

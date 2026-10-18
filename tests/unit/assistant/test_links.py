@@ -33,6 +33,7 @@ def test_allowed_url_in_a_sentence_and_before_punctuation():
         "BRK.B closed at 3.5% on the U.S. exchange, e.g. NVDA in Asia/Singapore.",
         "Price 1.5bn and v1.2.3 at 10.25.",
         "Mon 2026-10-19 23:00 +08 (Mon 11:00 ET)",
+        "a@b and @ alone, 3.5%",
     ],
 )
 def test_ordinary_text_is_kept(text):
@@ -47,6 +48,8 @@ def test_ordinary_text_is_kept(text):
         "www.evil.io",
         "t.me/x",
         "@phish_bot",
+        "@abcd",
+        "@gif",
         "deployment.md",
         "пример.рф",
         "x.xn--p1ai",
