@@ -15,7 +15,7 @@ from urllib.parse import urlencode
 from zoneinfo import ZoneInfo
 
 from trading_agent.dashboard import attribution, charts, timefmt
-from trading_agent.dashboard.attribution import ACCOUNT, Attribution, Book
+from trading_agent.dashboard.attribution import Attribution, Book
 from trading_agent.dashboard.pages import money
 from trading_agent.dashboard.pages_activity import Body, body
 from trading_agent.dashboard.pages_orders import PAGE
@@ -25,6 +25,7 @@ RANGES = ("1w", "1m", "all")
 DEFAULT_RANGE = "1m"
 NEW_YORK = ZoneInfo("America/New_York")
 SERIES_CLASSES = 6
+ACCOUNT = "account"
 NO_DATA = "No journal rows for this range."
 UNREADABLE = "Attribution can't be displayed for this day."
 USAGE_LABELS = (
@@ -88,7 +89,14 @@ def _css(name: str, position: int) -> str:
 
 def chart_view(rows: Sequence[Mapping], width: int = 600, height: int = 200) -> ChartView:
     parsed = [(row["trading_day"], attribution.parse(row["per_agent_attribution"])) for row in rows]
-    series = attribution.comparison(parsed)
+    # The account line is the journal's own `equity_close`, so an unreadable attribution row
+    # leaves a gap in the analysts' lines but not in the account's. Only a null close is a gap,
+    # and after one the line resumes at its true level: it is rebased once, to the range's
+    # first non-null close, never restarted.
+    series = {
+        ACCOUNT: sorted((row["trading_day"], row["equity_close"]) for row in rows),
+        **attribution.comparison(parsed),
+    }
     rebased = {
         name: charts.rebase([(_at(day), value) for day, value in points])
         for name, points in series.items()

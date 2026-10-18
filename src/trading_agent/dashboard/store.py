@@ -109,7 +109,7 @@ FROM journal WHERE trading_day >= %(since)s
 ORDER BY trading_day DESC LIMIT %(limit)s OFFSET %(offset)s
 """
 JOURNAL_RANGE = """
-SELECT trading_day, per_agent_attribution FROM journal
+SELECT trading_day, equity_close, per_agent_attribution FROM journal
 WHERE trading_day >= %(since)s ORDER BY trading_day
 """
 NO_EARLIEST_DAY = date.min

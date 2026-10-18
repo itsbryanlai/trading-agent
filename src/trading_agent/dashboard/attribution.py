@@ -28,11 +28,8 @@ USAGE_FIELDS = (
     "approved",
     "filled",
 )
-ACCOUNT = "account"
 _DECIMAL = re.compile(r"^-?\d+(\.\d+)?$")
 _DAY = re.compile(r"^\d{4}-\d{2}-\d{2}$")
-_HUNDRED = Decimal(100)
-_ONE = Decimal(1)
 
 
 @dataclass(frozen=True)
@@ -221,31 +218,20 @@ Series = list[tuple[date, "Decimal | None"]]
 
 
 def comparison(rows: Sequence[Row]) -> dict[str, Series]:
-    """One series per analyst and one for the account, one point per row, oldest first.
+    """One series per analyst, one point per row, oldest first.
 
-    - An analyst's series holds its stored `index` from its `started_on` day; before that, on a
-      row without it, or on an unreadable row, it holds None (a gap).
-    - The account series compounds `account.return` day by day from 100. A null return or an
-      unreadable row is a gap, and the next day starts a new segment at 100: the level across
-      a gap is unknown, and no value is guessed to bridge it.
-    Rebase each series to its own first point with `charts.rebase`.
+    An analyst's series holds its stored `index` from its `started_on` day; before that, on a
+    row without it, or on an unreadable row, it holds None (a gap). Rebase each series to its
+    own first point with `charts.rebase`. The account line is not here: it comes from the
+    journal rows' `equity_close`, not from attribution (owner, review of T024).
     """
     ordered = sorted(rows, key=lambda row: row[0])
     names = sorted(
         {name for _, parsed in ordered if isinstance(parsed, Attribution) for name in parsed.agents}
     )
-    series: dict[str, Series] = {ACCOUNT: []}
-    series.update({name: [] for name in names})
-    level: Decimal | None = None
+    series: dict[str, Series] = {name: [] for name in names}
     for day, parsed in ordered:
         readable = isinstance(parsed, Attribution)
-        step = parsed.account_return if readable else None
-        if step is None:
-            level = None
-            series[ACCOUNT].append((day, None))
-        else:
-            level = _HUNDRED if level is None else level * (_ONE + step)
-            series[ACCOUNT].append((day, level))
         for name in names:
             book = parsed.agents.get(name) if readable else None
             value = book.index if book is not None and day >= book.started_on else None

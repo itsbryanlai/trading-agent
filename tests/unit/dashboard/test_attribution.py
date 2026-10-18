@@ -200,45 +200,26 @@ def values(series):
     return [None if v is None else float(v) for _, v in series]
 
 
-def test_the_account_compounds_its_returns_from_100():
-    rows = rows_of(
-        ("2026-10-05", fx.day("2026-10-05", "0.020000")),  # unseen: the first point is the base
-        ("2026-10-06", fx.day("2026-10-06", "0.010000")),
-        ("2026-10-07", fx.day("2026-10-07", "-0.050000")),
-        ("2026-10-08", fx.day("2026-10-08", "0.000000")),
-    )
-    got = at.comparison(rows)["account"]
-    assert [d for d, _ in got] == [
-        D("2026-10-05"),
-        D("2026-10-06"),
-        D("2026-10-07"),
-        D("2026-10-08"),
-    ]
-    assert values(got) == pytest.approx([100.0, 101.0, 95.95, 95.95])
-    assert all(type(v) is Decimal for _, v in got)
-    assert got[2][1] == Decimal("100") * Decimal("1.010000") * Decimal("0.950000")
-
-
-def test_a_null_return_or_an_unreadable_row_is_a_gap_and_the_next_point_restarts():
-    rows = rows_of(
-        ("2026-10-05", fx.day("2026-10-05", "0.010000")),
-        ("2026-10-06", fx.day("2026-10-06", "0.100000")),
-        ("2026-10-07", fx.day("2026-10-07", None)),
-        ("2026-10-08", fx.day("2026-10-08", "0.200000")),
-        ("2026-10-09", fx.example(schema_version=2)),
-        ("2026-10-12", fx.day("2026-10-12", "0.010000")),
-        ("2026-10-13", fx.day("2026-10-13", "0.010000")),
-    )
-    got = at.comparison(rows)["account"]
-    assert values(got) == pytest.approx([100.0, 110.0, None, 100.0, None, 100.0, 101.0])
+def test_comparison_holds_analysts_only_the_account_comes_from_equity_close():
+    rows = rows_of(("2026-10-05", fx.day("2026-10-05", "0.5")))
+    assert set(at.comparison(rows)) == {"research"}
+    assert not hasattr(at, "ACCOUNT")
 
 
 def test_rows_are_ordered_by_day_whatever_order_they_arrive_in():
     rows = rows_of(
-        ("2026-10-06", fx.day("2026-10-06", "0.100000")),
-        ("2026-10-05", fx.day("2026-10-05", "0.010000")),
+        (
+            "2026-10-06",
+            fx.day("2026-10-06", "0.1", agents={"research": fx.book("2026-10-05", "110")}),
+        ),
+        (
+            "2026-10-05",
+            fx.day("2026-10-05", "0.1", agents={"research": fx.book("2026-10-05", "100")}),
+        ),
     )
-    assert values(at.comparison(rows)["account"]) == pytest.approx([100.0, 110.0])
+    got = at.comparison(rows)["research"]
+    assert [d for d, _ in got] == [D("2026-10-05"), D("2026-10-06")]
+    assert values(got) == [100.0, 110.0]
 
 
 def test_each_analyst_series_is_its_stored_index_from_its_started_on_day():
@@ -264,7 +245,7 @@ def test_each_analyst_series_is_its_stored_index_from_its_started_on_day():
         ),
     )
     series = at.comparison(rows)
-    assert set(series) == {"account", "research", "opportunistic_identifier"}
+    assert set(series) == {"research", "opportunistic_identifier"}
     assert values(series["research"]) == [100.0, 104.5, 103.0]
     # An analyst who starts mid-range has no point before its started_on day.
     assert values(series["opportunistic_identifier"]) == [None, None, 100.0]
@@ -295,8 +276,8 @@ def test_a_row_dated_before_started_on_gives_no_point():
     assert values(at.comparison(rows)["research"]) == [None]
 
 
-def test_no_rows_means_only_an_empty_account_series():
-    assert at.comparison([]) == {"account": []}
+def test_no_rows_means_no_series():
+    assert at.comparison([]) == {}
 
 
 # --- usage totals ---------------------------------------------------------------------------

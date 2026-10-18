@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import copy
 from datetime import UTC, date, datetime, timedelta
+from decimal import Decimal
 
 import pytest
 
@@ -12,14 +13,17 @@ from tests.unit.dashboard.attribution_fixtures import journal_row
 from trading_agent.dashboard import pages_journal as pj
 
 
-def month(days: int = 5, returns="0.010000", **agents) -> list[dict]:
+def month(days: int = 5, returns="0.010000", closes=None, **agents) -> list[dict]:
     """`days` consecutive weekday rows from 5 Oct 2026, one analyst by default."""
     rows, day = [], date(2026, 10, 5)
     while len(rows) < days:
         if day.weekday() < 5:
             iso = day.isoformat()
             books = agents or {"research": fx.book("2026-10-05", "100")}
-            rows.append(journal_row(iso, fx.day(iso, returns, agents=copy.deepcopy(books))))
+            close = "100500" if closes is None else closes[len(rows)]
+            row = journal_row(iso, fx.day(iso, returns, agents=copy.deepcopy(books)))
+            row["equity_close"] = None if close is None else Decimal(close)
+            rows.append(row)
         day += timedelta(days=1)
     return rows
 
@@ -122,16 +126,65 @@ def test_missed_sessions_outside_the_rows_are_not_drawn():
     assert pj.chart_view(rows).markers == ()
 
 
-def test_unreadable_and_null_return_rows_leave_gaps_not_guesses():
-    rows = month(6)
-    rows[2]["per_agent_attribution"]["account"]["return"] = None
-    rows[4]["per_agent_attribution"] = {"schema_version": 7}
+def series_of(chart, name):
+    return next(s for s in chart.series if s.name == name)
+
+
+def points_in(series) -> int:
+    return sum(len(coordinates(p)) for p in series.paths) + len(series.dots)
+
+
+def test_the_account_line_comes_from_equity_close_rebased_to_the_first_close():
+    chart = pj.chart_view(month(4, closes=["200000", "210000", "190000", "220000"]))
+    account = series_of(chart, "account")
+    assert account.last == "110.00" and points_in(account) == 4
+    (path,) = account.paths
+    ys = [y for _, y in coordinates(path)]
+    assert ys[0] > ys[1] and ys[2] > ys[0] and ys[3] < ys[1]  # 100, 105, 95, 110
+    assert (chart.min_label, chart.max_label) == ("95.00", "110.00")
+
+
+def test_after_a_gap_the_account_line_resumes_at_its_true_level_never_at_100():
+    # 1000 -> 1100 -> (null) -> 1320: the third point is 132, not a fresh 100.
+    chart = pj.chart_view(month(4, closes=["1000", "1100", None, "1320"]))
+    account = series_of(chart, "account")
+    assert account.last == "132.00"
+    assert len(account.paths) == 1 and len(account.dots) == 1  # 100, 110 | gap | 132
+    low, high = float(chart.min_label.replace(",", "")), float(chart.max_label.replace(",", ""))
+    assert (low, high) == (100.0, 132.0)
+    (path,) = account.paths
+    assert coordinates(path)[0][1] == 196.0 and coordinates(path)[1][1] > 100
+    assert account.dots[0][1] == 4.0  # the resumed point sits at the top, at 132
+
+
+def test_a_row_missing_from_the_range_does_not_break_the_line_or_reset_it():
+    full = month(5, closes=["1000", "1010", "1020", "1030", "1040"])
+    absent = [r for i, r in enumerate(full) if i != 2]  # no row for the middle day
+    account = series_of(pj.chart_view(absent), "account")
+    assert len(account.paths) == 1 and points_in(account) == 4
+    assert account.last == "104.00"
+
+
+def test_a_null_equity_close_is_a_gap_and_the_base_is_the_first_non_null_close():
+    chart = pj.chart_view(month(4, closes=[None, "2000", "2200", "1800"]))
+    account = series_of(chart, "account")
+    assert points_in(account) == 3 and account.last == "90.00"
+    assert chart.min_label == "90.00" and chart.max_label == "110.00"
+
+
+def test_all_null_closes_leave_no_account_line():
+    chart = pj.chart_view(month(3, closes=[None, None, None]))
+    assert "account" not in [s.name for s in chart.series if s.paths or s.dots]
+
+
+def test_an_unreadable_attribution_row_gaps_the_analyst_lines_but_not_the_account():
+    rows = month(5, closes=["1000", "1010", "1020", "1030", "1040"])
+    rows[2]["per_agent_attribution"] = {"schema_version": 7}
     chart = pj.chart_view(rows)
-    account = next(s for s in chart.series if s.name == "account")
-    assert len(account.paths) + len(account.dots) >= 2  # broken into pieces
-    assert sum(len(coordinates(p)) for p in account.paths) + len(account.dots) == 4
-    research = next(s for s in chart.series if s.name == "research")
-    assert sum(len(coordinates(p)) for p in research.paths) + len(research.dots) == 5
+    account, research = series_of(chart, "account"), series_of(chart, "research")
+    assert len(account.paths) == 1 and not account.dots and points_in(account) == 5
+    assert points_in(research) == 4
+    assert len(research.paths) + len(research.dots) == 2  # two pieces around the gap
 
 
 def test_a_single_day_is_a_dot_and_no_rows_is_an_empty_chart():
@@ -140,7 +193,8 @@ def test_a_single_day_is_a_dot_and_no_rows_is_an_empty_chart():
     empty = pj.chart_view([])
     assert empty.series == () and empty.empty_text == "No journal rows for this range."
     only_bad = pj.chart_view([journal_row("2026-10-05", {"schema_version": 2})])
-    assert only_bad.empty_text
+    # No attribution to draw, but the account's close still gives it one point.
+    assert [s.name for s in only_bad.series] == ["account"] and only_bad.empty_text is None
 
 
 # --- usage totals ---------------------------------------------------------------------------

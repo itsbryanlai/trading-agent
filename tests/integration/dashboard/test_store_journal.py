@@ -98,7 +98,12 @@ def test_since_includes_that_day_in_both_queries(world):
 def test_the_range_query_is_every_row_oldest_first_and_slim(world):
     rows = full(world)
     assert [r["trading_day"] for r in rows] == [FIRST + timedelta(days=i) for i in range(12)]
-    assert set(rows[0]) == {"trading_day", "per_agent_attribution"}
+    assert set(rows[0]) == {"trading_day", "equity_close", "per_agent_attribution"}
+    assert [r["equity_close"] for r in rows[:3]] == [
+        Decimal("100100"),
+        Decimal("100101"),
+        Decimal("100102"),
+    ]
 
 
 def test_none_means_the_whole_journal(world):
