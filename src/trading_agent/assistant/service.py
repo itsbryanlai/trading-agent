@@ -9,19 +9,18 @@ Refusals keep to A8: an agent-flagged request returns before any store call.
 
 from __future__ import annotations
 
-import logging
-from dataclasses import dataclass
 from datetime import datetime
 
 from trading_agent.assistant import replies
+from trading_agent.assistant.actions_flow import refuse
 from trading_agent.assistant.answer import ANSWER_SCHEMA, PLAN_SCHEMA, parse_answer, parse_plan
 from trading_agent.assistant.inbox import ActionRequest, Command, TextOnly, classify
 from trading_agent.assistant.links import filter_links
 from trading_agent.assistant.menu import ENTRIES, Dropped, QueryResult, ValidChoice, validate
+from trading_agent.assistant.outcome import Handled, Outcome, done
 from trading_agent.assistant.prompt import (
     ANSWER_SYSTEM,
     PLAN_SYSTEM,
-    PROMPT_VERSION,
     answer_document,
     fit,
     plan_document,
@@ -35,55 +34,23 @@ from trading_agent.llm.ports import (
     ModelTruncated,
 )
 
-log = logging.getLogger("trading_agent.assistant")
-
-UNUSABLE = "gave an unusable answer"
+UNUSABLE = "unusable"
 _NOT_YET = Dropped("settings", "not_available_yet")  # TODO T015: settings come from files
 
 
-@dataclass(frozen=True)
-class Outcome:
-    """What happened to one message, for the loop and the log line.
-
-    `kind`: answered, too_much, model_failed, database or refused. `category` is the
-    model-failed text, `trigger` the refusal's, `detail` an exception type name.
-    `plan_tokens` and `answer_tokens` are (input, output) or None when the call didn't happen.
-    """
-
-    kind: str
-    category: str = ""
-    trigger: str = ""
-    detail: str = ""
-    queries: tuple[str, ...] = ()
-    dropped: tuple[tuple[str, str], ...] = ()
-    cut: tuple[str, ...] = ()
-    plan_tokens: tuple | None = None
-    answer_tokens: tuple | None = None
-    links_removed: int = 0
-    messages: int = 0
-
-
-@dataclass(frozen=True)
-class Handled:
-    replies: list[str]
-    outcome: Outcome
-
-
 def respond(update: dict, *, now: datetime, config, **parts) -> Handled:
-    """Classify an authorised update (A6) and answer it.
-
-    TODO T018: log the fixed replies. TODO T019: the keyword refusal's model call; until then
-    the fixed fallback, with no store or model call.
-    """
+    """Classify an authorised update (A6) and answer it. Fixed replies are never remembered."""
     kind = classify(update, config.action_words)
     if isinstance(kind, TextOnly):
-        return _done([replies.text_only()], Outcome("fixed"))
+        return done([replies.text_only()], Outcome("fixed", detail="R-TEXT-ONLY"))
     if isinstance(kind, Command):
         text = replies.help_text(config.action_words, config.owner_time_zone)
-        return _done([text], Outcome("fixed"))
+        return done([text], Outcome("fixed", detail="R-HELP"))
     if isinstance(kind, ActionRequest):
-        text = replies.refused_fallback(kind.matched_word, config.action_words, replies.CONTROLS)
-        return _done([text], Outcome("refused", trigger="keyword"))
+        return refuse(
+            update["message"]["text"].strip(), "keyword", kind.matched_word,
+            config=config, answer_model=parts["answer_model"],
+        )
     return handle(kind.text, now=now, config=config, **parts)
 
 
@@ -103,7 +70,7 @@ def handle(
 
     fitted = fit(build_plan, exchanges, limits.max_input_chars)
     if fitted is None:
-        return _done(replies.too_much(), Outcome("too_much"))
+        return done(replies.too_much(), Outcome("too_much"))
     try:
         reply = plan_model.complete(PLAN_SYSTEM, fitted[0], PLAN_SCHEMA)
     except ModelError as exc:
@@ -111,7 +78,10 @@ def handle(
     plan_tokens = (reply.input_tokens, reply.output_tokens)
     plan = parse_plan(reply.text)
     if plan is not None and plan.action_request:
-        return _flagged(config, plan_tokens)
+        return refuse(
+            message_text, "model_flag", "", config=config, answer_model=answer_model,
+            plan_tokens=plan_tokens,
+        )
 
     valid: list[ValidChoice] = []
     dropped: list[Dropped] = []
@@ -131,7 +101,7 @@ def handle(
             valid = runnable
             results = store.run(valid) if valid else []
     except StoreError as exc:
-        return _done(replies.database(), Outcome("database", detail=type(exc).__name__,
+        return done(replies.database(), Outcome("database", detail=type(exc).__name__,
                                                   plan_tokens=plan_tokens))
 
     def build_answer(kept):
@@ -148,7 +118,7 @@ def handle(
     }
     fitted = fit(build_answer, exchanges, limits.max_input_chars)
     if fitted is None:
-        return _done(replies.too_much(), Outcome("too_much", **seen))
+        return done(replies.too_much(), Outcome("too_much", **seen))
     try:
         answered = answer_model.complete(ANSWER_SYSTEM, fitted[0], ANSWER_SCHEMA)
     except ModelError as exc:
@@ -162,31 +132,22 @@ def handle(
     text = replies.cap(text, limits.max_reply_chars)
     parts = replies.split(text)
     memory.add(now, message_text, text)
-    return _done(parts, Outcome("answered", links_removed=removed, messages=len(parts), **seen))
-
-
-def _flagged(config, plan_tokens) -> Handled:
-    # TODO T019: the refusal call. Until then the fixed fallback, with no store call.
-    text = replies.refused_flag_fallback(config.action_words, replies.CONTROLS)
-    return _done(
-        [text], Outcome("refused", trigger="model_flag", plan_tokens=plan_tokens, messages=1)
-    )
+    return done(parts, Outcome("answered", links_removed=removed, messages=len(parts), **seen))
 
 
 def _category(exc: ModelError) -> str:
     if isinstance(exc, ModelRefused):
         return "refused"
     if isinstance(exc, ModelRejected | ModelKeyRejected):
-        return "rejected the request"
+        return "rejected"
     if isinstance(exc, ModelTruncated):
-        return "was cut off"
-    return "was unavailable"
+        return "truncated"
+    return "unavailable"
 
 
 def _failed(category: str, **seen) -> Handled:
-    return _done(
-        [replies.model_failed(category)], Outcome("model_failed", category=category, **seen)
-    )
+    text = replies.model_failed(replies.FAILURE_TEXT[category])
+    return done([text], Outcome("model_failed", category=category, **seen))
 
 
 def _source_urls(results) -> list[str]:
@@ -201,29 +162,3 @@ def _source_urls(results) -> list[str]:
                 if isinstance(url, str) and url:
                     urls.append(url)
     return urls
-
-
-def _done(parts, outcome: Outcome) -> Handled:
-    parts = parts if isinstance(parts, list) else [parts]
-    outcome = Outcome(**{**outcome.__dict__, "messages": outcome.messages or len(parts)})
-    if outcome.kind not in ("refused", "fixed"):
-        log.info(_line(outcome))
-    return Handled(parts, outcome)
-
-
-def _tokens(pair) -> str:
-    if pair is None:
-        return "-"
-    return "/".join("?" if n is None else str(n) for n in pair)
-
-
-def _line(o: Outcome) -> str:
-    label = o.kind + (f":{o.category}" if o.kind == "model_failed" else "")
-    return (
-        f"assistant: answered prompt_version={PROMPT_VERSION}"
-        f" queries={','.join(o.queries) or 'none'}"
-        f" dropped={','.join(f'{n}:{r}' for n, r in o.dropped) or 'none'}"
-        f" cut={','.join(o.cut) or 'none'}"
-        f" tokens={_tokens(o.plan_tokens)},{_tokens(o.answer_tokens)}"
-        f" links_removed={o.links_removed} messages={o.messages} outcome={label}"
-    )

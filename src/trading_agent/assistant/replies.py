@@ -13,13 +13,15 @@ CONTROLS: tuple[str, str] = (
     "the deployment runbook, section 5 Switching trading on and section 6 Switching trading off",
 )
 
-MODEL_FAILURES: tuple[str, ...] = (
-    "was unavailable",
-    "refused",
-    "rejected the request",
-    "was cut off",
-    "gave an unusable answer",
-)
+# The log code (no spaces) and the reply's wording for each way a model call fails.
+FAILURE_TEXT: dict[str, str] = {
+    "unavailable": "was unavailable",
+    "refused": "refused",
+    "rejected": "rejected the request",
+    "truncated": "was cut off",
+    "unusable": "gave an unusable answer",
+}
+MODEL_FAILURES: tuple[str, ...] = tuple(FAILURE_TEXT.values())
 
 CUT_MARK = "…(cut)"
 _EXAMPLE = 'phrase it as a question, e.g. "why did the PM sell MU?"'

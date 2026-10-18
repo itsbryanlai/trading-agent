@@ -17,6 +17,7 @@ from trading_agent.assistant.memory import Memory
 from trading_agent.assistant.prompt import ANSWER_SYSTEM, PLAN_SYSTEM
 from trading_agent.assistant.service import handle
 from trading_agent.llm.ports import (
+    ModelKeyRejected,
     ModelRefused,
     ModelRejected,
     ModelTruncated,
@@ -168,10 +169,9 @@ def test_the_flag_hands_off_before_any_store_call():
         "please pause trading", plan=plan_of(choice("portfolio_now"), action=True)
     )
     assert store.known_calls == 0 and store.run_calls == []
-    assert answer_model.calls == []
-    assert handled.outcome.kind == "refused"
-    assert handled.outcome.trigger == "model_flag"
-    assert handled.replies and handled.replies[0].startswith(replies.refused_line())
+    assert len(answer_model.calls) == 1  # the refusal call (tests in test_refusal.py)
+    assert handled.outcome.kind == "refused" and handled.outcome.trigger == "model_flag"
+    assert handled.replies[0].startswith(replies.refused_line())
     assert memory.recent(NOW) == []
 
 
@@ -236,32 +236,39 @@ def test_oldest_exchanges_are_dropped_before_too_much():
 
 
 @pytest.mark.parametrize(
-    "error, category",
+    "error, code, text",
     [
-        (ModelUnavailable("x"), "was unavailable"),
-        (ModelRefused("x"), "refused"),
-        (ModelRejected("x"), "rejected the request"),
-        (ModelTruncated("x"), "was cut off"),
+        (ModelUnavailable("x"), "unavailable", "was unavailable"),
+        (ModelRefused("x"), "refused", "refused"),
+        (ModelRejected("x"), "rejected", "rejected the request"),
+        (ModelKeyRejected("x"), "rejected", "rejected the request"),
+        (ModelTruncated("x"), "truncated", "was cut off"),
     ],
 )
-def test_a_failed_answer_call_gives_the_model_failed_reply(error, category):
-    handled, *_ = run(answer_model=FakeModel(error=error))
-    assert handled.replies == [replies.model_failed(category)]
-    assert handled.outcome.kind == "model_failed" and handled.outcome.category == category
+@pytest.mark.parametrize("which", ["plan", "answer"])
+def test_each_model_error_gives_its_category_from_either_call(error, code, text, which):
+    kw = {f"{which}_model": FakeModel(error=error)}
+    handled, store, _, answer_model, memory = run(**kw)
+    assert handled.replies == [replies.model_failed(text)]
+    assert handled.outcome.kind == "model_failed" and handled.outcome.category == code
+    assert " " not in handled.outcome.category
+    assert memory.recent(NOW) == []  # no exchange stored, no partial reply
+    if which == "plan":
+        assert store.run_calls == [] and answer_model.calls == []
 
 
-def test_a_failed_plan_call_gives_the_model_failed_reply_and_reads_nothing():
-    handled, store, _, answer_model, memory = run(plan_model=FakeModel(error=ModelUnavailable("x")))
-    assert handled.replies == [replies.model_failed("was unavailable")]
-    assert store.run_calls == [] and answer_model.calls == []
-    assert memory.recent(NOW) == []
+def test_the_failure_codes_and_texts_are_mapped_in_one_place():
+    assert set(replies.FAILURE_TEXT.values()) == set(replies.MODEL_FAILURES)
+    assert set(replies.FAILURE_TEXT) == {
+        "unavailable", "refused", "rejected", "truncated", "unusable"
+    }
 
 
 @pytest.mark.parametrize("bad", ["not json", {"reply": ""}, {"reply": 3}, {"text": "x"}])
 def test_an_unusable_answer_gives_the_model_failed_reply(bad):
     handled, *_, memory = run(answer_model=FakeModel(bad))
     assert handled.replies == [replies.model_failed("gave an unusable answer")]
-    assert handled.outcome.category == "gave an unusable answer"
+    assert handled.outcome.category == "unusable"
     assert memory.recent(NOW) == []
 
 
@@ -316,9 +323,26 @@ def test_respond_answers_a_command_with_help_and_a_non_text_message_with_text_on
     assert plan_model.calls == [] and store.known_calls == 0
 
 
-def test_respond_refuses_a_keyword_message_without_any_call():  # TODO T019 builds the refusal
-    handled, store, plan_model, answer_model = respond_to(upd("pause trading"))
-    assert handled.replies[0].startswith(replies.refused_line())
-    assert handled.outcome.kind == "refused" and handled.outcome.trigger == "keyword"
-    assert store.known_calls == 0 and store.run_calls == []
-    assert plan_model.calls == [] and answer_model.calls == []
+def test_every_fixed_reply_logs_its_id_and_is_not_remembered(caplog):
+    memory = Memory(5, 30)
+    from trading_agent.assistant.service import respond
+
+    with caplog.at_level(logging.INFO, logger="trading_agent.assistant"):
+        for update in (upd("/start"), upd("/whatever"), upd(None, photo=[{}]),
+                       upd("x", forward_origin={"type": "user"})):
+            respond(update, now=NOW, config=CONFIG, store=FakeStore(),
+                    plan_model=FakeModel(plan_of()), answer_model=FakeModel({"reply": "r"}),
+                    memory=memory)
+    lines = [r.getMessage() for r in caplog.records]
+    assert lines == [
+        "assistant: replied fixed=R-HELP",
+        "assistant: replied fixed=R-HELP",
+        "assistant: replied fixed=R-TEXT-ONLY",
+        "assistant: replied fixed=R-TEXT-ONLY",
+    ]
+    assert memory.recent(NOW) == []
+
+
+def test_a_question_through_respond_is_remembered():
+    handled, store, *_ = respond_to(upd("what do we hold?"))
+    assert handled.outcome.kind == "answered"
