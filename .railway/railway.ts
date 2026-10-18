@@ -14,7 +14,9 @@
 // Railpack runs it before copying src/, so the editable install is the buildCommand.
 // Every service starts from the repository root, on one replica, with Railway's
 // default on-failure restart, except the journal: a daily cron job, never restarted.
-// The assistant is always on (ADR 0023) and holds only ASSISTANT_* names.
+// The assistant is always on (ADR 0023) and holds only ASSISTANT_* names. The dashboard is
+// always on (ADR 0026), holds only DASHBOARD_* names and is the only service with a public
+// address or a health check.
 
 import { defineRailway, github, postgres, preserve, project, service } from "railway/iac";
 
@@ -115,7 +117,26 @@ export default defineRailway(() => {
     },
   });
 
+  // The system's only public address (ADR 0026): the owner's dashboard, signed in with one
+  // password. Always on, one replica (sessions and sign-in delays live in memory), health
+  // check at /healthz. Reads as ta_dashboard_login; its one write (the pause toggle) goes
+  // through ta_dashboard_control_login. Holds only DASHBOARD_* names, no broker, model,
+  // market-data or Telegram key. The public domain is generated in Railway after apply.
+  const dashboard = service("dashboard", {
+    source: github("itsbryanlai/trading-agent", { branch: "release/prod" }),
+    build: { builder: "RAILPACK", buildCommand: "/app/.venv/bin/pip install -e ." },
+    start: "python -m trading_agent.dashboard",
+    healthcheckPath: "/healthz",
+    replicas: 1,
+    env: {
+      DASHBOARD_DATABASE_URL: preserve(),
+      DASHBOARD_CONTROL_DATABASE_URL: preserve(),
+      DASHBOARD_PASSWORD_HASH: preserve(),
+      DASHBOARD_SESSION_SECRET: preserve(),
+    },
+  });
+
   return project("trading-agent", {
-    resources: [db, orchestrator, riskGate, referenceData, execution, journal, assistant],
+    resources: [db, orchestrator, riskGate, referenceData, execution, journal, assistant, dashboard],
   });
 });
