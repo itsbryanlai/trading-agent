@@ -15,8 +15,12 @@ The document:
 {"now": {"local": "...", "et": "...", "local_date": "YYYY-MM-DD", "time_zone": "<IANA>"},
  "question": "...",
  "exchanges": [{"asked_at": "...", "question": "...", "reply": "..."}],
- "menu": [{"name": "...", "returns": "...", "takes": [...], "default_dates": "..."}]}
+ "max_queries": 4,
+ "menu": [{"name": "...", "returns": "...", "takes": [...], "default_dates": "...",
+           "values": {"agent": [...]}, "required": ["symbol"]}]}
 ```
+
+`values` lists the allowed agents or sections where an entry has them; `required` lists its required parameters. Exchange text in both documents is cut to `text_field_chars`. (Added at implementation, T011 review.)
 
 The answer:
 

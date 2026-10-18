@@ -86,11 +86,11 @@ description: "Task list for the Assistant (feature 013)"
 
 ## Phase 2: Foundational (blocks every story)
 
-- [ ] T003 [P] `src/trading_agent/assistant/telegram.py` (research A1, A2), test first in `tests/unit/assistant/test_telegram.py`, with an injected `opener` callable. Also create `tests/fakes/telegram.py`: a `FakeTelegram` holding queued updates and recording sent messages and `getUpdates` offsets, implementing the same three methods.
+- [x] T003 [P] `src/trading_agent/assistant/telegram.py` (research A1, A2), test first in `tests/unit/assistant/test_telegram.py`, with an injected `opener` callable. Also create `tests/fakes/telegram.py`: a `FakeTelegram` holding queued updates and recording sent messages and `getUpdates` offsets, implementing the same three methods.
   - `TelegramClient(token, *, opener, timeout)` with `get_updates(offset, timeout, allowed_updates, limit) -> list[dict]`, `send_message(chat_id, text) -> None` and `get_me() -> dict`. Each is one POST of a JSON body to `https://api.telegram.org/bot<token>/<method>`, through `no_redirect.open_without_redirects`.
   - `send_message` always sends `link_preview_options: {"is_disabled": true}`, and never sends `parse_mode` or `entities`. A test asserts the exact body keys.
   - Errors raise typed exceptions: `TokenRejected` (401 or 404), `Conflict` (409), `FloodControl(retry_after)` (429, `parameters.retry_after`), `TelegramUnavailable` (network, timeout, 5xx, or `ok: false` otherwise). None of them holds or formats the URL or the response body. A test asserts that `str()` and `repr()` of every exception, and of the client, don't contain the token.
-- [ ] T004 [P] `src/trading_agent/assistant/inbox.py` and `actions.py` (research A5, A6, A7), test first in `tests/unit/assistant/test_inbox.py` and `test_actions.py`:
+- [x] T004 [P] `src/trading_agent/assistant/inbox.py` and `actions.py` (research A5, A6, A7), test first in `tests/unit/assistant/test_inbox.py` and `test_actions.py`:
   - `inbox.authorised(update, chat_id) -> bool`: true only for a `message` or an `edited_message` whose `chat.type == "private"` and whose `chat.id == chat_id`;
   - `inbox.classify(update, action_words) -> TextOnly | Command | ActionRequest(matched_word) | Question(text)`, in A6's order. An edited message, a message with `forward_origin`, and one without `text` are all `TextOnly`;
   - `inbox.count_skippable(updates, chat_id) -> int`: the `message`s from the authorised chat (A4);
@@ -100,7 +100,7 @@ description: "Task list for the Assistant (feature 013)"
   Cases: "Pause!", "SELL AAPL" and "  cancel the order" match; "Why did the PM sell MU?", "is trading paused?", "Stop-loss triggers this week?", "close price of MU?" and "please pause trading" don't (the default list has no `stop` or `close`, ADR 0025 §3). A group chat with any ID, a channel, and another private chat are not authorised.
 
   Hypothesis property: for any text whose first letter-run is not on the list, `match` is `None`.
-- [ ] T005 [P] `src/trading_agent/assistant/links.py` (research A12), test first in `tests/unit/assistant/test_links.py`: `filter_links(reply, allowed_urls) -> (text, removed_count)`.
+- [x] T005 [P] `src/trading_agent/assistant/links.py` (research A12), test first in `tests/unit/assistant/test_links.py`: `filter_links(reply, allowed_urls) -> (text, removed_count)`.
   - Allowed URLs are protected as exact substrings.
   - Any other `scheme://…`, `www.…`, bare host name (last label of 2+ letters), `t.me/…` or `@username` (5–32 word characters) is replaced with `[link removed]`.
   - Allowed URLs are protected only up to a boundary: whitespace, the end, or `.,;:!?)]}"'` followed by whitespace or the end.
@@ -112,27 +112,27 @@ description: "Task list for the Assistant (feature 013)"
   Fixed-reply guard (analyze H1): every reply function in `replies.py` (T006), with sample arguments including the default `action_words` and `CONTROLS`, passes `filter_links(text, [])` unchanged with 0 removed.
 
   **Mutation-check**: add `deployment.md` back to `CONTROLS`; the guard must fail.
-- [ ] T006 [P] `src/trading_agent/assistant/replies.py` (contracts/replies.md, research A14), test first in `tests/unit/assistant/test_replies.py`:
+- [x] T006 [P] `src/trading_agent/assistant/replies.py` (contracts/replies.md, research A14), test first in `tests/unit/assistant/test_replies.py`:
   - each fixed reply as a function returning text: `help_text(action_words, time_zone)`, `text_only()`, `refused_line()`, `refused_fallback(word, action_words, controls)`, `refused_flag_fallback(action_words, controls)`, `skipped(n)`, `too_much()`, `database()`, `model_failed(category)`;
   - the `CONTROLS` constant, exactly the two strings in contracts/model-io.md (no file name, analyze H1);
   - `cap(text, max_chars)`, which appends "…(cut)";
   - `split(text, limit_units=4000) -> list[str]`: UTF-16 code units, split at the last newline or space before the limit, otherwise hard-split.
 
   Hypothesis: the joined parts equal the input modulo the split whitespace, and every part is at most 4,000 UTF-16 units, including emoji-heavy text.
-- [ ] T007 [P] `src/trading_agent/assistant/memory.py` (research A13), test first in `tests/unit/assistant/test_memory.py`: `Memory(max_exchanges, idle_minutes)` with `add(asked_at, question, reply)` and `recent(now) -> list[Exchange]`. It keeps the newest N and clears everything when the newest is older than the idle period. Covers the 07:00/07:31 case and `max_exchanges=0`.
-- [ ] T008 [P] `src/trading_agent/assistant/answer.py` (contracts/model-io.md), test first in `tests/unit/assistant/test_answer.py`:
+- [x] T007 [P] `src/trading_agent/assistant/memory.py` (research A13), test first in `tests/unit/assistant/test_memory.py`: `Memory(max_exchanges, idle_minutes)` with `add(asked_at, question, reply)` and `recent(now) -> list[Exchange]`. It keeps the newest N and clears everything when the newest is older than the idle period. Covers the 07:00/07:31 case and `max_exchanges=0`.
+- [x] T008 [P] `src/trading_agent/assistant/answer.py` (contracts/model-io.md), test first in `tests/unit/assistant/test_answer.py`:
   - `PLAN_SCHEMA` and `ANSWER_SCHEMA` (strict: every property required, `additionalProperties: false`, no nullable types; `PLAN_SCHEMA` has a boolean `action_request` and the `queries` list);
   - `parse_plan(text) -> Plan | None` (`None` when invalid), where `Plan` is `(action_request: bool, choices: list[RawChoice])`. `action_request` must be a JSON boolean; any other type makes the plan invalid. An invalid plan is treated by `service` as `action_request: false` with no choices. Every query parameter is a plain string, `""` meaning not given; there are no nullable types in either schema (analyze M11);
   - `parse_answer(text) -> str | None` (`None` when invalid or empty).
 
   Invalid cases: not JSON, wrong types, extra keys, missing keys, an empty `reply`; `action_request` missing, `"true"` as a string, or `null`.
-- [ ] T009 `src/trading_agent/assistant/menu.py` (contracts/query-menu.md, research A10), test first in `tests/unit/assistant/test_menu.py`:
+- [x] T009 `src/trading_agent/assistant/menu.py` (contracts/query-menu.md, research A10), test first in `tests/unit/assistant/test_menu.py`:
   - `ENTRIES`: the 10 names, each with its accepted parameters, agent list, default dates and a one-line `returns` for the plan document;
   - `validate(raw_choices, *, known_symbols, today_local, zone, max_span_days, max_queries) -> (list[ValidChoice], list[Dropped])`, with A10's reasons in order: `unknown_query`, `unexpected_parameter`, `missing_parameter` (`universe` without a symbol), `unknown_symbol`, `unknown_agent`, `bad_dates`, `unknown_section`, `duplicate`, `too_many`;
   - `ValidChoice` carries UTC `start` and `end`, computed in the owner's zone from the start of `from_date` to the start of the day after `to_date`.
 
   SC-007 property (Hypothesis): for arbitrary raw choices, every `ValidChoice` has a known name, only its accepted parameters, a known symbol and a span within the limit.
-- [ ] T010 `src/trading_agent/assistant/store.py` (research A15, contracts/query-menu.md):
+- [x] T010 `src/trading_agent/assistant/store.py` (research A15, contracts/query-menu.md):
   - `PostgresStore(connect, url, zone, statement_timeout_seconds, max_rows, text_field_chars)`, where `connect` defaults to `psycopg.connect(url, connect_timeout=10, row_factory=dict_row)` (not `storage.db.connect`, which takes no timeout) and `zone` is the owner's `ZoneInfo`, with `known_symbols() -> set[str]` and `run(choices) -> list[QueryResult]`;
   - everything inside one `REPEATABLE READ READ ONLY` transaction with `SET LOCAL statement_timeout`, and a fresh connection per question;
   - each entry filters on the column in contracts/query-menu.md "Filters on"; `trading_day` entries use the ET dates of the span;
@@ -149,7 +149,7 @@ description: "Task list for the Assistant (feature 013)"
   - `cut` is set at `max_rows + 1`;
   - a text field longer than the cap is cut;
   - the transaction is read-only (an `INSERT` attempt in it fails).
-- [ ] T011 `src/trading_agent/assistant/prompt.py` (contracts/model-io.md, research A9, A11, A14), test first in `tests/unit/assistant/test_prompt.py`:
+- [x] T011 `src/trading_agent/assistant/prompt.py` (contracts/model-io.md, research A9, A11, A14), test first in `tests/unit/assistant/test_prompt.py`:
   - `PROMPT_VERSION = "0.1"`;
   - `PLAN_SYSTEM`, `ANSWER_SYSTEM` and `REFUSAL_SYSTEM` (fixed constants covering each rule in model-io.md "What the system prompts must say", with each schema appended as in `portfolio_manager/prompt.py`);
   - `plan_document(now, question, exchanges, menu)` and `answer_document(now, question, exchanges, results, dropped, nothing_looked_up)`;
