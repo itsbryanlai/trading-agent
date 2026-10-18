@@ -219,3 +219,16 @@ Run from the worktree on branch `014-dashboard` at the commit that adds T031's t
 T031 timings (worst of three runs on a seeded year: 3,500 snapshots, 3,000 reports, 1,500 decisions and verdicts with 500 orders and 200 refusals, 5,000 runs, 250 journal rows; limit 0.5 s): every store method returned in under 40 ms. The slowest were `reports` and `decisions` at page 30 (37 ms and 35 ms). No index was added and migration `0015` is unchanged.
 
 **Browser walk** (quickstart Part 1 step 3, main session, 2026-10-19): a throwaway database on `ta-test-pg-014`, migrated and seeded with positions, snapshots, both analysts' reports (one carrying the hostile fixtures), a PM decision, a rejected verdict and two runs, with local test logins; `--check` printed six `ok` lines. In the built-in browser: sign-in, the observe-only banner and "paused since", the overview and curve, activity (no script, image or `on*` attribute; only http(s) links, with `rel="nofollow noopener noreferrer"`), orders, the journal's empty state, resume refused for `run_while_paused: true`, a pause written through the control login and stamped by the trigger, sign-out, and Back then reload asking to sign in again. The walk found one bug: with `Referrer-Policy: no-referrer`, Chromium sends `Origin: null` on the dashboard's own form posts, so every sign-in was refused. Fixed to `same-origin` (`cd93189`); the dashboard unit suite passes (875). The database, logins and temporary files were removed afterwards.
+
+---
+
+## Final results after review fixes (2026-10-19)
+
+Run from the worktree on branch `014-dashboard` after T040's commits (`67f731a`), with `PYTHONPATH=src` and the throwaway `postgres:16` container `ta-test-pg-014` on 127.0.0.1:55432. The browser walk stays with the owner.
+
+| Check | Command | Result |
+|---|---|---|
+| Full unit suite | `PYTHONPATH=src .venv/bin/python -m pytest -q` | 4,023 passed, 1,796 deselected (the integration tests), 0 failed, in 362.7 s (6 min 3 s) |
+| Full integration suite | `TEST_DATABASE_URL=postgresql://postgres:test@127.0.0.1:55432/postgres PYTHONPATH=src .venv/bin/python -m pytest -m integration -q` | 1,796 passed, 4,023 deselected (the unit tests), 0 failed, in 58.6 s |
+| Lint | `PYTHONPATH=src scripts/lint.sh` | all checks passed; import contracts 1 kept, 0 broken |
+| Format | `.venv/bin/ruff format --check src tests` | 453 files already formatted |
