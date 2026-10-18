@@ -88,3 +88,23 @@ article { padding: 8px 0; border-bottom: 1px solid var(--line); }
 article.problem { border-left: 4px solid var(--down); padding-left: 12px; }
 article.problem strong { color: var(--down); }
 details > summary { cursor: pointer; }
+.chart .marker { stroke: var(--muted); stroke-width: 1; stroke-dasharray: 3 3; }
+.chart .series-account polyline { stroke: var(--fg); stroke-dasharray: 6 3; }
+.chart .series-account circle { fill: var(--fg); }
+.chart .series-1 polyline, .chart .series-1 circle { stroke: var(--accent); fill: none; }
+.chart .series-2 polyline { stroke: var(--up); }
+.chart .series-3 polyline { stroke: var(--down); }
+.chart .series-4 polyline { stroke: #a05cc2; }
+.chart .series-5 polyline { stroke: #d08a1e; }
+.chart .series-6 polyline { stroke: #1e9aa8; }
+.chart .series-1 circle { fill: var(--accent); stroke: none; }
+.chart .series-2 circle { fill: var(--up); }
+.chart .series-3 circle { fill: var(--down); }
+.legend { list-style: none; padding: 0; display: flex; flex-wrap: wrap; gap: 4px 16px; }
+.legend .swatch { display: inline-block; width: 12px; height: 12px; margin-right: 6px; border-radius: 2px; background: var(--accent); }
+.legend .series-account .swatch { background: var(--fg); }
+.legend .series-2 .swatch { background: var(--up); }
+.legend .series-3 .swatch { background: var(--down); }
+.legend .series-4 .swatch { background: #a05cc2; }
+.legend .series-5 .swatch { background: #d08a1e; }
+.legend .series-6 .swatch { background: #1e9aa8; }

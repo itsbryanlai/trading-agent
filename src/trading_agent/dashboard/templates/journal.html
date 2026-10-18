@@ -1,0 +1,73 @@
+{% extends "base.html" %}
+{% block title %}Journal{% endblock %}
+{% macro body(b) %}{% if b.summary %}<details><summary>{{ b.summary }}</summary>{{ b.html }}</details>{% else %}{{ b.html }}{% endif %}{% endmacro %}
+{% block content %}
+<h1>Journal</h1>
+<nav aria-label="Range">
+  {% for r in view.ranges %}<a href="/journal?range={{ r }}"{% if r == view.range_name %} aria-current="page"{% endif %}>{{ r }}</a>{% endfor %}
+</nav>
+
+<h2>Books against the account</h2>
+{% if view.chart.empty_text %}
+<p>{{ view.chart.empty_text }}</p>
+{% else %}
+<svg class="chart" viewBox="0 0 600 {{ view.chart.height }}" role="img" aria-label="Each book and the account, rebased to 100">
+  {% for x in view.chart.markers %}<line class="marker" x1="{{ x }}" y1="0" x2="{{ x }}" y2="{{ view.chart.height }}"/>{% endfor %}
+  {% for s in view.chart.series %}
+  <g class="{{ s.css }}">
+    {% for path in s.paths %}<polyline points="{{ path }}"/>{% endfor %}
+    {% for x, y in s.dots %}<circle cx="{{ x }}" cy="{{ y }}" r="3"/>{% endfor %}
+  </g>
+  {% endfor %}
+</svg>
+<p class="muted">Each line starts at 100 at its own first point. Low {{ view.chart.min_label }}, high {{ view.chart.max_label }}. {{ view.chart.first }} to {{ view.chart.last }}.{% if view.chart.markers %} Vertical marks are missed sessions.{% endif %}</p>
+<ul class="legend">
+  {% for s in view.chart.series %}<li class="{{ s.css }}"><span class="swatch"></span>{{ s.name }}{% if s.last %}: {{ s.last }}{% endif %}</li>{% endfor %}
+</ul>
+{% endif %}
+
+<h2>Usage over the range</h2>
+{% if view.usage.rows %}
+<table>
+  <thead><tr><th>Agent</th>{% for label in view.usage.labels %}<th class="num">{{ label }}</th>{% endfor %}</tr></thead>
+  <tbody>
+  {% for row in view.usage.rows %}<tr><td>{{ row.agent }}</td>{% for n in row.counts %}<td class="num">{{ n }}</td>{% endfor %}</tr>{% endfor %}
+  </tbody>
+</table>
+{% else %}
+<p>No usage to total for this range.</p>
+{% endif %}
+{% if view.usage.note %}<p class="muted">{{ view.usage.note }}</p>{% endif %}
+
+<h2>Days</h2>
+{% if view.empty_text %}<p>{{ view.empty_text }}</p>{% endif %}
+{% for d in view.days %}
+<article>
+  <h3>{{ d.day }}</h3>
+  <p>Equity {{ d.equity_open }} to {{ d.equity_close }}{% if d.account_return %} · account {{ d.account_return }}{% endif %}</p>
+  {{ body(d.summary) }}
+  {% if d.unreadable_text %}
+  <p class="muted">{{ d.unreadable_text }}</p>
+  {% else %}
+  {% if d.missed %}<p>Missed sessions: {{ d.missed|join(", ") }}.</p>{% endif %}
+  {% for a in d.agents %}
+  <h4>{{ a.name }}: index {{ a.index }}, day {{ a.day_return }}</h4>
+  {% if a.holdings %}
+  <table>
+    <thead><tr><th>Symbol</th><th class="num">Weight</th><th class="num">Reference price</th></tr></thead>
+    <tbody>{% for h in a.holdings %}<tr><td>{{ h.symbol }}</td><td class="num">{{ h.weight }}</td><td class="num">{{ h.ref_price }}</td></tr>{% endfor %}</tbody>
+  </table>
+  {% endif %}
+  {% if a.unpriced %}<p>Carried at last price: {{ a.unpriced|join(", ") }}.</p>{% endif %}
+  {% if a.skipped_targets %}<p>Targets not entered for want of a price: {{ a.skipped_targets|join(", ") }}.</p>{% endif %}
+  {% if a.exited %}<p>Exited: {{ a.exited|join(", ") }}.</p>{% endif %}
+  {% if a.scaled_by %}<p class="muted">Weights scaled by {{ a.scaled_by }}.</p>{% endif %}
+  {% endfor %}
+  {% endif %}
+</article>
+{% endfor %}
+<p>
+  {% if view.prev_url %}<a href="{{ view.prev_url }}">Newer</a>{% endif %}
+  {% if view.next_url %}<a href="{{ view.next_url }}">Older</a>{% endif %}
+</p>
+{% endblock %}

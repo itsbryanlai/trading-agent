@@ -14,7 +14,15 @@ from typing import Annotated
 from fastapi import APIRouter, Query, Request, Response
 from fastapi.responses import PlainTextResponse
 
-from trading_agent.dashboard import charts, deployed, pages, pages_activity, pages_orders, timefmt
+from trading_agent.dashboard import (
+    charts,
+    deployed,
+    pages,
+    pages_activity,
+    pages_journal,
+    pages_orders,
+    timefmt,
+)
 from trading_agent.dashboard.deps import Deps, SessionDep, get_deps, render
 from trading_agent.dashboard.store import StoreError
 from trading_agent.risk import calendar
@@ -163,3 +171,25 @@ def activity(
     view = pages_activity.activity_view(merged, filters, times, deps.zone)
     context = shell(deps, session, state, now, "activity")
     return render(deps, "activity.html", view=view, **context)
+
+
+@router.get("/journal")
+def journal(
+    request: Request,
+    session: SessionDep,
+    range_name: Annotated[str | None, Query(alias="range")] = None,
+    page: Annotated[str | None, Query()] = None,
+) -> Response:
+    deps = get_deps(request)
+    name, number = pages_journal.parse_query(range_name, page)
+    size = deps.config.page_size
+    now = deps.clock()
+    since = pages_journal.since_day(name, now)
+    with deps.store.read() as reader:
+        state = reader.state()
+        if state is None:
+            raise StoreError("database: NoStateRow")
+        page_rows = reader.journal_page(since, size + 1, (number - 1) * size)
+        range_rows = reader.journal_range(since)
+    view = pages_journal.journal_view(page_rows, range_rows, name, number, size)
+    return render(deps, "journal.html", view=view, **shell(deps, session, state, now, "journal"))

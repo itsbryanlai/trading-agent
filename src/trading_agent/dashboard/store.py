@@ -14,7 +14,7 @@ from __future__ import annotations
 import threading
 from collections.abc import Callable, Iterator
 from contextlib import AbstractContextManager, contextmanager
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 
 import psycopg
 from psycopg.conninfo import make_conninfo
@@ -103,6 +103,16 @@ WHERE (%(agent)s::text IS NULL OR agent = %(agent)s::text)
 ORDER BY COALESCE(started_at, slot_at) DESC NULLS LAST, id DESC LIMIT %(limit)s
 """
 REPORT_TIMES = "SELECT id, generated_at FROM reports WHERE id = ANY(%(ids)s::uuid[])"
+JOURNAL_PAGE = """
+SELECT trading_day, equity_open, equity_close, summary_md, per_agent_attribution
+FROM journal WHERE trading_day >= %(since)s
+ORDER BY trading_day DESC LIMIT %(limit)s OFFSET %(offset)s
+"""
+JOURNAL_RANGE = """
+SELECT trading_day, per_agent_attribution FROM journal
+WHERE trading_day >= %(since)s ORDER BY trading_day
+"""
+NO_EARLIEST_DAY = date.min
 PING = "SELECT 1"
 
 
@@ -175,6 +185,15 @@ class Reader:
             return {}
         rows = self._all(REPORT_TIMES, {"ids": [str(i) for i in ids]})
         return {str(row["id"]): row["generated_at"] for row in rows}
+
+    def journal_page(self, since: date | None, limit: int, offset: int) -> list[dict]:
+        """Day rows, newest first; `since` None is the whole journal."""
+        params = {"since": NO_EARLIEST_DAY if since is None else since}
+        return self._all(JOURNAL_PAGE, {**params, "limit": limit, "offset": offset})
+
+    def journal_range(self, since: date | None) -> list[dict]:
+        """Every row in the range, oldest first, for the chart and the usage totals."""
+        return self._all(JOURNAL_RANGE, {"since": NO_EARLIEST_DAY if since is None else since})
 
     def latest_pm_run(self) -> dict | None:
         """The orchestrator's evidence for a resume (ADR 0028)."""

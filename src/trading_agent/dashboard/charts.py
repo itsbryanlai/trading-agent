@@ -46,11 +46,26 @@ def _label(value: Decimal) -> str:
     return f"{value:,.2f}"
 
 
-def polyline(points: Sequence[Point], width: int = 600, height: int = 200) -> Chart:
+def x_position(at: datetime, first_at: datetime, last_at: datetime, width: int = 600) -> float:
+    """Where a time falls on the x axis of a chart spanning `first_at` to `last_at`."""
+    span = (last_at - first_at).total_seconds()
+    if span == 0:
+        return round(width / 2, 1)
+    return round(_PAD + (at - first_at).total_seconds() / span * (width - 2 * _PAD), 1)
+
+
+def polyline(
+    points: Sequence[Point],
+    width: int = 600,
+    height: int = 200,
+    value_range: tuple[Decimal, Decimal] | None = None,
+) -> Chart:
     """Scale `(time, value)` points into a `width` x `height` box.
 
     A missing value breaks the line, so a gap is never drawn as a value. A run of one point
-    is a dot. No values at all is the empty chart.
+    is a dot. No values at all is the empty chart. Charts that share an axis (several lines
+    compared on one plot) pass the same `value_range`; their points should span the same
+    times, which the x axis is taken from, gaps included.
     """
     for at, _ in points:
         _require_aware(at)
@@ -58,22 +73,17 @@ def polyline(points: Sequence[Point], width: int = 600, height: int = 200) -> Ch
     values = [value for _, value in ordered if value is not None]
     if not values:
         return Chart()
-    low, high = min(values), max(values)
+    low, high = value_range if value_range is not None else (min(values), max(values))
     first_at, last_at = ordered[0][0], ordered[-1][0]
-    span = (last_at - first_at).total_seconds()
 
     def place(at: datetime, value: Decimal) -> tuple[float, float]:
-        x = (
-            width / 2
-            if span == 0
-            else _PAD + (at - first_at).total_seconds() / span * (width - 2 * _PAD)
-        )
+        x = x_position(at, first_at, last_at, width)
         y = (
             height / 2
             if high == low
             else _PAD + float((high - value) / (high - low)) * (height - 2 * _PAD)
         )
-        return round(x, 1), round(y, 1)
+        return x, round(y, 1)
 
     runs: list[list[tuple[float, float]]] = [[]]
     for at, value in ordered:
