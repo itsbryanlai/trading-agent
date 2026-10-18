@@ -215,3 +215,47 @@ def test_no_variable_value_is_ever_logged(env, caplog):
     with caplog.at_level(logging.DEBUG):
         run(updates=[question()])
     assert not any(secret in caplog.text for secret in SECRETS)
+
+
+def test_main_drains_answers_one_question_and_stops_on_the_stop_flag(env):
+    """T028: every factory is a fake; the offline message is skipped, the live one answered."""
+    telegram = _late_question()
+    telegram.push(question(0, "asked while offline"))
+    code, _, store, seen, plan_model, answer_model = run(telegram=telegram)
+    assert code == 0
+    assert telegram.sent[0][1].startswith("I was offline and skipped 1")
+    assert telegram.sent[1:] == [(4242, "You hold MU.")]
+    assert len(plan_model.calls) == 1 and len(answer_model.calls) == 1
+    assert [c.name for c in store.run_calls[0]] == ["portfolio_now"]
+
+
+def test_the_production_factories_are_the_real_clients():
+    import inspect
+
+    from trading_agent.assistant.store import PostgresStore
+    from trading_agent.assistant.telegram import TelegramClient
+
+    defaults = inspect.signature(runner.main).parameters
+    assert defaults["telegram_factory"].default is TelegramClient
+    assert defaults["store_factory"].default is runner.build_store
+    assert defaults["model_factory"].default is runner.build_model
+    from trading_agent.assistant.config import load_config
+
+    store = runner.build_store(FAKE_DB, load_config())
+    assert isinstance(store, PostgresStore) and FAKE_DB not in repr(store)  # no connection made
+
+
+def test_a_settings_question_reads_the_config_directory_beside_the_config_file(
+    env, tmp_path
+):
+    for name in ("assistant.yaml",):
+        (tmp_path / name).write_text((runner.DEFAULT_CONFIG_PATH.parent / name).read_text())
+    (tmp_path / "risk.yaml").write_text("max_position_pct: 7\nuniverse: {}\n")
+    plan = FakeModel({"action_request": False, "queries": [
+        {"name": "settings", "symbol": "", "agent": "", "from_date": "", "to_date": "",
+         "section": "risk"}]})
+    code, _, _, _, _, answer_model = run(
+        telegram=_late_question(), plan=plan, config_path=tmp_path / "assistant.yaml")
+    assert code == 0
+    sent = answer_model.calls[0]["user"]
+    assert '"max_position_pct":7' in sent

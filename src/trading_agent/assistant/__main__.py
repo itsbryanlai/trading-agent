@@ -159,6 +159,7 @@ def _main(
             plan_model=plan_model,
             answer_model=answer_model,
             memory=memory,
+            config_dir=config_path.parent,
         )
 
     previous = signal.signal(signal.SIGTERM, lambda _signum, _frame: stop.set())
