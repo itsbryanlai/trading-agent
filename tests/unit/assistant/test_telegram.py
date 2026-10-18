@@ -85,6 +85,18 @@ def test_send_message_body_has_exactly_the_allowed_keys():
     assert opener.requests[0].full_url.endswith("/sendMessage")
 
 
+def test_get_webhook_info_returns_the_result_from_its_method():
+    client, opener = _client({"ok": True, "result": {"url": ""}})
+    assert client.get_webhook_info() == {"url": ""}
+    assert opener.requests[0].full_url.endswith("/getWebhookInfo")
+
+
+def test_get_webhook_info_with_a_wrong_shape_is_unavailable():
+    client, _ = _client({"ok": True, "result": []})
+    with pytest.raises(TelegramUnavailable):
+        client.get_webhook_info()
+
+
 def test_get_me_returns_the_result():
     client, _ = _client({"ok": True, "result": {"id": 1, "username": "b"}})
     assert client.get_me() == {"id": 1, "username": "b"}

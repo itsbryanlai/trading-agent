@@ -54,7 +54,7 @@ With every `ASSISTANT_*` value exported (`ASSISTANT_DATABASE_URL` through the pr
 PYTHONPATH=src .venv/bin/python -m trading_agent.assistant --check
 ```
 
-Every line must read `ok`: the bot token (`telegram`), the database, both model calls (`model_plan` and `model_answer`), the time zone and the settings files. Nothing is sent to the chat. Any other result: don't deploy, and raise it.
+Every line must read `ok`: the bot token (`telegram`), no webhook on the bot (`telegram_webhook`), the database, both model calls (`model_plan` and `model_answer`), the time zone and the settings files. Nothing is sent to the chat. Any other result: don't deploy, and raise it.
 
 ## 5. Deploy
 

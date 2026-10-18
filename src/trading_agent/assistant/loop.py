@@ -28,6 +28,7 @@ ALLOWED_UPDATES = ["message", "edited_message"]
 DRAIN_LIMIT = 100
 POLL_LIMIT = 100
 CONFLICT_WAIT = 10
+CONFLICT_STREAK = 30
 POLL_FLOOD_CAP = 300
 SEND_FLOOD_CAP = 60
 SEND_RETRY_WAIT = 2
@@ -167,12 +168,19 @@ def _send_part(telegram, chat_id: int, text: str, sleep) -> bool:
 
 def _fetch(telegram, offset: int, timeout: int, limit: int, sleep, stop) -> list[dict]:
     backoff = 1
+    conflicts = 0
     while not stop.is_set():
         try:
             return telegram.get_updates(offset, timeout, ALLOWED_UPDATES, limit)
         except TokenRejected:
             raise
         except TelegramError as exc:
+            conflicts = conflicts + 1 if isinstance(exc, Conflict) else 0
+            if conflicts == CONFLICT_STREAK:
+                log.critical(
+                    "assistant: telegram getUpdates keeps conflicting "
+                    "(webhook set or another poller)"
+                )
             if isinstance(exc, Conflict):
                 wait = CONFLICT_WAIT
             elif isinstance(exc, FloodControl):

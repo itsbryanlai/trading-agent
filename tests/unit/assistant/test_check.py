@@ -37,8 +37,8 @@ def test_a_working_setup_passes_every_check_and_sends_nothing():
     telegram = FakeTelegram()
     code, lines = go(telegram=telegram)
     assert code == 0
-    assert lines == ["telegram: ok", "database: ok", "model_plan: ok", "model_answer: ok",
-                     "time_zone: ok", "settings: ok"]
+    assert lines == ["telegram: ok", "telegram_webhook: ok", "database: ok", "model_plan: ok",
+                     "model_answer: ok", "time_zone: ok", "settings: ok"]
     assert telegram.sent == [] and telegram.offsets == []
 
 
@@ -73,7 +73,7 @@ def test_a_failure_names_the_check_and_the_exception_type_only(kwargs, name, kin
     failed = [line for line in lines if line.startswith(f"{name}:")]
     assert failed == [f"{name}: FAILED {kind}"]
     assert "MARKER-SECRET" not in "\n".join(lines)
-    assert len(lines) == 6  # the other checks still run
+    assert len(lines) == 7  # the other checks still run
 
 
 def test_a_model_answer_that_is_not_a_plan_fails():
@@ -193,7 +193,7 @@ def main(args, telegram, **env_overrides):
 def test_main_check_runs_the_checks_and_exits_zero(env):
     telegram = FakeTelegram()
     code, lines = main(["--check"], telegram)
-    assert code == 0 and len(lines) == 6 and all(line.endswith("ok") for line in lines)
+    assert code == 0 and len(lines) == 7 and all(line.endswith("ok") for line in lines)
     assert telegram.sent == []
 
 
@@ -242,3 +242,24 @@ def test_find_chat_id_without_a_token_logs_one_critical_exiting_line(env, monkey
     assert code == 2 and lines == [] and len(records) == 1
     assert records[0].levelno == 50 and "ASSISTANT_TELEGRAM_BOT_TOKEN" in records[0].getMessage()
     assert "refusing" not in caplog.text
+
+
+def test_a_set_webhook_fails_the_check_without_printing_the_url():
+    telegram = FakeTelegram()
+    telegram.webhook_url = "https://hook.example/path"
+    code, lines = go(telegram=telegram)
+    assert code == 1
+    assert "telegram_webhook: FAILED webhook_set" in lines
+    assert "telegram: ok" in lines
+    assert "hook.example" not in "\n".join(lines)
+
+
+def test_a_failing_webhook_lookup_names_the_exception_type_only():
+    class Broken(FakeTelegram):
+        def get_webhook_info(self):
+            raise TelegramUnavailable("MARKER-SECRET")
+
+    code, lines = go(telegram=Broken())
+    assert code == 1
+    assert "telegram_webhook: FAILED TelegramUnavailable" in lines
+    assert "MARKER-SECRET" not in "\n".join(lines)

@@ -41,6 +41,12 @@ class UnusableAnswer(Exception):
     """The model's answer did not parse as a reply."""
 
 
+class WebhookSet(Exception):
+    """The bot has a webhook, so getUpdates conflicts (409). The URL is never shown."""
+
+    code = "webhook_set"
+
+
 class Unavailable(Exception):
     """A settings section or key could not be read."""
 
@@ -53,6 +59,7 @@ def run_checks(
     failed = False
     for name, check in (
         ("telegram", lambda: telegram.get_me()),
+        ("telegram_webhook", lambda: _no_webhook(telegram)),
         ("database", lambda: store.known_symbols()),
         ("model_plan", lambda: _model_plan(plan_model, zone_name, now)),
         ("model_answer", lambda: _model_answer(answer_model, zone_name, now)),
@@ -63,10 +70,15 @@ def run_checks(
             check()
         except Exception as exc:
             failed = True
-            out(f"{name}: FAILED {type(exc).__name__}")
+            out(f"{name}: FAILED {getattr(exc, 'code', type(exc).__name__)}")
         else:
             out(f"{name}: ok")
     return EXIT_FAILED if failed else EXIT_OK
+
+
+def _no_webhook(telegram) -> None:
+    if telegram.get_webhook_info().get("url") != "":
+        raise WebhookSet
 
 
 def _model_plan(plan_model, zone_name: str, now: datetime) -> None:

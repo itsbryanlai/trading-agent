@@ -1,6 +1,6 @@
 """A small Telegram Bot API client (specs/013-assistant research A1, A2).
 
-Three methods, each one HTTPS POST with a JSON body. The bot token is part of the URL, so no
+Four methods, each one HTTPS POST with a JSON body. The bot token is part of the URL, so no
 exception here holds or formats the URL, a request, or a response body; the client's
 `repr` hides the token. Failures are typed so the loop can decide what to do (A2).
 """
@@ -84,6 +84,12 @@ class TelegramClient:
 
     def get_me(self) -> dict:
         result = self._call("getMe", {})
+        if not isinstance(result, dict):
+            raise TelegramUnavailable("telegram: unexpected response shape")
+        return result
+
+    def get_webhook_info(self) -> dict:
+        result = self._call("getWebhookInfo", {})
         if not isinstance(result, dict):
             raise TelegramUnavailable("telegram: unexpected response shape")
         return result

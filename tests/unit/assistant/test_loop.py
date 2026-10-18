@@ -274,6 +274,41 @@ def test_a_conflict_waits_ten_seconds_and_retries():
     assert sleeps.calls == [10] and len(seen) == 1
 
 
+def test_thirty_conflicts_in_a_row_log_critical_once_and_keep_retrying(caplog):
+    caplog.set_level(logging.INFO)
+    telegram = StopWhenEmpty(threading.Event(), [message(1)])
+    telegram.fail_updates = [Conflict("telegram: HTTP 409")] * 35
+    _, seen, sleeps = drive([], telegram=telegram)
+    assert sleeps.calls == [10] * 35 and len(seen) == 1
+    critical = [r for r in caplog.records if r.levelno == logging.CRITICAL]
+    assert [r.getMessage() for r in critical] == [
+        "assistant: telegram getUpdates keeps conflicting (webhook set or another poller)"
+    ]
+
+
+def test_twenty_nine_conflicts_do_not_log_critical(caplog):
+    telegram = StopWhenEmpty(threading.Event(), [message(1)])
+    telegram.fail_updates = [Conflict("telegram: HTTP 409")] * 29
+    drive([], telegram=telegram)
+    assert not [r for r in caplog.records if r.levelno == logging.CRITICAL]
+
+
+def test_a_new_conflict_streak_logs_again(caplog):
+    telegram = StopWhenEmpty(threading.Event(), [message(1), message(2)])
+    telegram.fail_updates = [Conflict("telegram: HTTP 409")] * 30
+    first = telegram.get_updates
+
+    def second_streak(offset, timeout, allowed_updates, limit):
+        got = first(offset, timeout, allowed_updates, limit)
+        if got and not telegram.fail_updates and offset == 1:
+            telegram.fail_updates = [Conflict("telegram: HTTP 409")] * 30
+        return got
+
+    telegram.get_updates = second_streak
+    drive([], telegram=telegram)
+    assert len([r for r in caplog.records if r.levelno == logging.CRITICAL]) == 2
+
+
 def test_a_flood_wait_on_polling_is_capped_at_300_seconds():
     telegram = StopWhenEmpty(threading.Event(), [message(1)])
     telegram.fail_updates = [FloodControl(30), FloodControl(9000)]

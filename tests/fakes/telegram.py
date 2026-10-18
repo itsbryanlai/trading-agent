@@ -1,6 +1,6 @@
 """A fake Telegram: queued updates, recorded sends and offsets (specs/013 T003).
 
-Implements the three methods of `assistant.telegram.TelegramClient`. `get_updates` confirms
+Implements the four methods of `assistant.telegram.TelegramClient`. `get_updates` confirms
 updates the way Telegram does: those below `offset` are dropped.
 """
 
@@ -15,6 +15,7 @@ class FakeTelegram:
         self.me = me or {"id": 1, "is_bot": True, "username": "fake_bot"}
         self.fail_send: list[Exception] = []  # raised by the next send_message calls, in order
         self.fail_updates: list[Exception] = []
+        self.webhook_url = ""  # what getWebhookInfo reports
 
     def push(self, update: dict) -> None:
         self.queue.append(update)
@@ -35,3 +36,6 @@ class FakeTelegram:
 
     def get_me(self) -> dict:
         return dict(self.me)
+
+    def get_webhook_info(self) -> dict:
+        return {"url": self.webhook_url, "pending_update_count": 0}

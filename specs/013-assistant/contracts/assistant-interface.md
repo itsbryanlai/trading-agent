@@ -7,7 +7,7 @@ An always-on process on the `assistant` Railway service (ADR 0023), or one owner
 | Form | Does | Needs |
 |---|---|---|
 | (no arguments) | skips the waiting messages (A4), then polls and answers until SIGTERM | every variable below |
-| `--check` | checks the bot token, the database login, the model key, the time zone and the settings files; one line each; sends nothing to the chat | every variable |
+| `--check` | checks the bot token, that the bot has no webhook, the database login, the model key, the time zone and the settings files; one line each; sends nothing to the chat | every variable |
 | `--find-chat-id` | for up to 120 s, prints `chat.id` and `chat.type` for each message received; replies to nothing; advances its offset so nothing prints twice (run it before deploying) | `ASSISTANT_TELEGRAM_BOT_TOKEN` only |
 
 Any other arguments exit 2.
@@ -72,6 +72,7 @@ One line per event, at INFO unless noted. The prefix is `assistant:`.
 - **Send abandoned**: `assistant: send abandoned at part <k>/<n>` (WARNING).
 - **Telegram**: `assistant: telegram <method> failed: <status or exception type>` (WARNING), with `retry in <s>s` where it applies.
 - **Database**: `assistant: database failed: <exception type> (consecutive <n>/<max>)` (ERROR).
+- **Conflicting poll**: `assistant: telegram getUpdates keeps conflicting (webhook set or another poller)` (CRITICAL), once after 30 consecutive 409s; polling carries on.
 - **Message failed**: `assistant: message failed: <exception type>` (ERROR). Handling one message raised; the owner gets R-INTERNAL, the update is confirmed and polling continues. The exception's text is never logged.
 - **Stop**: `assistant: stopping (SIGTERM)`, or `assistant: exiting: <reason>` (CRITICAL).
 
