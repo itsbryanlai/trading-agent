@@ -15,7 +15,7 @@ from zoneinfo import ZoneInfo
 
 from trading_agent.assistant.answer import ANSWER_SCHEMA, PLAN_SCHEMA
 
-PROMPT_VERSION = "0.1"
+PROMPT_VERSION = "0.2"
 ET = ZoneInfo("America/New_York")
 
 _COMMON = """\
@@ -69,6 +69,9 @@ Rules:
   result has more rows than shown.
 - If `nothing_looked_up` is true, say that nothing was looked up.
 - Quoting stored text is allowed, attributed to the agent that wrote it.
+- A `settings` result holds the values as deployed with the Assistant, with a `note`. Say they
+  are as deployed. `schedule` times are ET wall-clock: give them in the owner's time zone with
+  ET alongside.
 - Keep the reply short and direct.
 """
 

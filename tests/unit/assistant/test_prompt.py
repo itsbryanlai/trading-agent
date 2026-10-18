@@ -31,7 +31,7 @@ def exchange(n, reply="a reply"):
 
 
 def test_the_version():
-    assert PROMPT_VERSION == "0.1"
+    assert PROMPT_VERSION == "0.2"
 
 
 @pytest.mark.parametrize("system", [PLAN_SYSTEM, ANSWER_SYSTEM, REFUSAL_SYSTEM])
@@ -200,3 +200,10 @@ def test_fit_does_not_change_its_input():
     exchanges = [exchange(n, "r" * 1000) for n in (1, 2)]
     fit(_builder, exchanges, len(_builder([])) + 10)
     assert len(exchanges) == 2
+
+
+def test_the_answer_prompt_covers_deployed_settings_and_et_schedule_times():
+    text = " ".join(ANSWER_SYSTEM.split())
+    assert "`settings`" in text and "`note`" in text
+    assert "as deployed" in text
+    assert "ET wall-clock" in text and "owner's time zone with ET alongside" in text

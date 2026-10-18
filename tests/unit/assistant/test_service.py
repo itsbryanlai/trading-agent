@@ -165,7 +165,7 @@ def test_a_settings_choice_reads_files_and_makes_no_store_run():
     assert doc["dropped"] == [] and doc["nothing_looked_up"] is False
     (result,) = doc["results"]
     assert result["query"] == "settings" and result["parameters"] == {"section": "risk"}
-    assert set(result["rows"][0]) == {"risk"}
+    assert set(result["rows"][0]) == {"risk", "note"}
 
 
 def test_settings_and_a_database_entry_keep_the_choices_order():
@@ -299,7 +299,7 @@ def test_the_question_line_is_logged_without_text(caplog):
     with caplog.at_level(logging.INFO, logger="trading_agent.assistant"):
         run(marker, reply="MARKER-REPLY-4d2")
     text = "\n".join(r.getMessage() for r in caplog.records)
-    assert "assistant: answered prompt_version=0.1 queries=portfolio_now dropped=none" in text
+    assert "assistant: answered prompt_version=0.2 queries=portfolio_now dropped=none" in text
     assert "tokens=1200/300,1200/300" in text and "outcome=answered" in text
     assert "MARKER" not in text
 

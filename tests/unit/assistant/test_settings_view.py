@@ -14,7 +14,7 @@ REAL_DIR = DEFAULT_CONFIG_PATH.parent
 
 def test_the_real_config_files_load_every_section():
     result = read(REAL_DIR, None)
-    assert set(result) == set(SECTIONS)
+    assert set(result) == set(SECTIONS) | {"note"}
     assert result["risk"]["max_position_pct"] != UNAVAILABLE
     assert result["risk"]["universe"] != UNAVAILABLE
     assert result["schedule"]["research"]["enabled"] != UNAVAILABLE
@@ -25,7 +25,7 @@ def test_the_real_config_files_load_every_section():
 
 
 def test_one_section_returns_only_that_section():
-    assert set(read(REAL_DIR, "risk")) == {"risk"}
+    assert set(read(REAL_DIR, "risk")) == {"risk", "note"}
 
 
 def test_a_temporary_risk_file_shows_its_value(tmp_path):
@@ -64,3 +64,12 @@ def test_a_missing_file_is_unavailable(tmp_path):
 def test_a_non_scalar_value_under_a_scalar_key_is_not_copied(tmp_path):
     (tmp_path / "risk.yaml").write_text("max_position_pct: {a: PLANTED}\n")
     assert read(tmp_path, "risk")["risk"]["max_position_pct"] == UNAVAILABLE
+
+
+def test_every_result_carries_the_fixed_note():
+    from trading_agent.assistant.settings_view import NOTE
+
+    result = read(REAL_DIR, "risk")
+    assert result["note"] == NOTE
+    assert "deployed" in NOTE and "ET wall-clock" in NOTE
+    assert read(REAL_DIR, None)["note"] == NOTE

@@ -13,6 +13,10 @@ from pathlib import Path
 import yaml
 
 UNAVAILABLE = "unavailable"
+NOTE = (
+    "Values are those deployed with the Assistant, not validated here. "
+    "schedule times are ET wall-clock."
+)
 SECTIONS = ("risk", "schedule", "models")
 
 _RISK_KEYS = (
@@ -51,7 +55,8 @@ def read(config_dir: Path, section: str | None) -> dict:
     """`{section: values}` for one section, or for all three when `section` is None."""
     wanted = SECTIONS if not section else (section,)
     builders = {"risk": _risk, "schedule": _schedule, "models": _models}
-    return {name: builders[name](Path(config_dir)) for name in wanted if name in builders}
+    result = {name: builders[name](Path(config_dir)) for name in wanted if name in builders}
+    return result | {"note": NOTE}
 
 
 def _load(path: Path) -> dict | None:

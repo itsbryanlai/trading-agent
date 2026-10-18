@@ -137,7 +137,7 @@ def test_a_keyword_refusal_logs_the_word_trigger_and_tokens(caplog):
     with caplog.at_level(logging.INFO, logger=LOG):
         go("pause trading")
     assert [r.getMessage() for r in caplog.records] == [
-        "assistant: refused prompt_version=0.1 trigger=keyword word=pause "
+        "assistant: refused prompt_version=0.2 trigger=keyword word=pause "
         "tokens=1200/300 outcome=explained"
     ]
 
@@ -146,7 +146,7 @@ def test_a_model_flag_refusal_logs_both_calls_tokens(caplog):
     with caplog.at_level(logging.INFO, logger=LOG):
         go("please pause trading", plan=flagged())
     assert [r.getMessage() for r in caplog.records] == [
-        "assistant: refused prompt_version=0.1 trigger=model_flag "
+        "assistant: refused prompt_version=0.2 trigger=model_flag "
         "tokens=1200/300,1200/300 outcome=explained"
     ]
 
