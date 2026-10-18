@@ -55,3 +55,4 @@ What this makes easier, harder, or locks in going forward.
 | [0025](0025-assistant-model-flag-adds-refusals.md) | The Assistant's plan call can flag an action request as a second layer, and the default action words drop "stop" and "close" |
 | [0026](0026-dashboard-public-service-with-owner-sign-in.md) | The dashboard is a public web service with the owner's sign-in, two database logins, and a guarded toggle |
 | [0027](0027-pause-change-time-recorded-by-the-database.md) | The time the pause last changed is recorded by the database |
+| [0028](0028-dashboard-resume-needs-the-orchestrator-to-have-skipped-a-pm-run.md) | The dashboard's resume also needs the orchestrator to have skipped a Portfolio Manager run for the pause |
