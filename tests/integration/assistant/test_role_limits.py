@@ -16,7 +16,7 @@ import pytest
 from tests.integration.helpers import as_role, attempt
 from tests.integration.storage.factories import OBJECTS, probe
 from tests.integration.storage.grants_matrix import GRANTS
-from trading_agent.assistant.store import KNOWN_SYMBOLS, PLANS
+from trading_agent.assistant.store import KNOWN_AMONG, KNOWN_SYMBOLS, PLANS
 
 LOGIN = "ta_assistant_probe_login"
 TABLES = sorted(name for name, spec in OBJECTS.items() if spec.kind == "table")
@@ -29,7 +29,10 @@ WRITES = [
 ]
 MENU_STATEMENTS = [
     (name, tag, statement) for name, parts in PLANS.items() for tag, statement in parts
-] + [("known_symbols", None, KNOWN_SYMBOLS)]
+] + [
+    ("known_symbols", None, KNOWN_SYMBOLS),
+    ("known_among", None, KNOWN_AMONG),
+]
 
 
 @pytest.fixture(params=["group role", "login"])
@@ -55,6 +58,7 @@ def _params() -> dict:
     now = datetime(2026, 10, 20, 12, tzinfo=UTC)
     return {
         "symbol": "",
+        "symbols": ["MU"],
         "agent": "",
         "limit": 51,
         "start": now - timedelta(days=1),

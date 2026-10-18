@@ -18,7 +18,14 @@ from trading_agent.assistant.answer import ANSWER_SCHEMA, PLAN_SCHEMA, parse_ans
 from trading_agent.assistant.config import DEFAULT_CONFIG_PATH
 from trading_agent.assistant.inbox import ActionRequest, Command, TextOnly, classify
 from trading_agent.assistant.links import filter_links
-from trading_agent.assistant.menu import ENTRIES, Dropped, QueryResult, ValidChoice, validate
+from trading_agent.assistant.menu import (
+    ENTRIES,
+    Dropped,
+    QueryResult,
+    ValidChoice,
+    symbols_to_check,
+    validate,
+)
 from trading_agent.assistant.outcome import Handled, Outcome, done
 from trading_agent.assistant.prompt import (
     ANSWER_SYSTEM,
@@ -90,15 +97,8 @@ def handle(
     results: list[QueryResult] = []
     try:
         if plan is not None:
-            valid, dropped = validate(
-                plan.choices,
-                known_symbols=store.known_symbols(),
-                today_local=now.date(),
-                zone=now.tzinfo,
-                max_span_days=limits.max_span_days,
-                max_queries=limits.max_queries_per_question,
-            )
-            results = _run(valid, store, config_dir or DEFAULT_CONFIG_PATH.parent)
+            valid, dropped, from_db = _read(plan, store, now, limits)
+            results = _merge(valid, from_db, config_dir or DEFAULT_CONFIG_PATH.parent)
     except StoreError as exc:
         return done(replies.database(), Outcome("database", detail=type(exc).__name__,
                                                   plan_tokens=plan_tokens))
@@ -134,11 +134,34 @@ def handle(
     return done(parts, Outcome("answered", links_removed=removed, messages=len(parts), **seen))
 
 
-def _run(valid: list[ValidChoice], store, config_dir: Path) -> list[QueryResult]:
-    """Database entries through the store in one snapshot; `settings` from the files (A16).
-    Results keep the order of the choices."""
+def _read(plan, store, now: datetime, limits):
+    """Validate the plan and read the database entries: valid, dropped, database results.
+
+    Symbols are looked up only when a choice carries one, and then in the same transaction
+    as the reads. With none, no lookup is made, and no connection at all unless a database
+    entry is chosen."""
+
+    def check(known):
+        return validate(
+            plan.choices,
+            known_symbols=known,
+            today_local=now.date(),
+            zone=now.tzinfo,
+            max_span_days=limits.max_span_days,
+            max_queries=limits.max_queries_per_question,
+        )
+
+    symbols = symbols_to_check(plan.choices)
+    if symbols:
+        return store.read_question(symbols, check)
+    valid, dropped = check(set())
     database = [c for c in valid if c.name != "settings"]
-    from_db = iter(store.run(database) if database else [])
+    return valid, dropped, store.run(database) if database else []
+
+
+def _merge(valid: list[ValidChoice], from_db, config_dir: Path) -> list[QueryResult]:
+    """Database results and `settings` from the files (A16), in the order of the choices."""
+    from_db = iter(from_db)
     results: list[QueryResult] = []
     for choice in valid:
         if choice.name == "settings":

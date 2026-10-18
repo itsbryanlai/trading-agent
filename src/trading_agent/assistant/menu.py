@@ -159,6 +159,22 @@ ENTRIES: dict[str, Entry] = {
 }
 
 
+def symbols_to_check(raw_choices) -> set[str]:
+    """The symbols `validate` will look up: well-formed ones on entries that take a symbol."""
+    found: set[str] = set()
+    for raw in raw_choices:
+        entry = ENTRIES.get(raw.name) if isinstance(raw.name, str) else None
+        symbol = raw.symbol
+        if (
+            entry is not None
+            and "symbol" in entry.takes
+            and isinstance(symbol, str)
+            and SYMBOL_PATTERN.fullmatch(symbol) is not None
+        ):
+            found.add(symbol)
+    return found
+
+
 def validate(
     raw_choices,
     *,

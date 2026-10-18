@@ -20,6 +20,7 @@ class FakeStore:
         self.cut = cut or set()
         self.error = error
         self.known_calls = 0
+        self.question_calls: list[set[str]] = []  # the symbols of each read_question
         self.run_calls: list[list[ValidChoice]] = []
 
     def known_symbols(self) -> set[str]:
@@ -27,6 +28,15 @@ class FakeStore:
         if self.error is not None:
             raise self.error
         return set(self.known)
+
+    def read_question(self, symbols, validate):
+        """The lookup, the validation and the reads as one call (one transaction)."""
+        self.question_calls.append(set(symbols))
+        if self.error is not None:
+            raise self.error
+        valid, dropped = validate(self.known & set(symbols))
+        database = [c for c in valid if c.name != "settings"]
+        return valid, dropped, self.run(database) if database else []
 
     def run(self, choices: list[ValidChoice]) -> list[QueryResult]:
         self.run_calls.append(list(choices))

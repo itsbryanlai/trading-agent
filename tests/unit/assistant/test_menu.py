@@ -248,3 +248,17 @@ def test_winter_dates_are_the_same_local_days_whatever_the_et_offset():
     assert choice.start.astimezone(ZoneInfo("America/New_York")).utcoffset().total_seconds() == (
         -5 * 3600
     )
+
+
+def test_symbols_to_check_are_the_well_formed_ones_on_entries_that_take_a_symbol():
+    from trading_agent.assistant.menu import symbols_to_check
+
+    found = symbols_to_check([
+        RawChoice("decisions", symbol="MU"),
+        RawChoice("universe", symbol="BRK.B"),
+        RawChoice("decisions", symbol="mu"),
+        RawChoice("portfolio_now", symbol="NVDA"),
+        RawChoice("drop_table", symbol="TSLA"),
+        RawChoice("decisions"),
+    ])
+    assert found == {"MU", "BRK.B"}

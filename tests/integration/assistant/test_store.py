@@ -280,6 +280,42 @@ def test_known_symbols_come_from_every_source(world):
     assert store(world).known_symbols() == {"AAPL", "MU", "NVDA", "TSLA"}
 
 
+def test_known_returns_only_the_asked_symbols_that_exist(world):
+    live = store(world)
+    assert live.known(["AAPL", "NVDA", "ZZZZ"]) == {"AAPL", "NVDA"}
+    assert live.known([]) == set()
+
+
+def test_read_question_looks_up_validates_and_reads_in_one_connection_and_transaction(world):
+    connections, seen = [], []
+    real = PostgresStore(None, world["login_url"], SGT, 10, 50, 1500)
+
+    def counting(url):
+        connection = psycopg.connect(url, row_factory=dict_row)
+        connections.append(connection)
+        return connection
+
+    counted = PostgresStore(counting, world["login_url"], SGT, 10, 50, 1500)
+
+    def validate(known):
+        seen.append(set(known))
+        return [choice("decisions", symbol="AAPL")], []
+
+    valid, dropped, results = counted.read_question({"AAPL", "ZZZZ"}, validate)
+    assert len(connections) == 1 and seen == [{"AAPL"}] and dropped == []
+    assert [c.name for c in valid] == ["decisions"] and [r.name for r in results] == ["decisions"]
+    assert real.run([choice("decisions", symbol="AAPL")])[0].rows == results[0].rows
+
+
+def test_read_question_skips_settings_and_keeps_the_order(world):
+    def validate(known):
+        return [choice("settings", section="risk"), choice("portfolio_now")], []
+
+    valid, _, results = store(world).read_question({"AAPL"}, validate)
+    assert [c.name for c in valid] == ["settings", "portfolio_now"]
+    assert [r.name for r in results] == ["portfolio_now"]
+
+
 def test_the_transaction_is_read_only_even_for_a_role_that_could_write(world):
     admin = store(world, url_key="admin_url")
     with pytest.raises(StoreError):

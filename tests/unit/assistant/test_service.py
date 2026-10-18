@@ -389,3 +389,42 @@ def test_a_plan_choice_of_the_local_day_reaches_the_store_as_that_days_utc_span(
     assert sent.start == datetime(2026, 10, 19, 16, tzinfo=UTC)
     assert sent.end == datetime(2026, 10, 20, 16, tzinfo=UTC)
     assert sent.symbol == "MU"
+
+
+# --- symbols are looked up only when needed, in the question's transaction (T039) --------
+
+
+def test_a_greeting_makes_no_store_call_at_all():
+    _, store, *_ = run("hi", plan=plan_of())
+    assert store.question_calls == [] and store.run_calls == [] and store.known_calls == 0
+
+
+def test_a_settings_only_plan_makes_no_store_call_at_all():
+    _, store, *_ = run(plan=plan_of(choice("settings")))
+    assert store.question_calls == [] and store.run_calls == [] and store.known_calls == 0
+
+
+def test_a_plan_without_a_symbol_reads_without_a_lookup():
+    _, store, *_ = run(plan=plan_of(choice("portfolio_now")))
+    assert store.question_calls == [] and store.known_calls == 0
+    assert [c.name for c in store.run_calls[0]] == ["portfolio_now"]
+
+
+def test_a_symbol_choice_and_its_query_are_one_store_call():
+    _, store, _, answer_model, _ = run(
+        plan=plan_of(choice("decisions", symbol="MU"), choice("decisions", symbol="ZZZZ"))
+    )
+    assert store.question_calls == [{"MU", "ZZZZ"}] and store.known_calls == 0
+    (sent,) = store.run_calls
+    assert [(c.name, c.symbol) for c in sent] == [("decisions", "MU")]
+    assert answer_doc(answer_model)["dropped"] == [
+        {"query": "decisions", "reason": "unknown_symbol"}
+    ]
+
+
+def test_a_symbol_on_an_entry_that_takes_none_is_not_looked_up():
+    _, store, _, answer_model, _ = run(plan=plan_of(choice("portfolio_now", symbol="MU")))
+    assert store.question_calls == [] and store.run_calls == []
+    assert answer_doc(answer_model)["dropped"] == [
+        {"query": "portfolio_now", "reason": "unexpected_parameter"}
+    ]

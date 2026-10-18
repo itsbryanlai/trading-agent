@@ -51,11 +51,10 @@ class Store(FakeStore):
         super().__init__(rows={"portfolio_now": [{"note": "MARKER-ROW"}]})
         self.fail_on_call = fail_on_call
 
-    def known_symbols(self):
-        self.known_calls += 1
-        if self.known_calls == self.fail_on_call:
+    def run(self, choices):
+        if len(self.run_calls) + 1 == self.fail_on_call:
             raise StoreError("database: MARKER-SECRET")
-        return set(self.known)
+        return super().run(choices)
 
 
 class Telegram(FakeTelegram):
@@ -101,7 +100,7 @@ def scenario(monkeypatch, caplog):
         {"reply": "MARKER-REPLY answer"}, {"reply": "MARKER-REPLY keyword"},
         {"reply": "MARKER-REPLY flag"}, ModelUnavailable("MARKER-SECRET detail"),
     ])
-    store = Store(fail_on_call=3)  # known_symbols runs for messages 2, 6 and 7 only
+    store = Store(fail_on_call=3)  # the read runs for messages 2, 6 and 7 only
     with caplog.at_level(logging.DEBUG):
         code = runner.main(
             [], telegram_factory=lambda token, *, timeout: telegram,

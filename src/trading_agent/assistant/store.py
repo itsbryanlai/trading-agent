@@ -41,6 +41,13 @@ UNION SELECT symbol FROM decisions
 UNION SELECT symbol FROM stop_loss_triggers
 UNION SELECT symbol FROM instrument_reference
 """
+KNOWN_AMONG = """
+SELECT symbol FROM positions WHERE symbol = ANY(%(symbols)s::text[])
+UNION SELECT symbol FROM reports WHERE symbol = ANY(%(symbols)s::text[])
+UNION SELECT symbol FROM decisions WHERE symbol = ANY(%(symbols)s::text[])
+UNION SELECT symbol FROM stop_loss_triggers WHERE symbol = ANY(%(symbols)s::text[])
+UNION SELECT symbol FROM instrument_reference WHERE symbol = ANY(%(symbols)s::text[])
+"""
 POSITIONS = f"""
 SELECT symbol, qty, avg_entry_price, updated_at FROM positions ORDER BY symbol {_LIMIT}
 """
@@ -183,6 +190,23 @@ class PostgresStore:
         rows = self._in_transaction(lambda cur: _all(cur, KNOWN_SYMBOLS, {}))
         return {row["symbol"] for row in rows if isinstance(row["symbol"], str)}
 
+    def known(self, symbols) -> set[str]:
+        """Which of `symbols` appear in any of the five sources (one transaction)."""
+        return self._in_transaction(lambda cur: _known(cur, symbols))
+
+    def read_question(self, symbols, validate: Callable) -> tuple[list, list, list[QueryResult]]:
+        """The symbol lookup, the validation and the reads in one transaction, so a symbol
+        accepted here is read from the same snapshot. `validate(known)` returns the valid
+        choices and the dropped ones; the result is both, then the results of the valid
+        choices that are database entries (not `settings`), in order."""
+
+        def work(cur):
+            valid, dropped = validate(_known(cur, symbols))
+            database = [c for c in valid if c.name != "settings"]
+            return valid, dropped, [self._one(cur, c) for c in database]
+
+        return self._in_transaction(work)
+
     def run(self, choices: list[ValidChoice]) -> list[QueryResult]:
         """All of a question's choices, from one snapshot. `settings` is not a database entry."""
         for choice in choices:
@@ -284,6 +308,14 @@ class PostgresStore:
 
     def _cut(self, text: str) -> str:
         return text[: self._text_chars]
+
+
+def _known(cur, symbols) -> set[str]:
+    wanted = sorted(s for s in symbols if isinstance(s, str))
+    if not wanted:
+        return set()
+    rows = _all(cur, KNOWN_AMONG, {"symbols": wanted})
+    return {row["symbol"] for row in rows if isinstance(row["symbol"], str)}
 
 
 def _all(cur, statement: str, params: dict) -> list[dict]:
