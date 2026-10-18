@@ -38,8 +38,9 @@ HEALTH_CACHE = timedelta(seconds=10)
 class HealthCache:
     """`SELECT 1` at most once per 10 s, single-flight under a lock (research D12).
 
-    Concurrent callers wait for the one check in progress and share its answer, so a flood of
-    unauthenticated requests opens at most one connection per 10 seconds.
+    A caller that finds a check running does not wait: it gets the cached answer (unavailable
+    if there is none yet). So a flood of unauthenticated requests opens at most one connection
+    per 10 seconds and never queues behind it.
     """
 
     def __init__(self, store, clock) -> None:
@@ -50,7 +51,12 @@ class HealthCache:
         self._at: datetime | None = None
 
     def ok(self) -> bool:
-        with self._lock:
+        # Never wait: with a check already running (its statement timeout is 10 s), answer from
+        # the cache, or "unavailable" if there is none yet, so a flood cannot hold the thread
+        # pool behind one slow query.
+        if not self._lock.acquire(blocking=False):
+            return self._ok if self._at is not None else False
+        try:
             now = self._clock()
             if self._at is not None and now - self._at < HEALTH_CACHE:
                 return self._ok
@@ -61,6 +67,8 @@ class HealthCache:
                 self._ok = False
             self._at = now
             return self._ok
+        finally:
+            self._lock.release()
 
 
 def shell(deps: Deps, session, state: dict, now: datetime, active: str) -> dict:

@@ -221,7 +221,66 @@ def test_concurrent_health_checks_make_one_database_call():
         thread.start()
     for thread in threads:
         thread.join()
-    assert results == [True] * 20 and built.store.read_calls == 1
+    assert built.store.read_calls == 1
+    assert results.count(True) >= 1 and set(results) <= {True, False}
+
+
+class BlockingStore(FakeStore):
+    """A store whose `read()` waits until released, to hold a health check in flight."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.entered = threading.Event()
+        self.release = threading.Event()
+        self.block = True
+        self.started = 0
+
+    def read(self):
+        self.started += 1
+        if self.block:
+            self.entered.set()
+            assert self.release.wait(5)
+        return super().read()
+
+
+def _hammer(cache, count=20) -> tuple[list[bool], list[threading.Thread]]:
+    results: list[bool] = []
+    threads = [threading.Thread(target=lambda: results.append(cache.ok())) for _ in range(count)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join(timeout=1)
+    return results, threads
+
+
+def test_a_health_check_in_flight_does_not_make_callers_wait_for_the_lock():
+    store = BlockingStore()
+    cache = build(store=store).app.state.health
+    first = threading.Thread(target=cache.ok)
+    first.start()
+    assert store.entered.wait(5)
+    results, threads = _hammer(cache)  # no answer yet: unavailable, at once
+    assert not any(t.is_alive() for t in threads) and results == [False] * 20
+    assert store.started == 1
+    store.release.set()
+    first.join(5)
+
+
+def test_a_health_check_in_flight_returns_the_cached_answer_at_once():
+    built = build(store=(store := BlockingStore()))
+    store.block = False
+    cache = built.app.state.health
+    assert cache.ok() is True
+    store.block = True
+    built.clock.advance(seconds=10)  # the cache is stale: the next call starts a check
+    first = threading.Thread(target=cache.ok)
+    first.start()
+    assert store.entered.wait(5)
+    results, threads = _hammer(cache)
+    assert not any(t.is_alive() for t in threads) and results == [True] * 20
+    assert store.started == 2  # one at the start, one in flight: never more
+    store.release.set()
+    first.join(5)
 
 
 def test_healthz_shows_nothing_else():
