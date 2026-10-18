@@ -192,3 +192,18 @@ Phase 8:              T026 assistant text | T027 logins | T028 deployment | T029
 2. **Add US2**: the toggle. Review `control.py`, `toggle.py` and `routes_toggle.py` line by line (the only write).
 3. **US3–US5**: the read views, one phase at a time.
 4. **US6, Polish, Converge, Review**, then the full suites and push.
+
+---
+
+## T032 results (2026-10-19)
+
+Run from the worktree on branch `014-dashboard` at the commit that adds T031's timings (`259ad85`), with `PYTHONPATH=src` and the throwaway `postgres:16` container `ta-test-pg-014` on 127.0.0.1:55432. Quickstart Part 1 step 3 (the browser walk) is left to the owner. The container is still running.
+
+| Check | Command | Result |
+|---|---|---|
+| Full unit suite | `PYTHONPATH=src .venv/bin/python -m pytest -q` | 3,995 passed, 1,793 deselected (the integration tests), 0 failed, in 376.7 s (6 min 17 s) |
+| Full integration suite | `TEST_DATABASE_URL=postgresql://postgres:test@127.0.0.1:55432/postgres PYTHONPATH=src .venv/bin/python -m pytest -m integration -q` | 1,793 passed, 3,995 deselected (the unit tests), 0 failed, in 59.9 s |
+| Lint | `PYTHONPATH=src scripts/lint.sh` | ruff clean; import-linter 1 contract kept, 0 broken; module-size check clean (largest dashboard module `pages_activity.py`, 378 lines) |
+| Format | `.venv/bin/ruff format --check src tests` | 453 files already formatted |
+
+T031 timings (worst of three runs on a seeded year: 3,500 snapshots, 3,000 reports, 1,500 decisions and verdicts with 500 orders and 200 refusals, 5,000 runs, 250 journal rows; limit 0.5 s): every store method returned in under 40 ms. The slowest were `reports` and `decisions` at page 30 (37 ms and 35 ms). No index was added and migration `0015` is unchanged.
