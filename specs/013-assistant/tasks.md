@@ -169,7 +169,7 @@ description: "Task list for the Assistant (feature 013)"
 
 **Independent test**: with `FakeTelegram`, two `FakeModel`s and the fake store holding a portfolio and a day's decisions, each US1 question gets a reply stating exactly the stored figures, each with its time.
 
-- [ ] T012 [US1] `src/trading_agent/assistant/service.py`, the question flow, test first in `tests/unit/assistant/test_service.py`. It is `handle(message_text, *, now, config, store, plan_model, answer_model, memory) -> Handled(replies, outcome)`:
+- [x] T012 [US1] `src/trading_agent/assistant/service.py`, the question flow, test first in `tests/unit/assistant/test_service.py`. It is `handle(message_text, *, now, config, store, plan_model, answer_model, memory) -> Handled(replies, outcome)`:
   1. Build the plan document (`fit`), call `plan_model.complete(PLAN_SYSTEM, doc, PLAN_SCHEMA)`, then `parse_plan`. If `action_request` is true, stop here and hand off to the refusal (T019) with trigger `model_flag`: no store call of any kind.
   2. Read the known symbols.
   3. Run `menu.validate`, then `store.run`.
@@ -186,14 +186,14 @@ description: "Task list for the Assistant (feature 013)"
   - a paused `system_state`;
   - three decisions with verdicts;
   - a decision's price carries its `quote_time` (not `generated_at`) in both zones (analyze H2).
-- [ ] T013 [US1] `src/trading_agent/assistant/loop.py` (research A2–A5), test first in `tests/unit/assistant/test_loop.py`, with `FakeTelegram`, an injected `sleep`, and a `stop` flag:
+- [x] T013 [US1] `src/trading_agent/assistant/loop.py` (research A2–A5), test first in `tests/unit/assistant/test_loop.py`, with `FakeTelegram`, an injected `sleep`, and a `stop` flag:
   - **The drain at start**: confirm every waiting update, answer none, send R-SKIPPED once with the count if it is above 0 (FR-004a), or nothing.
   - **The poll loop**: `allowed_updates=["message", "edited_message"]`. Updates from other chats are ignored, with a count log line and no reply (SC-003). Authorised updates are handled one at a time, in order. The offset confirms what was handled.
   - **Sending** (research A2): parts in order; a 429 waits `retry_after` (capped at 60) and retries the part once; a 5xx or network failure retries once after 2 s; a part that still fails abandons the rest and logs `send abandoned at part k/n`; the update is still confirmed. Test: no part is ever sent twice.
   - **Errors**: 409 waits 10 s and retries; 429 waits `retry_after`, capped at 300; unavailable backs off 1, 2, 4 … 60; `TokenRejected` raises to `__main__`.
   - **SIGTERM**: sets `stop`, the current message finishes, then the loop returns.
   - **The database**: after `max_consecutive_failures` R-DATABASE outcomes in a row, it raises `DatabaseLost`.
-- [ ] T014 [US1] `src/trading_agent/assistant/__main__.py` (contracts/assistant-interface.md, research A18), test first in `tests/unit/assistant/test_main.py`, built like `portfolio_manager/__main__.py`:
+- [x] T014 [US1] `src/trading_agent/assistant/__main__.py` (contracts/assistant-interface.md, research A18), test first in `tests/unit/assistant/test_main.py`, built like `portfolio_manager/__main__.py`:
   - `main(argv, *, telegram_factory, model_factory, store_factory, config_path, clock, sleep)`;
   - reads `ASSISTANT_*` variables with `storage.db.require_env`: the chat ID must parse as an integer and the Qwen endpoint must pass `require_https_base_url`. A missing or malformed variable exits 2, named and never echoed;
   - builds two `QwenClient`s (`assistant_plan`, `assistant_answer`) or one `AnthropicClient`;
