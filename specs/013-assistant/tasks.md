@@ -304,21 +304,21 @@ description: "Task list for the Assistant (feature 013)"
 
 ## Phase 7: Login, deployment and docs
 
-- [ ] T024 [P] The login (research A21):
+- [x] T024 [P] The login (research A21):
   - add `Login("ta_assistant_login", "ta_assistant")` to `src/trading_agent/storage/logins.py`, and update its row-count comment to eleven;
   - update `tests/unit/storage/test_logins.py` and `tests/integration/storage/test_logins.py` to eleven rows.
-- [ ] T025 [P] Deployment wiring (research A21, ADR 0021):
+- [x] T025 [P] Deployment wiring (research A21, ADR 0021):
   - **`.railway/railway.ts`**: an `assistant` service with the same source and build as the others, `start: "python -m trading_agent.assistant"`, `replicas: 1`, no `deploy` block, and `env` holding exactly the six `ASSISTANT_*` names (`DATABASE_URL`, `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`, `DASHSCOPE_API_KEY`, `QWEN_BASE_URL`, `ANTHROPIC_API_KEY`), each `preserve()`. Add it to `resources`.
   - **`tests/unit/deploy/test_deployed_shape.py`**: the contract gains `assistant`. A broken copy with an `ASSISTANT_*` name on another service, a broker or other component's name on `assistant`, or a cron schedule on `assistant` must fail.
   - **`specs/010-observe-only-deployment/contracts/service-layout.md`**: an `assistant` row, and a note referencing ADRs 0023 and 0024.
   - **`.env.example`**: the six names, commented.
   - **`.railway/README.md`**: six services.
-- [ ] T026 [P] The login's limits, in `tests/integration/assistant/test_role_limits.py`. As a login created in the test that is a member of `ta_assistant` only:
+- [x] T026 [P] The login's limits, in `tests/integration/assistant/test_role_limits.py`. As a login created in the test that is a member of `ta_assistant` only:
   - `INSERT`, `UPDATE` and `DELETE` are denied on every table in the grant matrix, including `system_state`;
   - every menu entry's SQL from `store.py` runs (shared with T010's fixtures).
 
   **Mutation-check**: grant `ta_assistant` `UPDATE (trading_paused)` on `system_state` inside the test transaction; the test must fail.
-- [ ] T027 [P] Docs, each referencing ADRs 0023, 0024 and 0025:
+- [x] T027 [P] Docs, each referencing ADRs 0023, 0024 and 0025:
   - **`docs/specs/assistant-agent.md`**: the `ASSISTANT_*` names replacing ADR 0007's, long polling, the query menu and settings, code-refused actions explained by the model with the plan call's flag as a second layer (ADR 0025), offline messages skipped, owner time with ET, and source links only;
   - **`docs/architecture/overview.md`**: the Assistant's row (its own service);
   - **`docs/operations/deployment.md`**: new §9 "Adding the assistant service" (quickstart steps 2–5), and the release checklist mentions `--check`;
