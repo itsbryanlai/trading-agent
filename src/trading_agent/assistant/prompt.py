@@ -148,9 +148,7 @@ def answer_document(
     )
 
 
-def fit(
-    build: Callable[[list], str], exchanges, max_input_chars: int
-) -> tuple[str, list] | None:
+def fit(build: Callable[[list], str], exchanges, max_input_chars: int) -> tuple[str, list] | None:
     """The document and the exchanges it kept, dropping the oldest first; None if even the
     document with no exchanges is over the cap. `exchanges` are oldest first."""
     kept = list(exchanges)
@@ -213,4 +211,3 @@ def _entry(entry) -> dict:
     if entry.required:
         described["required"] = list(entry.required)
     return described
-

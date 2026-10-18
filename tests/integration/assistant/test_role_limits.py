@@ -24,8 +24,7 @@ TABLES = sorted(name for name, spec in OBJECTS.items() if spec.kind == "table")
 WRITES = [
     (table, op)
     for table in TABLES
-    for op in ("I", "U", "D")
-    + tuple(f"U:{c}" for c in OBJECTS[table].columns_for_update)
+    for op in ("I", "U", "D") + tuple(f"U:{c}" for c in OBJECTS[table].columns_for_update)
 ]
 MENU_STATEMENTS = [
     (name, tag, statement) for name, parts in PLANS.items() for tag, statement in parts

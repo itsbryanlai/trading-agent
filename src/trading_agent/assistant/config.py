@@ -158,9 +158,7 @@ def _action_words(value) -> tuple[str, ...]:
         raise AssistantConfigError(f"action_words: must be a list of {low}-{high} words")
     for word in value:
         if not isinstance(word, str) or not re.fullmatch(r"[a-z]+", word):
-            raise AssistantConfigError(
-                f"action_words: {word!r} must be lowercase letters only"
-            )
+            raise AssistantConfigError(f"action_words: {word!r} must be lowercase letters only")
     if len(set(value)) != len(value):
         raise AssistantConfigError("action_words: must not repeat a word")
     return tuple(value)

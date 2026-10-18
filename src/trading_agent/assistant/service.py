@@ -56,14 +56,24 @@ def respond(update: dict, *, now: datetime, config, **parts) -> Handled:
         return done([text], Outcome("fixed", detail="R-HELP"))
     if isinstance(kind, ActionRequest):
         return refuse(
-            update["message"]["text"].strip(), "keyword", kind.matched_word,
-            config=config, answer_model=parts["answer_model"],
+            update["message"]["text"].strip(),
+            "keyword",
+            kind.matched_word,
+            config=config,
+            answer_model=parts["answer_model"],
         )
     return handle(kind.text, now=now, config=config, **parts)
 
 
 def handle(
-    message_text: str, *, now: datetime, config, store, plan_model, answer_model, memory,
+    message_text: str,
+    *,
+    now: datetime,
+    config,
+    store,
+    plan_model,
+    answer_model,
+    memory,
     config_dir: Path | None = None,
 ) -> Handled:
     """Answer one question. `now` carries the owner's ZoneInfo."""
@@ -72,7 +82,10 @@ def handle(
 
     def build_plan(kept):
         return plan_document(
-            now, message_text, kept, ENTRIES,
+            now,
+            message_text,
+            kept,
+            ENTRIES,
             max_queries=limits.max_queries_per_question,
             text_field_chars=limits.text_field_chars,
         )
@@ -88,7 +101,11 @@ def handle(
     plan = parse_plan(reply.text)
     if plan is not None and plan.action_request:
         return refuse(
-            message_text, "model_flag", "", config=config, answer_model=answer_model,
+            message_text,
+            "model_flag",
+            "",
+            config=config,
+            answer_model=answer_model,
             plan_tokens=plan_tokens,
         )
 
@@ -100,12 +117,19 @@ def handle(
             valid, dropped, from_db = _read(plan, store, now, limits)
             results = _merge(valid, from_db, config_dir or DEFAULT_CONFIG_PATH.parent)
     except StoreError as exc:
-        return done(replies.database(), Outcome("database", detail=type(exc).__name__,
-                                                  plan_tokens=plan_tokens))
+        return done(
+            replies.database(),
+            Outcome("database", detail=type(exc).__name__, plan_tokens=plan_tokens),
+        )
 
     def build_answer(kept):
         return answer_document(
-            now, message_text, kept, results, dropped, not results,
+            now,
+            message_text,
+            kept,
+            results,
+            dropped,
+            not results,
             text_field_chars=limits.text_field_chars,
         )
 

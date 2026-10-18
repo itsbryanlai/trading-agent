@@ -52,7 +52,14 @@ class Unavailable(Exception):
 
 
 def run_checks(
-    telegram, store, plan_model, answer_model, *, zone_name: str, config_dir: Path, now: datetime,
+    telegram,
+    store,
+    plan_model,
+    answer_model,
+    *,
+    zone_name: str,
+    config_dir: Path,
+    now: datetime,
     out: Callable[[str], None] = print,
 ) -> int:
     """Run every check, print one line each, and return 0 or 1."""
@@ -89,9 +96,7 @@ def _model_plan(plan_model, zone_name: str, now: datetime) -> None:
 
 
 def _model_answer(answer_model, zone_name: str, now: datetime) -> None:
-    document = answer_document(
-        now.astimezone(ZoneInfo(zone_name)), "hello", [], [], [], True
-    )
+    document = answer_document(now.astimezone(ZoneInfo(zone_name)), "hello", [], [], [], True)
     reply = answer_model.complete(ANSWER_SYSTEM, document, ANSWER_SCHEMA)
     if parse_answer(reply.text) is None:
         raise UnusableAnswer
@@ -109,7 +114,9 @@ def _has_unavailable(value) -> bool:
 
 
 def find_chat_id(
-    telegram, *, clock: Callable[[], float] = time.monotonic,
+    telegram,
+    *,
+    clock: Callable[[], float] = time.monotonic,
     out: Callable[[str], None] = print,
 ) -> int:
     """Print `chat.id=<id> chat.type=<type>` for each message received in `FIND_SECONDS`."""

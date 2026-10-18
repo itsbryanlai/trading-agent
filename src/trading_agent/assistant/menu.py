@@ -211,8 +211,10 @@ def _check(raw, entry, known_symbols, today_local, zone, max_span_days):
         return "unexpected_parameter"
     if any(values[key] == "" for key in entry.required):
         return "missing_parameter"
-    if "symbol" in entry.takes and values["symbol"] != "" and not _known(
-        values["symbol"], known_symbols
+    if (
+        "symbol" in entry.takes
+        and values["symbol"] != ""
+        and not _known(values["symbol"], known_symbols)
     ):
         return "unknown_symbol"
     if values["agent"] != "" and values["agent"] not in entry.agents:
@@ -222,9 +224,7 @@ def _check(raw, entry, known_symbols, today_local, zone, max_span_days):
         return "bad_dates"
     if values["section"] != "" and values["section"] not in entry.sections:
         return "unknown_section"
-    return ValidChoice(
-        entry.name, values["symbol"], values["agent"], values["section"], *span
-    )
+    return ValidChoice(entry.name, values["symbol"], values["agent"], values["section"], *span)
 
 
 def _known(symbol, known_symbols) -> bool:

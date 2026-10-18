@@ -21,9 +21,7 @@ def refuse(
 ) -> Handled:
     """The fixed first line, a blank line, then the model's explanation (or the fallback)."""
     shown = message_text[: config.limits.text_field_chars]
-    document = actions.refusal_document(
-        shown, trigger, word, config.action_words, replies.CONTROLS
-    )
+    document = actions.refusal_document(shown, trigger, word, config.action_words, replies.CONTROLS)
     tokens = None
     explanation = None
     try:
@@ -46,7 +44,11 @@ def refuse(
     return done(
         parts,
         Outcome(
-            "refused", trigger=trigger, word=word if trigger == "keyword" else "",
-            detail=result, plan_tokens=plan_tokens, refusal_tokens=tokens,
+            "refused",
+            trigger=trigger,
+            word=word if trigger == "keyword" else "",
+            detail=result,
+            plan_tokens=plan_tokens,
+            refusal_tokens=tokens,
         ),
     )

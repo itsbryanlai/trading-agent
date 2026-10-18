@@ -210,7 +210,9 @@ def _count_database(outcome, failures: int, max_failures: int) -> int:
     failures += 1
     log.error(
         "assistant: database failed: %s (consecutive %d/%d)",
-        outcome.detail or "unknown", failures, max_failures,
+        outcome.detail or "unknown",
+        failures,
+        max_failures,
     )
     if failures >= max_failures:
         raise DatabaseLost("database failed repeatedly")

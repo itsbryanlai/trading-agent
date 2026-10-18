@@ -106,9 +106,14 @@ def choice(name, *, symbol="", agent="", section=""):
     now = datetime.now(UTC)
     dated = ENTRIES[name].default_days is not None
     return ValidChoice(
-        name, symbol, agent, section,
-        date.today() if dated else None, date.today() if dated else None,
-        now - timedelta(days=3) if dated else None, now + timedelta(days=1) if dated else None,
+        name,
+        symbol,
+        agent,
+        section,
+        date.today() if dated else None,
+        date.today() if dated else None,
+        now - timedelta(days=3) if dated else None,
+        now + timedelta(days=1) if dated else None,
     )
 
 
@@ -134,22 +139,80 @@ def test_every_database_entry_runs_and_returns_its_fields(world):
     expected = {
         "portfolio_now": {"part"},
         "account_history": {"equity", "cash", "taken_at"},
-        "decisions": {"id", "generated_at", "symbol", "direction", "size_pct", "quote_at_decision",
-                      "quote_time", "reasoning_md", "verdict", "rejection_rule", "evaluated_at",
-                      "order_status", "fill_price", "fill_qty", "order_updated_at",
-                      "cited_reports"},
-        "reports": {"id", "generated_at", "agent", "symbol", "direction", "conviction",
-                    "suggested_size_pct", "expires_at", "status", "rationale_md", "sources"},
+        "decisions": {
+            "id",
+            "generated_at",
+            "symbol",
+            "direction",
+            "size_pct",
+            "quote_at_decision",
+            "quote_time",
+            "reasoning_md",
+            "verdict",
+            "rejection_rule",
+            "evaluated_at",
+            "order_status",
+            "fill_price",
+            "fill_qty",
+            "order_updated_at",
+            "cited_reports",
+        },
+        "reports": {
+            "id",
+            "generated_at",
+            "agent",
+            "symbol",
+            "direction",
+            "conviction",
+            "suggested_size_pct",
+            "expires_at",
+            "status",
+            "rationale_md",
+            "sources",
+        },
         "orders": {"part"},
-        "stop_losses": {"id", "symbol", "observed_price", "observed_at", "verdict",
-                        "rejection_rule", "evaluated_at", "order_status", "fill_price",
-                        "fill_qty"},
-        "journal": {"trading_day", "equity_open", "equity_close", "summary_md",
-                    "per_agent_attribution", "written_at"},
-        "agent_runs": {"id", "agent", "trading_day", "reason", "slot_key", "slot_at",
-                       "started_at", "finished_at", "outcome", "detail"},
-        "universe": {"symbol", "trading_day", "security_type", "exchange_mic", "market_cap_usd",
-                     "avg_daily_dollar_volume_usd", "share_price_usd", "fetched_at"},
+        "stop_losses": {
+            "id",
+            "symbol",
+            "observed_price",
+            "observed_at",
+            "verdict",
+            "rejection_rule",
+            "evaluated_at",
+            "order_status",
+            "fill_price",
+            "fill_qty",
+        },
+        "journal": {
+            "trading_day",
+            "equity_open",
+            "equity_close",
+            "summary_md",
+            "per_agent_attribution",
+            "written_at",
+        },
+        "agent_runs": {
+            "id",
+            "agent",
+            "trading_day",
+            "reason",
+            "slot_key",
+            "slot_at",
+            "started_at",
+            "finished_at",
+            "outcome",
+            "detail",
+        },
+        "universe": {
+            "symbol",
+            "trading_day",
+            "security_type",
+            "exchange_mic",
+            "market_cap_usd",
+            "avg_daily_dollar_volume_usd",
+            "share_price_usd",
+            "fetched_at",
+        },
     }
     for name, keys in expected.items():
         result = run(world, name, symbol="TSLA" if name == "universe" else "")
@@ -170,8 +233,14 @@ def test_portfolio_now_has_positions_account_and_state(world):
     assert set(account) == {"part", "equity", "cash", "buying_power", "taken_at"}
     (state,) = parts(result, "system_state")
     assert set(state) == {
-        "part", "trading_paused", "daily_loss_halt_active", "daily_starting_equity",
-        "current_trading_date", "updated_at", "halt_triggered_on", "baseline_trading_day",
+        "part",
+        "trading_paused",
+        "daily_loss_halt_active",
+        "daily_starting_equity",
+        "current_trading_date",
+        "updated_at",
+        "halt_triggered_on",
+        "baseline_trading_day",
     }
     assert state["trading_paused"] is False
 
@@ -180,16 +249,42 @@ def test_orders_has_orders_refusals_and_in_flight(world):
     result = run(world, "orders")
     (order,) = parts(result, "order")
     assert (order["symbol"], order["side"], order["qty"]) == ("AAPL", "buy", "10")
-    assert set(order) == {"part", "id", "submitted_at", "symbol", "side", "qty", "limit_price",
-                          "status", "fill_price", "fill_qty", "broker_reason", "updated_at"}
+    assert set(order) == {
+        "part",
+        "id",
+        "submitted_at",
+        "symbol",
+        "side",
+        "qty",
+        "limit_price",
+        "status",
+        "fill_price",
+        "fill_qty",
+        "broker_reason",
+        "updated_at",
+    }
     (refusal,) = parts(result, "execution_refusal")
     assert refusal["reason"] == "trading_paused"
-    assert set(refusal) == {"part", "id", "refused_at", "reason", "details", "symbol", "side",
-                            "qty"}
+    assert set(refusal) == {
+        "part",
+        "id",
+        "refused_at",
+        "reason",
+        "details",
+        "symbol",
+        "side",
+        "qty",
+    }
     flight = parts(result, "in_flight_order")
     assert {row["symbol"] for row in flight} == {"AAPL"} and len(flight) >= 2  # v1 and v5
-    assert set(flight[0]) == {"part", "trading_day", "symbol", "side", "unsettled_qty",
-                              "limit_price"}
+    assert set(flight[0]) == {
+        "part",
+        "trading_day",
+        "symbol",
+        "side",
+        "unsettled_qty",
+        "limit_price",
+    }
 
 
 def test_decisions_carry_verdict_order_and_cited_reports(world):
@@ -320,8 +415,9 @@ def test_the_transaction_is_read_only_even_for_a_role_that_could_write(world):
     admin = store(world, url_key="admin_url")
     with pytest.raises(StoreError):
         admin._in_transaction(
-            lambda cur: cur.execute("INSERT INTO positions (symbol, qty, avg_entry_price)"
-                                    " VALUES ('ZZZ', 1, 1)")
+            lambda cur: cur.execute(
+                "INSERT INTO positions (symbol, qty, avg_entry_price) VALUES ('ZZZ', 1, 1)"
+            )
         )
     assert world["admin"].execute("SELECT count(*) AS n FROM positions").fetchone()["n"] == 1
 
