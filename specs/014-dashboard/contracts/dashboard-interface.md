@@ -58,7 +58,7 @@ schedule: ok
 config: ok
 ```
 
-A failing line reads `<name>: FAILED <code>`; codes are `unreachable`, `wrong_role:<role>`, `extra_role:<role>`, `malformed`, `too_short`, `unreadable`, or an exception type. No value, connection string or database message is ever printed.
+A failing line reads `<name>: FAILED <code>`; codes are `unreachable`, `wrong_login` (e.g. the owner's `ta_owner_*` logins), `wrong_role:<role>`, `extra_role:<role>`, `privileged`, `malformed`, `too_short`, `unreadable`, or an exception type. No value, connection string or database message is ever printed.
 
 ## Logs
 
@@ -73,7 +73,7 @@ One line per event on stdout, prefixed `dashboard`:
 | `sign_in too_soon` | `wait` |
 | `sign_out` | — |
 | `toggle paused` / `toggle resumed` | `at` (UTC ISO time) |
-| `toggle refused` | `reason`: `run_while_paused`, `unreadable`, `stale`, `csrf`, `no_session` |
+| `toggle refused` | `reason`: `run_while_paused`, `unreadable`, `no_skipped_run`, `stale`, `malformed` (from `routes_toggle.py`); `csrf`, `origin`, `no_session` (from `app.py`'s `require_write`, for `/toggle` only). Exactly one line per `POST /toggle` |
 | `toggle failed` | `type` (exception type) |
 | `error` | `type`, `route` (the route's template, not the URL) |
 

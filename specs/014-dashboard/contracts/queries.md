@@ -98,6 +98,16 @@ SELECT trading_day, per_agent_attribution FROM journal
 WHERE trading_day >= :since ORDER BY trading_day;
 ```
 
+## Toggle evidence (ADR 0028)
+
+```sql
+SELECT outcome, detail, slot_key, COALESCE(started_at, slot_at) AS at
+FROM orchestrator_runs WHERE agent = 'portfolio_manager'
+ORDER BY COALESCE(started_at, slot_at) DESC NULLS LAST, id DESC LIMIT 1;
+```
+
+Resume needs `outcome = 'skipped' AND detail = 'trading paused'` (research D23).
+
 ## Health check
 
 ```sql
@@ -107,13 +117,15 @@ SELECT 1;
 ## `--check`
 
 ```sql
-SELECT r.rolname FROM pg_auth_members m
-JOIN pg_roles r ON r.oid = m.roleid
-JOIN pg_roles u ON u.oid = m.member
-WHERE u.rolname = current_user;
+SELECT current_user AS login, rolsuper, rolcreaterole, rolcreatedb, rolbypassrls
+FROM pg_roles WHERE rolname = current_user;
+
+SELECT rolname FROM pg_roles
+WHERE rolname LIKE 'ta\_%' AND rolname NOT LIKE '%\_login'
+  AND pg_has_role(current_user, oid, 'MEMBER');
 ```
 
-The read login must return exactly `ta_dashboard`; the control login exactly `ta_dashboard_control`.
+The read login must be exactly `ta_dashboard_login`, hold no `rol*` privilege above, and be a member (directly or not) of exactly `ta_dashboard` among the `ta_*` group roles; the control login likewise `ta_dashboard_control_login` and `ta_dashboard_control` (research D16).
 
 ## Indexes
 

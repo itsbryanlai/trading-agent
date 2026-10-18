@@ -10,7 +10,7 @@ Every route the dashboard serves. Anything not listed is `404`. Research: D4, D7
 | `GET /healthz` | no | — |
 | `GET /static/style.css` | no | — |
 | every other `GET` | yes | `303` to `/sign-in` |
-| every other `POST` | yes, plus the CSRF value and a same-origin or absent `Origin` | `403` "Request refused. Nothing was changed." |
+| every other `POST` | yes, plus the CSRF value and an `Origin` that is absent or whose host equals `Host` (scheme not compared, research D11) | no session: `303` to `/sign-in`, nothing written. Bad CSRF or `Origin`: `403` "Request refused. Nothing was changed." |
 
 A unit test builds the app, enumerates its route table and checks each route against this table; a new route without an entry here fails it.
 
@@ -26,9 +26,9 @@ A unit test builds the app, enumerates its route table and checks each route aga
 | `GET /activity` | `agent` = `research` \| `opportunistic_identifier` \| `portfolio_manager` \| `runs`, `problems` = `1`, `symbol`, `from`, `to`, `page` | reports, decisions and runs, merged newest first (FR-009) |
 | `GET /journal` | `range`, `page` | comparison chart, usage totals, day rows (FR-010) |
 | `GET /toggle` | — | the confirmation page for the one available action (contracts/toggle.md) |
-| `POST /toggle` | `csrf`, `expected` = `paused` \| `running`, `target` = the other | write or refuse, then `303 /toggle/done?result=…` |
+| `POST /toggle` | `csrf`, `expected` = `paused` \| `running`, `target` = the other | write or refuse, then `303 /toggle/done?result=…`; `expected`/`target` missing, unknown or equal: `403` "Request refused. Nothing was changed." |
 | `GET /toggle/done` | `result` = `paused` \| `resumed` \| `stale` \| `refused` \| `failed` | the outcome page; it states the current state read fresh, not the parameter alone |
-| `GET /healthz` | — | `200` `ok`, or `503` `unavailable`; `text/plain`, nothing else |
+| `GET /healthz` | — | `200` `ok`, or `503` `unavailable`; `text/plain`, nothing else. The database is asked at most once per 10 s; between, the cached answer is returned (research D12) |
 | `GET /static/style.css` | — | the stylesheet |
 
 Query validation: an unknown `range`, `agent` or `problems` value falls back to the default; `from`/`to` must be ISO dates, otherwise ignored; `symbol` is upper-cased, at most 10 characters of `A–Z`, `.` and `-`, otherwise ignored; `page` is an integer from 1, otherwise 1. A filter matching nothing, or a page past the end, is an empty list (never an error).
@@ -45,7 +45,7 @@ Cache-Control: no-store          (except /static/*)
 
 ## Session cookie
 
-`__Host-ta_dashboard=<id>.<signature>; Path=/; Secure; HttpOnly; SameSite=Strict; Max-Age=43200`. Cleared on sign-out with `Max-Age=0`.
+`__Host-ta_dashboard=<id>.<signature>; Path=/; Secure; HttpOnly; SameSite=Strict; Max-Age=<session_hours × 3600>` (43200 as shipped). Cleared on sign-out with `Max-Age=0`.
 
 ## Every signed-in page
 
@@ -60,6 +60,6 @@ Cache-Control: no-store          (except /static/*)
 
 | Situation | Response |
 |---|---|
-| Read login fails | `503` "Database unavailable. Nothing is shown until it is back." |
+| Read login fails, or no store connection free within 5 s | `503` "Database unavailable. Nothing is shown until it is back." |
 | A template or parsing bug | `500` "Something went wrong." with no detail |
 | Unknown route | `404` "Not found." |

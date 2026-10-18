@@ -10,7 +10,7 @@
 1. **Sign-in** (D4–D8): one password checked against a scrypt hash; a random session ID held in memory, in a `__Host-` cookie that is Secure, HttpOnly and SameSite=Strict, valid for 12 hours; site-wide and per-address "not before" delays; a CSRF value on every write.
 2. **Read views** (D12, D19–D21): overview with the equity curve, order history, agent activity (reports, decisions, orchestrator runs), and the journal with a comparison chart and usage totals. All read as `ta_dashboard_login` in one read-only transaction per request, rendered on the server as HTML and inline SVG, with no script.
 3. **Untrusted text** (D9, D10): restricted Markdown (no raw HTML, http(s) links only, no images), autoescape everywhere else, and a CSP that allows no script.
-4. **The toggle** (D13–D15): confirmation first; pause always; resume refused unless the deployed `run_while_paused` is `false`; a market-hours warning; one conditional `UPDATE` through `ta_dashboard_control_login`, opened only for that write.
+4. **The toggle** (D13–D15): confirmation first; pause always; resume refused unless the deployed `run_while_paused` is `false` and the orchestrator's newest PM run was skipped for the pause (ADR 0028, D23); a market-hours warning; one conditional `UPDATE` through `ta_dashboard_control_login`, opened only for that write.
 5. **Release** (D16, D22): migration `0015` adds the database-stamped `trading_paused_changed_at` (ADR 0027); `--check` and `--hash-password` for the owner; a health check; the Assistant names the dashboard as built.
 
 **How it's built**: a pure core (`auth`, `throttle`, `toggle`, `render`, `timefmt`, `charts`, `attribution`, `pages`) tested with no network or database, and thin edges (`store`, `control`, `deployed`, `app`, `routes_*`, `check`, `__main__`). One migration, two logins, one config file, one service with four variables.
@@ -60,8 +60,8 @@
 | I. Deterministic trade path | No broker key; no route reaches the gate or Execution. The toggle sets the flag the gate and Execution already read. The new column is ignored by the trade path. | Pass |
 | II. Analysts propose, PM decides | The dashboard decides nothing and writes nothing an agent reads except the pause flag, which is the owner's. | Pass |
 | III. Least privilege at the database | No new grant. Two new logins for the two existing roles, as the grants contract designs (read path can't write; the toggle holds the one that can). `--check` and the integration tests prove each login's membership and its denials. Only `DASHBOARD_*` variables on its service, pinned by the guard test. | Pass |
-| IV. Autonomous, one hard stop | The toggle is the "single plain toggle outside any agent's control". Refusing resume while `run_while_paused` is true enforces ADR 0021 §9's order; it is not a per-trade approval. The breaker is only displayed, never touched. | Pass |
-| V. Spec and ADR first | ADR 0026 (the service, sign-in, logins, toggle, rendering) and ADR 0027 (the column and trigger), both accepted 2026-10-18, before this plan. `docs/specs/ui-dashboard.md` updated (clarify Q4). The data model, grants contract, service layout, logins contract, overview and runbook are updated, referencing them. | Pass |
+| IV. Autonomous, one hard stop | The toggle is the "single plain toggle outside any agent's control". Refusing resume while `run_while_paused` is true, or before the orchestrator has skipped a PM run for the pause (ADR 0028), enforces ADR 0021 §9's order; it is not a per-trade approval. The breaker is only displayed, never touched. | Pass |
+| V. Spec and ADR first | ADR 0026 (the service, sign-in, logins, toggle, rendering) and ADR 0027 (the column and trigger), accepted 2026-10-18 before this plan; ADR 0028 (the orchestrator evidence), accepted after analyze. `docs/specs/ui-dashboard.md` updated (clarify Q4). The data model, grants contract, service layout, logins contract, overview and runbook are updated, referencing them. | Pass |
 | VI. Paper only, US equities | Not affected. | Pass |
 | VII. Assistant and dashboard read-only | Read grants everywhere; one write, the toggle. No trade entry, approval or config edit (FR-026). | Pass |
 | Technology section (v1.1.1) | FastAPI + Jinja2, server-rendered, no frontend build; a separate web service for the dashboard; Postgres the only durable store (sessions are memory only and losing them only signs the owner out). | Pass |
@@ -76,7 +76,7 @@
 specs/014-dashboard/
 ├── spec.md
 ├── plan.md                  # this file
-├── research.md              # D1–D22
+├── research.md              # D1–D23
 ├── data-model.md
 ├── quickstart.md            # validation, and the owner's release steps R1–R7
 ├── contracts/

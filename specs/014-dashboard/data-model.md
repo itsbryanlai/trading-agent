@@ -56,7 +56,8 @@ States are the stored `trading_paused` value. The dashboard shows only the actio
 
 ```text
 running ──[Pause → confirm]──────────────────────────────▶ paused
-paused  ──[Resume → confirm]──▶ (run_while_paused is false?) ──yes──▶ running
+paused  ──[Resume → confirm]──▶ (run_while_paused is false, and the PM's newest run
+                                  was skipped for the pause? ADR 0028) ──yes──▶ running
                                        │ no / unreadable
                                        ▼
                                refused, nothing written
@@ -70,6 +71,7 @@ A confirmation whose `expected` no longer matches the stored value writes nothin
 |---|---|
 | "Paused since" | `trading_paused_changed_at`; null shows "start time not recorded". Never `updated_at` |
 | Halt active | `system_state_effective.daily_loss_halt_active` |
+| Orchestrator honours the setting | newest `orchestrator_runs` row for `portfolio_manager` is `skipped` with detail `trading paused` (ADR 0028) |
 | Position cost | `qty × avg_entry_price` |
 | Snapshot age | read time − `taken_at` |
 | Equity point per day (1m, all) | last `account_snapshots` row per NYSE trading day |

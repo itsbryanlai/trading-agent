@@ -37,7 +37,7 @@ Pure core, testable with no database or network: `auth`, `throttle`, `toggle`, `
 **Decision**:
 - One password, checked against `DASHBOARD_PASSWORD_HASH` (D5). The sign-in form has a single password field.
 - On success, a session ID from `secrets.token_urlsafe(32)` is stored in memory (D6). The cookie value is `<id>.<HMAC-SHA256(DASHBOARD_SESSION_SECRET, id), base64url>`, so ADR 0026 §2's "signed with the session secret" holds and a malformed or forged cookie is rejected before the session table is looked up.
-- Cookie: name `__Host-ta_dashboard`, `Secure`, `HttpOnly`, `SameSite=Strict`, `Path=/`, no `Domain`, `Max-Age` 12 hours. The `__Host-` prefix makes browsers refuse it unless it is Secure, host-only and path `/`.
+- Cookie: name `__Host-ta_dashboard`, `Secure`, `HttpOnly`, `SameSite=Strict`, `Path=/`, no `Domain`, `Max-Age` = `session_hours` × 3600 (analyze U2). The `__Host-` prefix makes browsers refuse it unless it is Secure, host-only and path `/`.
 - Expiry is absolute, 12 hours from sign-in (config, D17), not sliding.
 - Every page except `GET/POST /sign-in`, `GET /healthz` and `GET /static/*` requires a valid session; otherwise `303` to `/sign-in` (pages) or `403` (writes). A route-table test enumerates every route and asserts this (SC-006).
 - Sign-out is a `POST /sign-out` with the CSRF value; it deletes the session and clears the cookie.
@@ -66,6 +66,7 @@ Pure core, testable with no database or network: `auth`, `throttle`, `toggle`, `
 - **Site-wide**: after a failure, the next attempt is not accepted until `1 s × 2^(failures−1)`, capped at 30 s, has passed. A success resets it.
 - **Per address** (D8): the same curve for the client's address, added to the site-wide wait. A success resets that address. At most 1,000 addresses are tracked, oldest first out.
 - An attempt that arrives too early is answered at once with "Too many attempts. Try again in N seconds.", without checking the password and without counting as a failure. Nothing sleeps, so a flood can't exhaust the thread pool.
+- **Reserve, then check** (analyze S1): `try_acquire(address, now)` runs under the gate's lock and either returns the wait, or reserves the slot by marking a check in flight; while one is in flight, every other attempt gets "too soon". `release(address, ok, now)` then records the success or failure and clears the reservation. So parallel requests can never be checked at once, and at most one scrypt check (about 32 MiB) runs at a time, whatever the load.
 - There is no lockout: once the wait passes, an attempt is always checked (FR-004).
 
 **Rationale**: sleeping before answering would let parallel requests each wait their delay and then be checked, so the site-wide cap would not cap anything. "Not before" bounds guessing to at most one checked attempt per 30 s site-wide, about 2,880 a day, against a password of 16 or more characters.
@@ -107,13 +108,15 @@ There is no `script-src`, so no script runs, inline or not. Charts are inline SV
 
 ## D11. Cross-site check on writes
 
-**Decision**: each session holds a random CSRF value (`secrets.token_urlsafe(32)`), placed as a hidden field in every write form. Every `POST` except `/sign-in` must carry it, compared with `hmac.compare_digest`, and must have an `Origin` header that is absent or equal to the request's own origin. A failure is `403` with "Request refused. Nothing was changed." The sign-in `POST` checks `Origin` only.
+**Decision**: each session holds a random CSRF value (`secrets.token_urlsafe(32)`), placed as a hidden field in every write form. Every `POST` except `/sign-in` must carry it, compared with `hmac.compare_digest`, and must have an `Origin` header that is absent or whose host (with port) equals the request's `Host` header. The scheme is not compared: behind Railway's edge the app sees `http` while the browser sends `https://` (analyze S2). A failure is `403` with "Request refused. Nothing was changed." The sign-in `POST` checks `Origin` only.
 
 **Rationale**: SameSite=Strict already stops cross-site sending; the token is ADR 0026 §2's required check and holds if a browser mishandles SameSite.
 
 ## D12. Database access, read path
 
 **Decision**: one connection per request through `storage.db.connect(DASHBOARD_DATABASE_URL)`, then `SET TRANSACTION READ ONLY` and `SET LOCAL statement_timeout` (config, 10 s), all of a page's queries in that one transaction. Queries are constant SQL with bound parameters, in `store.py` only (contracts/queries.md). Every list is `ORDER BY <time> DESC, id DESC LIMIT 51 OFFSET :offset`, 50 shown and the 51st telling whether a next page exists. A database failure renders a "database unavailable" page with status 503 and no error text; its log line names the exception type only.
+
+**Connection cap** (analyze S3): a semaphore allows at most 4 store connections at once, across pages and the health check; a request that can't get one within 5 s gets the 503 page. The unauthenticated `/healthz` runs `SELECT 1` at most once per 10 s (single-flight under a lock) and otherwise returns the cached result, so a flood from the internet opens at most one connection per 10 s and can never use up the shared database's connections (which the Risk Gate, Execution and the orchestrator need).
 
 **Rationale**: one user and a few requests a minute; a pool adds a dependency and stale-connection handling for no gain. `READ ONLY` is defence in depth: `ta_dashboard` already can't write.
 
@@ -126,7 +129,7 @@ UPDATE system_state SET trading_paused = %(target)s, updated_at = now()
 WHERE trading_paused = %(expected)s
 ```
 
-and commits; one updated row is success, zero rows is "the state changed; nothing was done" (FR-023). Then it closes. The confirmation form carries `expected` (the state the confirmation page showed) and `target`; the server checks `target = not expected`. Before writing a resume, it re-reads the deployed setting (D14) and refuses if it is not `false`. A guard test checks that the variable name appears in `control.py` and `check.py`'s call into it, and nowhere else in `src/` (FR-018).
+after `SET LOCAL lock_timeout = '5s'` and `SET LOCAL statement_timeout = '10s'` (analyze U1), and commits; one updated row is success, zero rows is "the state changed; nothing was done" (FR-023). Then it closes. The confirmation form carries `expected` (the state the confirmation page showed) and `target`; the server checks `target = not expected`. Before writing a resume, it re-reads the deployed setting (D14) and the orchestrator's evidence (D23) and refuses unless both allow it. A guard test checks that, under `src/`, the variable name appears only in `dashboard/control.py`, and that only `routes_toggle.py`, `check.py` and `__main__.py` import `control`; a route test drives every other route and asserts the fake control is never called (FR-018, analyze S7, C5).
 
 **Rationale**: `ta_dashboard_control` has `S` on `system_state`, so the `WHERE` is allowed; the conditional update makes a stale confirmation harmless without a lock.
 
@@ -135,6 +138,12 @@ and commits; one updated row is success, zero rows is "the state changed; nothin
 **Decision**: `deployed.py` reads `config/schedule.yaml` from the repository root (as the other config loaders resolve it, `Path(__file__).parents[3]`) with `yaml.safe_load`, and returns `portfolio_manager.run_while_paused` only if it is a real boolean; otherwise "unreadable". It is read on each page load (the file is tiny) so the banner and the toggle never disagree with what is deployed. Unreadable means resume is refused (FR-021) and the banner says the setting could not be read.
 
 **Rationale**: siblings can't import `orchestrator.config`; reading one key keeps the dashboard from depending on the whole schedule's validation.
+
+## D23. The orchestrator's evidence (ADR 0028)
+
+**Decision**: `store.py`'s `latest_pm_run()` returns the newest `orchestrator_runs` row for `portfolio_manager`, ordered by `COALESCE(started_at, slot_at) DESC, id DESC`. Resume is allowed only if it exists, its `outcome` is `skipped` and its `detail` is exactly `trading paused`; otherwise the refusal reason is `no_skipped_run`. It is read on the confirmation page and again, in its own read transaction, immediately before the control write. The text is a constant in `toggle.py`, and a unit test asserts it equals `trading_agent.orchestrator.planner.PAUSED` by reading that file's source as text, so the dashboard doesn't import a sibling.
+
+**Rationale**: the morning session's skip row is written only when the orchestrator's effective `run_while_paused` is false (`orchestrator/planner.py` `_pause_block`); with `true` the slot runs. A failed, timed-out or running PM row, or none, fails closed.
 
 ## D15. Market hours and the halt
 
@@ -146,14 +155,14 @@ and commits; one updated row is success, zero rows is "the state changed; nothin
 
 | Line | Passes when |
 |---|---|
-| `database_read` | connects with `DASHBOARD_DATABASE_URL`, runs `SELECT 1`, and `pg_has_role` shows the login is a member of `ta_dashboard` and of no other `ta_*` role |
-| `database_control` | connects with `DASHBOARD_CONTROL_DATABASE_URL` and is a member of `ta_dashboard_control` and of no other `ta_*` role; nothing is updated |
+| `database_read` | connects with `DASHBOARD_DATABASE_URL`, runs `SELECT 1`; `current_user` is exactly `ta_dashboard_login`; `pg_has_role(current_user, r, 'MEMBER')` is true for `ta_dashboard` and false for every other `ta_*` role; `rolsuper`, `rolcreaterole`, `rolcreatedb` and `rolbypassrls` are all false |
+| `database_control` | the same with `DASHBOARD_CONTROL_DATABASE_URL`, `ta_dashboard_control_login` and `ta_dashboard_control`; nothing is updated |
 | `password_hash` | `DASHBOARD_PASSWORD_HASH` parses as D5's format with the expected parameters |
 | `session_secret` | `DASHBOARD_SESSION_SECRET` is at least 32 bytes |
 | `schedule` | D14 reads a boolean |
 | `config` | `config/dashboard.yaml` loads (D17) |
 
-A failure code names the check's reason (`wrong_role:<role>`, `unreachable`, `too_short`, `malformed`) or the exception type, never a value or database message (FR-031).
+The owner's `ta_owner_*` logins fail as `wrong_login` (analyze S6). A failure code names the check's reason (`wrong_login`, `wrong_role:<role>`, `extra_role:<role>`, `privileged`, `unreachable`, `too_short`, `malformed`, `unreadable`) or the exception type, never a value or database message (FR-031).
 
 ## D17. Configuration file
 
@@ -173,7 +182,7 @@ database: {statement_timeout_seconds: 10}
 **Decision**: stdout, one line per event, `dashboard <event> key=value …`:
 - `started`, `stopped`;
 - `sign_in ok`, `sign_in failed site_wait=<s> address_wait=<s>`, `sign_in too_soon`;
-- `toggle paused|resumed`, `toggle refused reason=<run_while_paused|unreadable|stale|csrf>`;
+- `toggle paused|resumed`, `toggle refused reason=<run_while_paused|unreadable|no_skipped_run|stale|malformed|csrf|origin>`, `toggle failed type=<…>`: one line per `POST /toggle`, written by `routes_toggle.py` for outcomes it decides and by `app.py`'s `require_write` for `csrf` and `origin` refusals on `/toggle` (analyze C2). A `POST /toggle` without a session redirects to sign-in and writes `toggle refused reason=no_session` from `require_write`;
 - `error type=<ExceptionType> route=<path template>`.
 
 Never: a password, hash, cookie, session or CSRF value, a connection string, a client address, stored model text or a database error message (FR-024, FR-029). uvicorn's access log is off, so query strings and addresses aren't logged. A marker-string test (as feature 013's) feeds secrets and model text through every route and asserts none reaches the captured logs.
