@@ -59,11 +59,18 @@ class Built:
         return session, {"Cookie": f"{COOKIE_NAME}={auth.sign(SECRET, session.id)}"}
 
 
-def build(*, store: FakeStore | None = None, market_open=lambda now: False, config=None) -> Built:
+def build(
+    *,
+    store: FakeStore | None = None,
+    control=None,
+    market_open=lambda now: False,
+    config=None,
+    config_dir=None,
+) -> Built:
     config = config or load_config()
     clock = Clock()
     store = store or FakeStore()
-    control = SimpleNamespace(calls=[])
+    control = control or SimpleNamespace(calls=[])
     sessions = auth.Sessions(config.max_sessions, timedelta(hours=config.session_hours))
     gate = SignInGate(
         config.sign_in_delay.first_seconds,
@@ -79,7 +86,7 @@ def build(*, store: FakeStore | None = None, market_open=lambda now: False, conf
         config=config,
         secret=SECRET,
         password_hash=password_hash,
-        config_dir=ROOT / "config",
+        config_dir=config_dir or ROOT / "config",
         clock=clock,
         market_open=market_open,
     )

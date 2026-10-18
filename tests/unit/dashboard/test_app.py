@@ -54,11 +54,6 @@ def _probes(built: Built) -> list[str]:
         calls.append("probe")
         return PlainTextResponse("written")
 
-    @app.post("/toggle")
-    def toggle(session: WriteDep):
-        calls.append("toggle")
-        return PlainTextResponse("written")
-
     @app.get("/probe/db")
     def database():
         raise StoreError("database: OperationalError")
@@ -97,7 +92,15 @@ def test_every_route_is_in_the_access_table(built):
     for route in all_routes(built.app):
         for method in route.methods - {"HEAD"}:
             seen.add((method, route.path))
-    assert {("GET", "/"), ("GET", "/healthz"), ("GET", "/sign-in"), ("POST", "/sign-out")} <= seen
+    assert {
+        ("GET", "/"),
+        ("GET", "/healthz"),
+        ("GET", "/sign-in"),
+        ("POST", "/sign-out"),
+        ("GET", "/toggle"),
+        ("POST", "/toggle"),
+        ("GET", "/toggle/done"),
+    } <= seen
     assert seen <= set(ACCESS), (
         f"routes missing from contracts/routes.md: {sorted(seen - set(ACCESS))}"
     )
@@ -411,15 +414,14 @@ def test_toggle_refusals_from_the_guard_write_one_line_each(probed, caplog):
     assert probed.calls == []
 
 
-def test_other_routes_write_no_toggle_lines_and_a_good_toggle_post_writes_none_here(probed, caplog):
+def test_other_routes_write_no_toggle_lines(probed, caplog):
     caplog.set_level(logging.INFO, logger="trading_agent.dashboard")
     client = probed.client(follow_redirects=False)
     session, cookie = probed.sign_in()
     client.post("/probe", data={"csrf": "wrong"}, headers=cookie)
     client.post("/probe", data={"csrf": session.csrf})
-    client.post("/toggle", data={"csrf": session.csrf}, headers=cookie)  # the route logs its own
     assert _toggle_lines(caplog) == []
-    assert probed.calls == ["toggle"]
+    assert probed.calls == []
 
 
 def test_the_log_never_holds_a_cookie_csrf_value_or_session_id(probed, caplog):
