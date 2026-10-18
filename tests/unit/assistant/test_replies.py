@@ -95,9 +95,16 @@ text_strategy = st.text(
 )
 
 
+def test_split_drops_parts_that_are_blank():
+    parts = replies.split("a" * 4000 + "\n" + " " * 4001 + "b")
+    assert len(parts) == 2 and all(p.strip() for p in parts)
+
+
 @given(text_strategy, st.integers(min_value=2, max_value=40))
 def test_split_property(text, limit):
     parts = replies.split(text, limit)
+    assert all(p.strip() for p in parts)
+    assert bool(parts) == bool(text.strip())
     assert all(_units(p) <= limit for p in parts)
     assert "".join("".join(parts).split()) == "".join(text.split())
 

@@ -121,8 +121,14 @@ def split(text: str, limit_units: int = 4000) -> list[str]:
     """Split into parts of at most `limit_units` UTF-16 code units (Telegram's unit).
 
     Splits at the last newline or space before the limit (that one character is dropped),
-    otherwise hard-splits. A code point is never cut in two.
+    otherwise hard-splits. A code point is never cut in two. Parts that are blank after
+    `strip()` are dropped, so none is empty (Telegram rejects an empty message); the result
+    is empty only for blank input.
     """
+    return [part for part in _split(text, limit_units) if part.strip()]
+
+
+def _split(text: str, limit_units: int) -> list[str]:
     if limit_units < 2:
         raise ValueError("limit_units must be at least 2")
     parts: list[str] = []
