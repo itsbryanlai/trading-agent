@@ -51,6 +51,10 @@ class FakeReader:
         self._record("equity_points", since, daily)
         return list(self._store.points)
 
+    def orders(self, symbol, since, until, limit, offset):
+        self._record("orders", symbol, since, until, limit, offset)
+        return list(self._store.order_rows[offset : offset + limit])
+
     def latest_pm_run(self):
         self._record("latest_pm_run")
         return self._store.pm_run
@@ -69,6 +73,7 @@ class FakeStore:
         snapshot: dict | None = DEFAULT_SNAPSHOT,
         points: list[dict] | None = None,
         pm_run: dict | None = None,
+        order_rows: list[dict] | None = None,
         error: Exception | None = None,
         ping_ok: bool = True,
     ) -> None:
@@ -77,6 +82,7 @@ class FakeStore:
         self.snapshot = snapshot
         self.points = points or []
         self.pm_run = pm_run
+        self.order_rows = order_rows or []
         self.error = error
         self.ping_ok = ping_ok
         self.calls: list[tuple[str, tuple]] = []
