@@ -30,6 +30,10 @@ All recorded in [ADR 0026](../../docs/adr/0026-dashboard-public-service-with-own
 - Q: Does agent activity include the orchestrator's runs, which `docs/specs/ui-dashboard.md` doesn't name? → A: Yes, every run, inline with the reports and decisions: agent, why it was due, slot, start and finish, outcome, with failed, timed-out and skipped runs marked and a filter for them. `docs/specs/ui-dashboard.md` gains the same line. Rejected: only the problem runs; leaving runs out.
 - Q: Does the journal show performance over time? → A: Yes. Above the day rows, a comparison chart: one line per analyst from its stored `index`, and an account line compounded from each day's `account.return`, each rebased to 100 at its own first point in the range, with missed sessions marked; the same ranges as the equity curve. Beside it, each analyst's usage totals over the range (reports written, argued, `no_action`, cited, decisions citing them, approved, filled), summed from each row's `usage`. Rejected: day rows only; the chart without usage totals.
 
+### Session 2026-10-18 (after `/speckit-plan`)
+
+- Q: Can a sustained attacker still hold off the owner's sign-in under the two delays? → A: Yes, accepted by the owner (research D7). To cap guessing, an attempt arriving before the delay has passed is answered at once ("try again in N seconds") without being checked; a scripted attacker firing the moment each wait ends wins most races for the next slot, so while the attack lasts the owner's sign-in can be held off. It ends when the attack stops, and there is still no fixed lockout. Signed-in sessions, the runbook's manual `UPDATE` and the failure log lines are the fallbacks. This corrects the clarify answer's "the worst a stranger causes is a 30-second wait". Rejected: sleeping before checking (parallel requests defeat the cap); a second factor now (ADR 0026 deferred it).
+
 ## User Scenarios & Testing *(mandatory)*
 
 The only user is **the owner**, who wants to open one page, from a phone or a laptop, and see what the system holds, what each agent has said and decided, what the gate and the broker did with it, and how each analyst would have done alone. This serves the system's purpose: watching each agent's performance over time with minimal intervention.
@@ -47,7 +51,7 @@ The owner opens the dashboard's address, signs in with their password, and lands
 **Acceptance Scenarios**:
 
 1. **Given** no session, **When** the owner opens any page, **Then** they are sent to the sign-in page, and no data is shown.
-2. **Given** the sign-in page, **When** the owner enters the right password, **Then** they land on the overview; **When** they enter a wrong one, **Then** they see a generic "sign-in failed" message, and each further failure waits longer before answering, up to 30 s site-wide plus up to 30 s more from the same address.
+2. **Given** the sign-in page, **When** the owner enters the right password, **Then** they land on the overview; **When** they enter a wrong one, **Then** they see a generic "sign-in failed" message, and the next attempt is not checked until a delay has passed, up to 30 s site-wide plus up to 30 s more from the same address; an attempt before then is told how long to wait.
 3. **Given** trading is paused and the deployed schedule lets the Portfolio Manager run while paused, **When** any page loads, **Then** a banner says trading is paused, since when, that the Portfolio Manager still runs, and that the gate rejects every buy.
 4. **Given** positions and snapshots exist, **When** the overview loads, **Then** each position shows symbol, quantity, average entry price and cost; cash and equity show the latest snapshot's values with its time and age; and the curve plots the snapshots for the chosen range.
 5. **Given** the halt was triggered for today's trading day, **When** the overview loads, **Then** it says new orders are halted for the rest of the session and clear at the next trading day.
@@ -162,7 +166,7 @@ Before a release, the owner runs a check that confirms each credential works and
 - **The halt is active**: resuming the manual pause does not clear the halt, and the page says new orders stay halted until the next trading day.
 - **The service restarts or is redeployed**: every session ends; the next page load asks the owner to sign in again.
 - **Signed out, then an old cookie is replayed**: it is refused like no session at all.
-- **Someone guesses passwords all day from many addresses**: each guess waits up to 30 s site-wide, and the owner, signing in from their own address, waits at most 30 s; nothing locks them out. A restart resets both delays.
+- **Someone guesses passwords all day from many addresses**: at most one guess is checked per site-wide wait (up to 30 s), about 2,880 a day. Without such an attacker the owner waits at most 30 s; with one firing the moment each wait ends, the owner's attempts mostly get "try again in N seconds" until the attack stops (accepted, research D7). There is no fixed lockout; signed-in sessions keep working. A restart resets both delays.
 - **Session expires on the confirmation page**: confirming sends the owner to sign in, and nothing is written.
 - **Unknown symbol or date in a filter, or a page past the end**: an empty list, not an error.
 - **Broker reasons and refusal details**: shown escaped as plain text.
@@ -177,7 +181,7 @@ Before a release, the owner runs a check that confirms each credential works and
 - **FR-001**: The dashboard MUST require a signed-in session for every page and action except the sign-in page and the health check.
 - **FR-002**: Sign-in MUST check the owner's password against a stored hash only; the password itself MUST never be stored, logged or shown.
 - **FR-003**: A session MUST expire about 12 hours after sign-in, and MUST be carried only in a cookie that page scripts cannot read, is sent only over HTTPS, and is not sent on requests from other sites. The dashboard MUST keep live sessions in its own memory, with the cookie carrying only a random session ID; signing out MUST delete the session on the server, after which that cookie MUST be refused. A restart MUST end every session.
-- **FR-004**: Each failed sign-in MUST lengthen two delays held in memory before the next sign-in answers: a site-wide one and one for the client's address (as the platform reports it), each doubling from 1 s up to 30 s, the two added together. A successful sign-in MUST reset the site-wide delay and that address's. Sign-in MUST never be refused outright for too many failures, and the failure message MUST NOT say which part was wrong.
+- **FR-004**: Each failed sign-in MUST lengthen two delays held in memory: a site-wide one and one for the client's address (as the platform reports it), each doubling from 1 s up to 30 s, the two added together. An attempt arriving before its delay has passed MUST be answered at once with how long to wait, without checking the password or counting as a failure. A successful sign-in MUST reset the site-wide delay and that address's. Once the delay has passed, an attempt MUST always be checked (no fixed lockout), and the failure message MUST NOT say which part was wrong.
 - **FR-004a**: The command that makes the password hash MUST refuse a password shorter than 16 characters, read it without echoing it, and print only the hash.
 - **FR-005**: Every request that writes MUST carry a cross-site check value tied to the session, and MUST be refused without one.
 
