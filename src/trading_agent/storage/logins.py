@@ -40,7 +40,7 @@ class Login(NamedTuple):
     group: str
 
 
-# The contract's eleven rows. Each login is a member of exactly one group role.
+# The contract's thirteen rows. Each login is a member of exactly one group role.
 LOGINS: tuple[Login, ...] = (
     Login("ta_orchestrator_login", "ta_orchestrator"),
     Login("ta_research_login", "ta_research"),
@@ -53,6 +53,9 @@ LOGINS: tuple[Login, ...] = (
     Login("ta_owner_control_login", "ta_dashboard_control"),
     Login("ta_journal_login", "ta_journal"),
     Login("ta_assistant_login", "ta_assistant"),
+    # Feature 014 (ADR 0026): the dashboard's own read login and its one control login.
+    Login("ta_dashboard_login", "ta_dashboard"),
+    Login("ta_dashboard_control_login", "ta_dashboard_control"),
 )
 
 

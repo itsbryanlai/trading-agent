@@ -30,6 +30,8 @@ GROUP_OF = {
     "ta_owner_control_login": "ta_dashboard_control",
     "ta_journal_login": "ta_journal",
     "ta_assistant_login": "ta_assistant",
+    "ta_dashboard_login": "ta_dashboard",
+    "ta_dashboard_control_login": "ta_dashboard_control",
 }
 
 
