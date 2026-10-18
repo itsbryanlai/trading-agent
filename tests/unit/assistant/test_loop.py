@@ -301,7 +301,8 @@ def test_a_new_conflict_streak_logs_again(caplog):
     def second_streak(offset, timeout, allowed_updates, limit):
         got = first(offset, timeout, allowed_updates, limit)
         if got and not telegram.fail_updates and offset == 1:
-            telegram.fail_updates = [Conflict("telegram: HTTP 409")] * 30
+            # the confirming call after each of the two updates uses one
+            telegram.fail_updates = [Conflict("telegram: HTTP 409")] * 32
         return got
 
     telegram.get_updates = second_streak
@@ -395,3 +396,53 @@ def test_a_rejected_token_or_lost_database_from_respond_still_propagates():
 
         with pytest.raises(type(error)):
             drive([message(1)], respond)
+
+
+# --- an update is confirmed right after its reply (T040, review L6) ----------------------
+
+
+def test_each_update_is_confirmed_before_the_next_is_handled():
+    stop = threading.Event()
+    telegram = StopWhenEmpty(stop, [message(1), message(2)])
+    confirmed_when_handled = []
+
+    def respond(update):
+        confirmed_when_handled.append(list(telegram.arguments))
+        return answered("ok")
+
+    drive([], respond, telegram=telegram)
+    # the second message is handled only after getUpdates(2, 0, ..., 1) went out
+    assert (2, 0, loop.ALLOWED_UPDATES, 1) in confirmed_when_handled[1]
+    assert (1, 0, loop.ALLOWED_UPDATES, 1) not in confirmed_when_handled[0]
+
+
+def test_a_crash_after_answering_update_one_leaves_it_confirmed():
+    stop = threading.Event()
+    telegram = StopWhenEmpty(stop, [message(1), message(2)])
+
+    def respond(update):
+        if update["update_id"] == 2:
+            raise loop.DatabaseLost("x")
+        return answered("ok")
+
+    with pytest.raises(loop.DatabaseLost):
+        drive([], respond, telegram=telegram)
+    assert telegram.queue[0]["update_id"] == 2  # update 1 was confirmed, 2 was not (it crashed)
+    # a restart's drain counts only what is still waiting
+    loop.drain(telegram, chat_id=OWNER, sleep=Sleeps(), stop=threading.Event())
+    assert [t for _, t in telegram.sent] == ["ok", replies.skipped(1)]
+
+
+def test_a_failing_confirmation_is_logged_by_type_and_ignored(caplog):
+    class Flaky(StopWhenEmpty):
+        def get_updates(self, offset, timeout, allowed_updates, limit):
+            if limit == 1 and timeout == 0:
+                self.arguments.append((offset, timeout, allowed_updates, limit))
+                raise TelegramUnavailable("text-inside-the-exception")
+            return super().get_updates(offset, timeout, allowed_updates, limit)
+
+    telegram = Flaky(threading.Event(), [message(1), message(2)])
+    _, seen, _ = drive([], telegram=telegram)
+    assert len(seen) == 2
+    assert "assistant: telegram getUpdates failed: TelegramUnavailable" in caplog.text
+    assert "text-inside-the-exception" not in caplog.text

@@ -56,6 +56,8 @@ Railway starts the new deployment before it removes the old one. The pinned SDK,
 
 Telegram delivers each update to the poll that receives it, so a message is not answered twice. A message received by the old process while it shuts down is answered before it exits.
 
+Each update is confirmed (`getUpdates` with the next offset) right after its reply is sent or abandoned, so a crash or a stop leaves no answered update unconfirmed. One window remains: if the old process has answered a message but its confirmation has not reached Telegram when the new deployment's poll starts, the new process may receive that update again and answer it twice. The duplicate costs the owner one repeated reply and changes nothing (the Assistant is read-only).
+
 ## A4. Messages from before a start (FR-004a)
 
 **Decision**: at start, before the loop:

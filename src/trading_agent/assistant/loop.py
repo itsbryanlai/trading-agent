@@ -89,6 +89,7 @@ def poll(
                 handled = _respond(respond, update)
                 send(telegram, chat_id, handled.replies, sleep)
                 offset = max(offset, uid + 1)
+                confirmed = _confirm(telegram, offset, confirmed)
                 if handled.outcome.detail != INTERNAL:
                     failures = _count_database(handled.outcome, failures, max_failures)
                 if stop.is_set():
@@ -216,11 +217,15 @@ def _count_database(outcome, failures: int, max_failures: int) -> int:
     return failures
 
 
-def _confirm(telegram, offset: int, confirmed: int) -> None:
-    """Best effort: confirm the last handled update so a restart doesn't count it as skipped."""
+def _confirm(telegram, offset: int, confirmed: int) -> int:
+    """Confirm the updates below `offset` so a restart doesn't count them as skipped.
+
+    Best effort: a failure is logged by type and ignored. Returns the offset confirmed."""
     if offset <= confirmed:
-        return
+        return confirmed
     try:
         telegram.get_updates(offset, 0, ALLOWED_UPDATES, 1)
-    except TelegramError:
-        pass
+    except TelegramError as exc:
+        log.warning("assistant: telegram getUpdates failed: %s", type(exc).__name__)
+        return confirmed
+    return offset
