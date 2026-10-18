@@ -212,19 +212,19 @@ description: "Task list for the Assistant (feature 013)"
 
 **Independent test**: with a week of reports, decisions, journal rows and runs in the fake store, each US2 question reads only the asked period, symbol or agent, and settings come from the allowlist.
 
-- [ ] T015 [P] [US2] `src/trading_agent/assistant/settings_view.py` (research A16, contracts/query-menu.md "`settings` allowlist"), test first in `tests/unit/assistant/test_settings_view.py`, with a temporary config directory: `read(config_dir, section | None) -> dict`, through `yaml.safe_load`, copying only the allowlisted paths. A missing file or key gives `"unavailable"`. Tests:
+- [x] T015 [P] [US2] `src/trading_agent/assistant/settings_view.py` (research A16, contracts/query-menu.md "`settings` allowlist"), test first in `tests/unit/assistant/test_settings_view.py`, with a temporary config directory: `read(config_dir, section | None) -> dict`, through `yaml.safe_load`, copying only the allowlisted paths. A missing file or key gives `"unavailable"`. Tests:
   - the repository's real `config/` files load and every allowlisted section is present (no assertion on live values);
   - a temporary `risk.yaml` with `max_position_pct: 8` shows that value;
   - a planted `env:` list and an unlisted `secret_like_key: x` in a temporary schedule file never appear in the output;
   - a malformed YAML file gives `"unavailable"` for its section.
 
   Wire `settings` into `store.run` (it reads files, not SQL) and its fake.
-- [ ] T016 [US2] Owner-zone dates and times, test first in `tests/unit/assistant/test_menu.py` and `test_service.py`:
+- [x] T016 [US2] Owner-zone dates and times, test first in `tests/unit/assistant/test_menu.py` and `test_service.py`:
   - at the default clock (Tue 07:00 +08), a plan choice of `from_date = to_date = 2026-10-20` maps to UTC 2026-10-19 16:00 → 2026-10-20 16:00;
   - `now` in the plan document carries `local`, `et`, `local_date: 2026-10-20` and `time_zone: Asia/Singapore`;
   - the winter case shows ET at −05:00;
   - the default dates per entry follow the owner's local "today".
-- [ ] T017 [US2] US2 scenarios through `service.handle` with fakes, in `tests/unit/assistant/test_service_history.py`:
+- [x] T017 [US2] US2 scenarios through `service.handle` with fakes, in `tests/unit/assistant/test_service_history.py`:
   - three Research reports on NVDA this week;
   - a sell decision on MU citing two reports, with the cited report ids and agents in the answer document;
   - ten journal rows with attribution, where the OI's index and the account return reach the answer document;
@@ -289,7 +289,7 @@ description: "Task list for the Assistant (feature 013)"
 
 **Independent test**: with fakes, a working setup passes every check, each broken credential is named, and nothing is sent to the chat.
 
-- [ ] T023 [US4] `src/trading_agent/assistant/check.py`, with `--check` and `--find-chat-id` in `__main__.py` (research A18), test first in `tests/unit/assistant/test_check.py`.
+- [x] T023 [US4] `src/trading_agent/assistant/check.py`, with `--check` and `--find-chat-id` in `__main__.py` (research A18), test first in `tests/unit/assistant/test_check.py`.
   - **`--check`** prints one line per check:
     - `telegram: ok` (`get_me`);
     - `database: ok` (connect and `known_symbols`);
@@ -324,7 +324,7 @@ description: "Task list for the Assistant (feature 013)"
   - **`docs/operations/deployment.md`**: new §9 "Adding the assistant service" (quickstart steps 2–5), and the release checklist mentions `--check`;
   - **`specs/010-observe-only-deployment/contracts/logins-command.md`**: the eleventh row;
   - **`docs/policy/versioning.md`**: a row for the Assistant's `PROMPT_VERSION` 0.1.
-- [ ] T028 Wire the real `PostgresStore` and Telegram opener in `__main__.py` for production (the clients are T014's), and add one unit test that `main()` with fakes for every factory runs the drain, answers one question and stops on the stop flag.
+- [x] T028 Wire the real `PostgresStore` and Telegram opener in `__main__.py` for production (the clients are T014's), and add one unit test that `main()` with fakes for every factory runs the drain, answers one question and stops on the stop flag.
 - [ ] T029 Final validation:
   - the full unit suite and the full integration suite, once;
   - `scripts/lint.sh`;
