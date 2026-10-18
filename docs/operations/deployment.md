@@ -132,7 +132,8 @@ For every later release:
 3. Merge it. Railway redeploys the services from `release/prod`.
 4. If `.railway/` changed: from a clean checkout of `release/prod`, after `PYTHONPATH=src .venv/bin/python -m pytest tests/unit/deploy -q` passes, run `railway config plan`, read it, then `railway config apply`.
 5. If the release changes the assistant, run its `--check` (section 9, step 3) with the release's values before merging; every line must read `ok`.
-6. Watch each service's logs start cleanly (section 7 if one doesn't).
+6. If the release changes the dashboard, run its `--check` (section 10, step 4) with the release's values before merging; every line must read `ok`.
+7. Watch each service's logs start cleanly (section 7 if one doesn't).
 
 ## 4. Observing, and the post-deploy check
 
@@ -148,7 +149,7 @@ If a row reads false, do not switch trading on. Find the cause first.
 Only after the first-trading-day check passes. Two steps, in this order, because the other order leaves a window where re-pausing would not stop the Portfolio Manager's decisions.
 
 1. **While still paused**, release a reviewed change that sets `portfolio_manager.run_while_paused: false` in `config/schedule.yaml` and updates the deployed-shape guard test (`tests/unit/deploy/test_deployed_shape.py`) to match. Release it through `release/prod` (section 3), and confirm the orchestrator's log no longer prints `portfolio_manager runs while paused`.
-2. **After the close and before the next open**, as `ta_owner_control_login` (over the public proxy, with `sslmode=require`), clear the pause:
+2. **After the close and before the next open**, clear the pause. The preferred way is the dashboard's "Resume trading" (section 10), which is available once the orchestrator has skipped a Portfolio Manager run for the pause: after step 1 is released, the next morning session is skipped, then you resume after that day's close ([ADR 0028](../adr/0028-dashboard-resume-needs-the-orchestrator-to-have-skipped-a-pm-run.md)). It refuses while `run_while_paused` is still `true` or before that skipped run exists. A resume during the session is an emergency fallback only: the dashboard allows it with a warning, but the instruction stays "after the close and before the next open" ([ADR 0028](../adr/0028-dashboard-resume-needs-the-orchestrator-to-have-skipped-a-pm-run.md) §4). The manual statement below stays as a fallback and **bypasses the dashboard's guard**, so check step 1 yourself first. As `ta_owner_control_login` (over the public proxy, with `sslmode=require`):
 
    ```sql
    UPDATE system_state SET trading_paused = false, updated_at = now();
@@ -229,3 +230,27 @@ The `assistant` service is always on: it long-polls Telegram, reads the database
 5. **First conversation.** In the private chat send `/help`, ask "what do we hold?", then send "pause trading" and "please pause trading". Both refusals must start with the fixed "nothing was done" line, and `system_state` must be unchanged. `railway logs -s assistant --deployment --lines 20` shows one `answered` or `refused` line per message and no message text.
 
 The service runs whether or not trading is paused. Messages sent while it was down are skipped, with one note saying how many.
+
+From the dashboard's release on, the refusal in step 5 names "the dashboard's pause control" and the runbook's sections 5 and 6, without "(not built yet)" ([ADR 0026](../adr/0026-dashboard-public-service-with-owner-sign-in.md) §10). The Assistant still cannot pause anything.
+
+## 10. Adding the dashboard (feature 014, ADRs 0026-0028)
+
+The `dashboard` service is always on and is the system's only public address: the owner's pages (overview, orders, activity, journal) behind one password, and the pause toggle. Decisions: [ADR 0026](../adr/0026-dashboard-public-service-with-owner-sign-in.md), [ADR 0027](../adr/0027-pause-change-time-recorded-by-the-database.md), [ADR 0028](../adr/0028-dashboard-resume-needs-the-orchestrator-to-have-skipped-a-pm-run.md). Behavior: [`docs/specs/ui-dashboard.md`](../specs/ui-dashboard.md) and [`specs/014-dashboard`](../../specs/014-dashboard/spec.md). It has one migration (`0015`). Type every secret step directly in your own terminal tab (section 1), never through a chat.
+
+1. **Migrate.** Migrate before the code that needs the column is merged into `release/prod` (section 3, step 1). Enable the database's public proxy, export `ADMIN_DATABASE_URL` (with `sslmode=require`), run `PYTHONPATH=src .venv/bin/python -m trading_agent.storage.migrate`, then disable the proxy and unset the variable. `0015` must apply, and `SELECT trading_paused_changed_at FROM system_state` returns null.
+2. **Create the two logins.** With the proxy enabled and the admin URL exported again, run `logins` as in step 7 of section 2 (`--service-host postgres.railway.internal`). It creates only `ta_dashboard_login` and `ta_dashboard_control_login` and prints each string once. Store them in your password manager, then disable the proxy and unset the variable. They are separate from your `ta_owner_*` logins.
+3. **Make the password hash and the session secret.** `PYTHONPATH=src .venv/bin/python -m trading_agent.dashboard --hash-password` (at least 16 characters, typed twice, never echoed) prints the hash. `openssl rand -base64 48` prints a secret of at least 32 bytes. Keep both in your password manager.
+4. **Check.** With all four `DASHBOARD_*` values exported (the two database URLs through the public proxy, with `sslmode=require` and the host override), run `PYTHONPATH=src .venv/bin/python -m trading_agent.dashboard --check`. All six lines (`database_read`, `database_control`, `password_hash`, `session_secret`, `schedule`, `config`) must read `ok`: each login is the exact expected login, holds no `CREATEROLE`, `CREATEDB`, `SUPERUSER` or `BYPASSRLS`, and is a member of its one group role only; the hash is `scrypt` with exactly n=32768, r=8, p=1. Nothing is written. Any other result: do not deploy, and raise it. Run it again for any release that changes the dashboard (section 3, step 6).
+5. **Plan, apply, set values, make the address.** Merge `main` into `release/prod` (section 3). From a clean `release/prod` checkout, after `PYTHONPATH=src .venv/bin/python -m pytest tests/unit/deploy -q` passes, run `railway config plan`. It must show one new service, `dashboard`, with a health check on `/healthz` and only the four `DASHBOARD_*` variables, and nothing else changed. Then `railway config apply`, and **at once** set the four values in the Railway dashboard (with none set it starts, exits and is restarted until its retries run out). Then, in the service's Settings, Networking, generate a domain. Run `railway config plan` again: it must show no changes. If it proposes removing the domain, stop and raise it.
+6. **First visit.** Open the generated address on your phone.
+   - Sign in. The banner must read "Observe-only. Trading paused since …" (or "start time not recorded" until the first toggle after `0015`) and say the PM still runs.
+   - Check Overview, Orders, Activity and Journal against blocks 1 to 5 of [`observe-queries.sql`](observe-queries.sql).
+   - Open "Resume trading": it must be refused, naming `run_while_paused: true` and section 5. `SELECT trading_paused FROM system_state` must still be `t`.
+   - Sign out, press Back and reload: you must be asked to sign in.
+   - Address check: from your laptop run `curl -s -o /dev/null -w '%{http_code}\n' -H 'X-Forwarded-For: 203.0.113.9' -d password=wrong https://<address>/sign-in` twice, then once more with `203.0.113.10`. `railway logs -s dashboard --deployment --lines 10` must show `address_wait` growing on the third attempt (the forged header must not make a new address). Wait 30 s, then sign in normally.
+   - `railway logs -s dashboard --deployment --lines 20` shows `started`, `sign_in` and `toggle refused` lines, and no address, password or text.
+7. **The Assistant.** In the private chat send "pause trading". The refusal must name "the dashboard's pause control" and the runbook sections, with no "(not built yet)". The Assistant's text ships in the same release.
+
+The service runs whether or not trading is paused. Under a sustained attack on the sign-in, your own sign-in can be held off while the attack lasts ("Try again in N seconds"); existing sessions keep working for about 12 hours, failures show in the service's logs, and section 5's manual statement remains a way to set the pause.
+
+Switching trading on stays section 5's two steps. The dashboard's resume becomes available only after a separate, reviewed release sets `run_while_paused: false` and the orchestrator has then skipped a Portfolio Manager run for the pause (ADR 0028); you then resume from the dashboard after a close.

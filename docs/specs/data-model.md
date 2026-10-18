@@ -220,6 +220,7 @@ A single control row for the one manual control and the daily-loss breaker.
 | Field | Type | Notes |
 |---|---|---|
 | `trading_paused` | boolean | the UI's manual pause/resume toggle; the orchestrator checks this before running the PM, and can read this column only (`specs/005-orchestrator`) |
+| `trading_paused_changed_at` | timestamptz, nullable | when `trading_paused` last changed value, set by a database trigger whichever path made the change, never by a writer; null until the first change after migration `0015`, and the dashboard shows null as "start time not recorded" ([ADR 0027](../adr/0027-pause-change-time-recorded-by-the-database.md), [ADR 0026](../adr/0026-dashboard-public-service-with-owner-sign-in.md), `specs/014-dashboard`). Read by the roles with table-wide `SELECT` on `system_state`; the orchestrator and Execution still read `trading_paused` alone |
 | `halt_triggered_on` | date | the trading day the Risk Gate saw the 20% daily-loss line crossed |
 | `baseline_trading_day`, `daily_starting_equity` | date, numeric | the daily-loss breaker's baseline and the day it belongs to |
 
@@ -229,4 +230,6 @@ of the next trading day with no write from anyone. Likewise a baseline from a
 previous day reads as unset (view `system_state_effective`).
 
 Writers, enforced per column: `risk_gate` role for the halt and baseline
-fields; a dedicated dashboard-control role for `trading_paused` only.
+fields; a dedicated dashboard-control role for `trading_paused` only. No role
+writes `trading_paused_changed_at`: the trigger from migration `0015` stamps it
+when `trading_paused` changes ([ADR 0027](../adr/0027-pause-change-time-recorded-by-the-database.md)).

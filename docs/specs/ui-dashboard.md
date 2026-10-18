@@ -1,5 +1,11 @@
 # UI dashboard
 
+Built as feature 014 ([`specs/014-dashboard`](../../specs/014-dashboard/spec.md);
+[ADR 0026](../adr/0026-dashboard-public-service-with-owner-sign-in.md),
+[ADR 0027](../adr/0027-pause-change-time-recorded-by-the-database.md),
+[ADR 0028](../adr/0028-dashboard-resume-needs-the-orchestrator-to-have-skipped-a-pm-run.md)).
+The spec is the source of truth for behavior; this page is the overview.
+
 ## Purpose
 
 A read-only monitoring surface for the whole system, plus the one manual
@@ -27,11 +33,38 @@ entered, modified, or approved from here.
 - **System state** — whether trading is currently paused, whether the
   daily-loss halt is active for the current session.
 
+## Sign-in
+
+The dashboard is the system's only public address, so every page except the
+sign-in page and the health check needs a session. One owner password (stored
+only as a hash) signs in; the session is an HttpOnly, Secure, SameSite=Strict
+cookie that expires after about 12 hours and is revocable; failed sign-ins are
+slowed down; every write carries a CSRF value
+([ADR 0026](../adr/0026-dashboard-public-service-with-owner-sign-in.md) §2).
+Pages run no script and load nothing from outside, and model-written text is
+rendered as restricted Markdown ([ADR 0026](../adr/0026-dashboard-public-service-with-owner-sign-in.md) §6).
+
 ## Manual control
 
 A single pause/resume toggle, writing `system_state.trading_paused`
 directly — not routed through any agent
-([ADR 0007](../adr/0007-assistant-is-separate-read-only-telegram.md)).
+([ADR 0007](../adr/0007-assistant-is-separate-read-only-telegram.md)). It is a
+plain button with a confirmation page, and it is guarded
+([ADR 0026](../adr/0026-dashboard-public-service-with-owner-sign-in.md) §4,
+[ADR 0028](../adr/0028-dashboard-resume-needs-the-orchestrator-to-have-skipped-a-pm-run.md)):
+
+- **Pausing is always allowed.**
+- **Resuming is refused** unless the deployed `portfolio_manager.run_while_paused`
+  is `false` *and* the orchestrator's newest Portfolio Manager run was skipped
+  because of the pause; an unreadable setting or missing evidence also refuses.
+  This keeps [ADR 0021](../adr/0021-railway-deployment-as-code-observe-only-first.md)
+  §9's order. It is not a per-trade approval.
+- Resuming while the market is open shows a warning and is allowed, as an
+  emergency fallback only; the runbook's instruction stays "after the close and
+  before the next open".
+- The write sets `trading_paused` and `updated_at` only; the database stamps
+  when the pause changed ([ADR 0027](../adr/0027-pause-change-time-recorded-by-the-database.md)).
+  Every page shows an observe-only banner while paused.
 
 ## Data access
 

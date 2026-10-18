@@ -49,7 +49,7 @@ that can.
 | `positions` | — | — | S | S | S, I, U, D | S | — | S | S | — | — |
 | `account_snapshots` | — | — | S | S | S, I | S | — | S | S | — | — |
 | `journal` | — | — | S | **—** | **—** | S, I, U | — | S | S | — | — |
-| `system_state` ⁴ | — | — | — | S, U(halt_triggered_on, baseline_trading_day, daily_starting_equity, updated_at) | S(trading_paused) ² | — | S(trading_paused) | S | S | S, U(trading_paused, updated_at) | — |
+| `system_state` ⁴ ⁵ | — | — | — | S, U(halt_triggered_on, baseline_trading_day, daily_starting_equity, updated_at) | S(trading_paused) ² | — | S(trading_paused) | S | S | S, U(trading_paused, updated_at) | — |
 | `system_state_effective` (view) ⁴ | — | — | — | S | — | — | — | S | S | S | — |
 | `stop_loss_triggers` ¹ | — | — | — | S | S, I | S | — | S | S | — | — |
 | `instrument_reference` ¹ ³ | — | — | — | S | — | — | — | S | S | — | S, I |
@@ -83,6 +83,8 @@ only its own `orchestrator_runs` (inserting a row before each agent starts, then
 group and outcome), and learns about reports only through `latest_report_time`, a single value,
 through a view with owner rights, so the `reports` row-level security policies are unchanged
 (research O5-O7, ADR 0015).
+
+⁵ Amended by `specs/014-dashboard` (migration `0015`, [ADR 0027](../../../docs/adr/0027-pause-change-time-recorded-by-the-database.md), [ADR 0026](../../../docs/adr/0026-dashboard-public-service-with-owner-sign-in.md)). `system_state` gains `trading_paused_changed_at`, stamped by a database trigger when `trading_paused` changes. No matrix cell changes and no grant is added: the roles with table-wide `S` (the Risk Gate, the Assistant, the dashboard, the dashboard's control role) read the column, the orchestrator and Execution keep `S(trading_paused)` only, and a direct `UPDATE` of the column is denied to every role (column privileges are checked against an `UPDATE`'s own `SET` list, not values a trigger assigns). The dashboard connects as two new logins, `ta_dashboard_login` (in `ta_dashboard`) and `ta_dashboard_control_login` (in `ta_dashboard_control`), whose groups and grants already exist.
 
 Bold `—` marks the two denials the spec calls out by name: the Risk Gate and Execution can never
 read the journal (FR-012), so attribution cannot become a trading input.
