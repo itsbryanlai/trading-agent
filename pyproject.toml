@@ -14,6 +14,12 @@ dependencies = [
     "alpaca-py>=0.44,<0.45",
     # Research on Claude (ADR 0018); imported only by research/anthropic_client.py.
     "anthropic>=1.11,<2",
+    # The dashboard (feature 014, research D1).
+    "fastapi>=0.142.2,<0.143",
+    "jinja2>=3.1.6,<3.2",
+    "uvicorn>=0.54,<0.55",
+    "python-multipart>=0.0.32,<0.1",
+    "markdown-it-py>=4.2,<5",
 ]
 
 [project.optional-dependencies]
@@ -22,6 +28,7 @@ dev = [
     "ruff",
     "import-linter>=2",
     "hypothesis>=6",
+    "httpx>=0.28,<0.29",
 ]
 
 [tool.setuptools.packages.find]
@@ -29,6 +36,7 @@ where = ["src"]
 
 [tool.setuptools.package-data]
 "trading_agent.storage" = ["migrations/*.sql"]
+"trading_agent.dashboard" = ["templates/*.html", "static/*.css"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
@@ -61,7 +69,7 @@ name = "layers: higher components import only from layers below; siblings stay i
 type = "layers"
 containers = ["trading_agent"]
 layers = [
-    "execution | orchestrator | research | portfolio_manager | opportunistic_identifier | journal | assistant",
+    "execution | orchestrator | research | portfolio_manager | opportunistic_identifier | journal | assistant | dashboard",
     "reference",
     "risk",
     "llm | storage",
