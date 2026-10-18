@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+{% block title %}Pause or resume trading{% endblock %}
+{% block content %}
+{% if action == "pause" %}
+<h1>Pause trading?</h1>
+<p>Trading is running. Pausing stops new buys at the gate. Sells and stop-loss exits continue. The PM keeps running while run_while_paused is true.</p>
+<form method="post" action="/toggle">
+  <input type="hidden" name="csrf" value="{{ csrf }}">
+  <input type="hidden" name="expected" value="running">
+  <input type="hidden" name="target" value="paused">
+  <button class="primary" type="submit">Confirm pause</button>
+  <a class="button" href="/">Cancel</a>
+</form>
+{% elif action == "resume" %}
+<h1>Resume trading?</h1>
+<p>Trading has been paused {% if since %}since {{ since }}{% else %}(start time not recorded){% endif %}. Resuming lets the next approved buy be submitted.</p>
+{% if market_warning %}<p><strong>The market is open.</strong> An approved buy could be submitted within minutes. The deployment runbook resumes after the close.</p>{% endif %}
+{% if halt %}<p>The daily-loss halt stays active until the next trading day; resuming doesn't clear it.</p>{% endif %}
+<form method="post" action="/toggle">
+  <input type="hidden" name="csrf" value="{{ csrf }}">
+  <input type="hidden" name="expected" value="paused">
+  <input type="hidden" name="target" value="running">
+  <button class="primary" type="submit">Confirm resume</button>
+  <a class="button" href="/">Cancel</a>
+</form>
+{% else %}
+<h1>Resume is not available yet.</h1>
+<p>{{ refusal }}</p>
+<p><a class="button" href="/">Back</a></p>
+{% endif %}
+{% endblock %}

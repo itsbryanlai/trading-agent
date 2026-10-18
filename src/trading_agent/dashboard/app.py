@@ -19,7 +19,7 @@ from fastapi.responses import FileResponse, RedirectResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from trading_agent.dashboard import deps as shared
-from trading_agent.dashboard import routes_auth, routes_pages
+from trading_agent.dashboard import routes_auth, routes_pages, routes_toggle
 from trading_agent.dashboard.auth import Sessions
 from trading_agent.dashboard.config import DashboardConfig
 from trading_agent.dashboard.deps import Deps, NotSignedIn, WriteRefused
@@ -88,6 +88,7 @@ def create_app(
     app.state.health = routes_pages.HealthCache(store, clock)
     app.include_router(routes_auth.router)
     app.include_router(routes_pages.router)
+    app.include_router(routes_toggle.router)
 
     @app.get("/static/style.css")
     def stylesheet() -> FileResponse:

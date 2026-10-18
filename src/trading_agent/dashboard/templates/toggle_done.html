@@ -1,0 +1,14 @@
+{% extends "base.html" %}
+{% block title %}{{ heading }}{% endblock %}
+{% block content %}
+<h1>{{ heading }}</h1>
+{% if result == "stale" %}
+<p>The state changed since the confirmation page was shown. It is now {{ now_text }}.</p>
+{% elif result == "refused" %}
+<p>{{ refusal }}</p>
+{% elif result == "failed" %}
+<p>The change could not be saved. Trading is still {{ now_text }}.</p>
+{% endif %}
+<p>{{ state_text }}</p>
+<p><a class="button" href="/">Overview</a></p>
+{% endblock %}

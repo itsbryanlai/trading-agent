@@ -92,7 +92,7 @@ def halt_line(state: Mapping) -> str | None:
     return HALT_TEXT if state["daily_loss_halt_active"] else None
 
 
-def _state_text(state: Mapping, zone: ZoneInfo) -> str:
+def state_text(state: Mapping, zone: ZoneInfo) -> str:
     if not state["trading_paused"]:
         return "Trading is running."
     since = _since(state, zone)
@@ -119,7 +119,7 @@ def overview(
 ) -> OverviewView:
     chart = charts.polyline([(row["taken_at"], row["equity"]) for row in points])
     return OverviewView(
-        state_text=_state_text(state, zone),
+        state_text=state_text(state, zone),
         halt_text=halt_line(state),
         positions=tuple(
             PositionView(
