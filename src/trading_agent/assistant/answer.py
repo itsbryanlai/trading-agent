@@ -10,6 +10,8 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass
 
+from trading_agent.assistant.menu import RawChoice
+
 _QUERY_KEYS = ("name", "symbol", "agent", "from_date", "to_date", "section")
 
 _QUERY_SCHEMA: dict = {
@@ -35,18 +37,6 @@ ANSWER_SCHEMA: dict = {
     "required": ["reply"],
     "additionalProperties": False,
 }
-
-
-@dataclass(frozen=True)
-class RawChoice:
-    """One query the model chose, before the menu validates it. All strings."""
-
-    name: str
-    symbol: str
-    agent: str
-    from_date: str
-    to_date: str
-    section: str
 
 
 @dataclass(frozen=True)
