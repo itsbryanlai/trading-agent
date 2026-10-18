@@ -22,13 +22,21 @@ CHAT = 987654321
 STRANGER = 55555
 MARKERS = ("MARKER-MSG", "MARKER-ROW", "MARKER-REPLY", "MARKER-SECRET", str(CHAT))
 LEAK = "https://api.telegram.org/botMARKER-SECRET/getUpdates"
-QUERY = {"name": "portfolio_now", "symbol": "", "agent": "", "from_date": "", "to_date": "",
-         "section": ""}
+QUERY = {
+    "name": "portfolio_now",
+    "symbol": "",
+    "agent": "",
+    "from_date": "",
+    "to_date": "",
+    "section": "",
+}
 
 
 def update(n, text, chat=CHAT):
-    return {"update_id": n, "message": {"message_id": n, "text": text,
-            "chat": {"id": chat, "type": "private"}}}
+    return {
+        "update_id": n,
+        "message": {"message_id": n, "text": text, "chat": {"id": chat, "type": "private"}},
+    }
 
 
 class Scripted(FakeModel):
@@ -82,11 +90,11 @@ def scenario(monkeypatch, caplog):
     monkeypatch.setenv("ASSISTANT_QWEN_BASE_URL", "https://MARKER-SECRET.example.test/v1")
     waiting = [update(1, "MARKER-MSG waiting")]
     late = [
-        update(2, "MARKER-MSG what do we hold?"),               # answered
-        update(3, "pause MARKER-MSG"),                           # keyword refusal
-        update(4, "please MARKER-MSG halt everything"),          # model-flag refusal
-        update(5, "/help MARKER-MSG"),                           # fixed reply
-        update(6, "MARKER-MSG a question the model fails on"),   # model failure
+        update(2, "MARKER-MSG what do we hold?"),  # answered
+        update(3, "pause MARKER-MSG"),  # keyword refusal
+        update(4, "please MARKER-MSG halt everything"),  # model-flag refusal
+        update(5, "/help MARKER-MSG"),  # fixed reply
+        update(6, "MARKER-MSG a question the model fails on"),  # model failure
         update(7, "MARKER-MSG a question the database fails on"),
         update(8, "MARKER-MSG from a stranger", chat=STRANGER),  # ignored chat
     ]
@@ -96,17 +104,24 @@ def scenario(monkeypatch, caplog):
     plan = {"action_request": False, "queries": [QUERY]}
     flagged = {"action_request": True, "queries": [QUERY]}
     plan_model = Scripted([plan, flagged, plan, plan])
-    answer_model = Scripted([
-        {"reply": "MARKER-REPLY answer"}, {"reply": "MARKER-REPLY keyword"},
-        {"reply": "MARKER-REPLY flag"}, ModelUnavailable("MARKER-SECRET detail"),
-    ])
+    answer_model = Scripted(
+        [
+            {"reply": "MARKER-REPLY answer"},
+            {"reply": "MARKER-REPLY keyword"},
+            {"reply": "MARKER-REPLY flag"},
+            ModelUnavailable("MARKER-SECRET detail"),
+        ]
+    )
     store = Store(fail_on_call=3)  # the read runs for messages 2, 6 and 7 only
     with caplog.at_level(logging.DEBUG):
         code = runner.main(
-            [], telegram_factory=lambda token, *, timeout: telegram,
-            model_factory=lambda provider, key, settings, *, base_url=None, schema_name:
-                plan_model if schema_name.endswith("plan") else answer_model,
-            store_factory=lambda url, config: store, sleep=lambda s: None,
+            [],
+            telegram_factory=lambda token, *, timeout: telegram,
+            model_factory=lambda provider, key, settings, *, base_url=None, schema_name: (
+                plan_model if schema_name.endswith("plan") else answer_model
+            ),
+            store_factory=lambda url, config: store,
+            sleep=lambda s: None,
         )
     return code, telegram, plan_model, answer_model, caplog.text
 

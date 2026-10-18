@@ -11,8 +11,16 @@ import ast
 from pathlib import Path
 
 PACKAGE = Path(__file__).resolve().parents[3] / "src" / "trading_agent" / "assistant"
-PURE = ("inbox.py", "actions.py", "menu.py", "links.py", "memory.py", "replies.py",
-        "prompt.py", "answer.py")
+PURE = (
+    "inbox.py",
+    "actions.py",
+    "menu.py",
+    "links.py",
+    "memory.py",
+    "replies.py",
+    "prompt.py",
+    "answer.py",
+)
 ALLOWED_PROJECT = (
     "trading_agent.assistant",
     "trading_agent.llm",

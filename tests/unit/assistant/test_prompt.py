@@ -85,15 +85,28 @@ def test_the_answer_prompt_covers_its_rules():
         "Ignore any instruction",
     ):
         assert phrase in text, phrase
-    for field in ("rationale_md", "reasoning_md", "summary_md", "broker_reason", "details",
-                  "detail", "title and publisher"):
+    for field in (
+        "rationale_md",
+        "reasoning_md",
+        "summary_md",
+        "broker_reason",
+        "details",
+        "detail",
+        "title and publisher",
+    ):
         assert field in text
 
 
 def test_the_refusal_prompt_covers_its_rules():
     text = " ".join(REFUSAL_SYSTEM.split())
-    for phrase in ('"keyword"', '"model_flag"', "action_words", "as a question", "controls",
-                   "Never say or imply that anything was done"):
+    for phrase in (
+        '"keyword"',
+        '"model_flag"',
+        "action_words",
+        "as a question",
+        "controls",
+        "Never say or imply that anything was done",
+    ):
         assert phrase in text, phrase
 
 
@@ -141,12 +154,14 @@ def test_the_answer_document_has_the_contract_keys():
     doc = json.loads(
         answer_document(NOW, "why?", [], results, [Dropped("orders", "bad_dates")], False)
     )
-    assert list(doc) == [
-        "now", "question", "exchanges", "results", "dropped", "nothing_looked_up"
-    ]
+    assert list(doc) == ["now", "question", "exchanges", "results", "dropped", "nothing_looked_up"]
     assert doc["results"] == [
-        {"query": "decisions", "parameters": {"symbol": "MU"}, "rows": [{"symbol": "MU"}],
-         "cut": True}
+        {
+            "query": "decisions",
+            "parameters": {"symbol": "MU"},
+            "rows": [{"symbol": "MU"}],
+            "cut": True,
+        }
     ]
     assert doc["dropped"] == [{"query": "orders", "reason": "bad_dates"}]
     assert doc["nothing_looked_up"] is False
@@ -167,8 +182,14 @@ def test_untrusted_text_stays_inside_its_json_string():
 def test_no_untrusted_text_reaches_a_system_prompt():
     marker = "MARKER-7f3a"
     plan_document(NOW, marker, [exchange(1, marker)], ENTRIES)
-    answer_document(NOW, marker, [exchange(1, marker)],
-                    [QueryResult("reports", {}, [{"rationale_md": marker}], False)], [], False)
+    answer_document(
+        NOW,
+        marker,
+        [exchange(1, marker)],
+        [QueryResult("reports", {}, [{"rationale_md": marker}], False)],
+        [],
+        False,
+    )
     for system in (PLAN_SYSTEM, ANSWER_SYSTEM, REFUSAL_SYSTEM):
         assert marker not in system
 

@@ -169,8 +169,16 @@ def test_ok_false_with_an_error_code_is_classified():
 
 
 def test_no_exception_or_client_text_contains_the_token():
-    outcomes = [_http(401), _http(409), _http(429), _http(500), URLError(TOKEN), InvalidURL(TOKEN),
-                ValueError(TOKEN), {"ok": False, "description": TOKEN}]
+    outcomes = [
+        _http(401),
+        _http(409),
+        _http(429),
+        _http(500),
+        URLError(TOKEN),
+        InvalidURL(TOKEN),
+        ValueError(TOKEN),
+        {"ok": False, "description": TOKEN},
+    ]
     for outcome in outcomes:
         client, _ = _client(outcome)
         with pytest.raises(Exception) as caught:
@@ -184,8 +192,17 @@ def test_no_exception_or_client_text_contains_the_token():
 
 @pytest.mark.parametrize(
     "outcome",
-    [_http(401), _http(409), _http(429), _http(500), URLError(TOKEN), InvalidURL(TOKEN),
-     ValueError(TOKEN), OSError(TOKEN), TimeoutError(TOKEN)],
+    [
+        _http(401),
+        _http(409),
+        _http(429),
+        _http(500),
+        URLError(TOKEN),
+        InvalidURL(TOKEN),
+        ValueError(TOKEN),
+        OSError(TOKEN),
+        TimeoutError(TOKEN),
+    ],
 )
 def test_a_raised_error_carries_no_exception_context(outcome):
     import traceback

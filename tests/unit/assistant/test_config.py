@@ -62,7 +62,15 @@ def test_the_shipped_file_loads_with_the_contract_defaults():
     assert config.model.timeout_seconds == 45
     assert config.model.anthropic_effort == "low"
     assert config.action_words == (
-        "pause", "resume", "unpause", "halt", "buy", "sell", "cancel", "trade", "liquidate",
+        "pause",
+        "resume",
+        "unpause",
+        "halt",
+        "buy",
+        "sell",
+        "cancel",
+        "trade",
+        "liquidate",
     )
     assert (config.memory.exchanges, config.memory.idle_minutes) == (5, 30)
     assert config.limits.max_queries_per_question == 4
@@ -77,12 +85,28 @@ def test_the_shipped_file_loads_with_the_contract_defaults():
 
 
 KEYS = [
-    "owner_time_zone", "model", "action_words", "memory", "limits", "polling", "database",
-    "model.provider", "model.name", "model.max_output_tokens", "model.timeout_seconds",
-    "model.anthropic_effort", "memory.exchanges", "memory.idle_minutes",
-    "limits.max_queries_per_question", "limits.max_rows_per_query", "limits.max_span_days",
-    "limits.max_input_chars", "limits.text_field_chars", "limits.max_reply_chars",
-    "polling.long_poll_seconds", "database.statement_timeout_seconds",
+    "owner_time_zone",
+    "model",
+    "action_words",
+    "memory",
+    "limits",
+    "polling",
+    "database",
+    "model.provider",
+    "model.name",
+    "model.max_output_tokens",
+    "model.timeout_seconds",
+    "model.anthropic_effort",
+    "memory.exchanges",
+    "memory.idle_minutes",
+    "limits.max_queries_per_question",
+    "limits.max_rows_per_query",
+    "limits.max_span_days",
+    "limits.max_input_chars",
+    "limits.text_field_chars",
+    "limits.max_reply_chars",
+    "polling.long_poll_seconds",
+    "database.statement_timeout_seconds",
     "database.max_consecutive_failures",
 ]
 
@@ -172,8 +196,18 @@ def test_another_real_zone_loads(tmp_path):
 
 @pytest.mark.parametrize(
     "words",
-    [[], "pause", ["Pause"], ["pa use"], ["pause2"], ["pause", "pause"], [5], [""],
-     [f"w{'a' * i}" for i in range(31)], ["a" * i for i in range(1, 32)]],
+    [
+        [],
+        "pause",
+        ["Pause"],
+        ["pa use"],
+        ["pause2"],
+        ["pause", "pause"],
+        [5],
+        [""],
+        [f"w{'a' * i}" for i in range(31)],
+        ["a" * i for i in range(1, 32)],
+    ],
 )
 def test_bad_action_words_are_refused(tmp_path, words):
     with pytest.raises(AssistantConfigError, match="action_words"):

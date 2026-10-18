@@ -19,7 +19,10 @@ def test_the_real_config_files_load_every_section():
     assert result["risk"]["universe"] != UNAVAILABLE
     assert result["schedule"]["research"]["enabled"] != UNAVAILABLE
     assert set(result["models"]) == {
-        "research", "opportunistic_identifier", "portfolio_manager", "assistant"
+        "research",
+        "opportunistic_identifier",
+        "portfolio_manager",
+        "assistant",
     }
     assert result["models"]["assistant"]["provider"] != UNAVAILABLE
 

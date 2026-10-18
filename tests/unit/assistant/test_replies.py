@@ -90,9 +90,7 @@ def test_split_does_not_cut_a_surrogate_pair():
     assert parts == ["😀", "😀", "😀", "😀", "😀"]
 
 
-text_strategy = st.text(
-    alphabet=st.sampled_from(list("ab \n\t") + ["😀", "é", "日"]), max_size=300
-)
+text_strategy = st.text(alphabet=st.sampled_from(list("ab \n\t") + ["😀", "é", "日"]), max_size=300)
 
 
 def test_split_drops_parts_that_are_blank():
