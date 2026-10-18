@@ -281,3 +281,44 @@ def test_the_question_line_is_logged_without_text(caplog):
     assert "assistant: answered prompt_version=0.1 queries=portfolio_now dropped=none" in text
     assert "tokens=1200/300,1200/300" in text and "outcome=answered" in text
     assert "MARKER" not in text
+
+
+# --- respond: the minimal dispatch until T018/T019 --------------------------------------
+
+
+def upd(text=None, **extra):
+    message = {"message_id": 1, "chat": {"id": 4242, "type": "private"}, **extra}
+    if text is not None:
+        message["text"] = text
+    return {"update_id": 1, "message": message}
+
+
+def respond_to(update, store=None):
+    from trading_agent.assistant.service import respond
+
+    store = store if store is not None else FakeStore()
+    plan_model, answer_model = FakeModel(plan_of()), FakeModel({"reply": "ok"})
+    handled = respond(update, now=NOW, config=CONFIG, store=store, plan_model=plan_model,
+                      answer_model=answer_model, memory=Memory(5, 30))
+    return handled, store, plan_model, answer_model
+
+
+def test_respond_sends_a_question_through_the_flow():
+    handled, *_ = respond_to(upd("what do we hold?"))
+    assert handled.replies == ["ok"] and handled.outcome.kind == "answered"
+
+
+def test_respond_answers_a_command_with_help_and_a_non_text_message_with_text_only():
+    handled, store, plan_model, _ = respond_to(upd("/help"))
+    assert "can't take any action" in handled.replies[0] and "Asia/Singapore" in handled.replies[0]
+    handled, *_ = respond_to(upd(None, photo=[{}]))
+    assert handled.replies == [replies.text_only()]
+    assert plan_model.calls == [] and store.known_calls == 0
+
+
+def test_respond_refuses_a_keyword_message_without_any_call():  # TODO T019 builds the refusal
+    handled, store, plan_model, answer_model = respond_to(upd("pause trading"))
+    assert handled.replies[0].startswith(replies.refused_line())
+    assert handled.outcome.kind == "refused" and handled.outcome.trigger == "keyword"
+    assert store.known_calls == 0 and store.run_calls == []
+    assert plan_model.calls == [] and answer_model.calls == []

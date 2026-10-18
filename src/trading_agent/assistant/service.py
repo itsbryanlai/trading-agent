@@ -15,6 +15,7 @@ from datetime import datetime
 
 from trading_agent.assistant import replies
 from trading_agent.assistant.answer import ANSWER_SCHEMA, PLAN_SCHEMA, parse_answer, parse_plan
+from trading_agent.assistant.inbox import ActionRequest, Command, TextOnly, classify
 from trading_agent.assistant.links import filter_links
 from trading_agent.assistant.menu import ENTRIES, Dropped, QueryResult, ValidChoice, validate
 from trading_agent.assistant.prompt import (
@@ -66,6 +67,24 @@ class Outcome:
 class Handled:
     replies: list[str]
     outcome: Outcome
+
+
+def respond(update: dict, *, now: datetime, config, **parts) -> Handled:
+    """Classify an authorised update (A6) and answer it.
+
+    TODO T018: log the fixed replies. TODO T019: the keyword refusal's model call; until then
+    the fixed fallback, with no store or model call.
+    """
+    kind = classify(update, config.action_words)
+    if isinstance(kind, TextOnly):
+        return _done([replies.text_only()], Outcome("fixed"))
+    if isinstance(kind, Command):
+        text = replies.help_text(config.action_words, config.owner_time_zone)
+        return _done([text], Outcome("fixed"))
+    if isinstance(kind, ActionRequest):
+        text = replies.refused_fallback(kind.matched_word, config.action_words, replies.CONTROLS)
+        return _done([text], Outcome("refused", trigger="keyword"))
+    return handle(kind.text, now=now, config=config, **parts)
 
 
 def handle(
@@ -187,7 +206,7 @@ def _source_urls(results) -> list[str]:
 def _done(parts, outcome: Outcome) -> Handled:
     parts = parts if isinstance(parts, list) else [parts]
     outcome = Outcome(**{**outcome.__dict__, "messages": outcome.messages or len(parts)})
-    if outcome.kind != "refused":
+    if outcome.kind not in ("refused", "fixed"):
         log.info(_line(outcome))
     return Handled(parts, outcome)
 
