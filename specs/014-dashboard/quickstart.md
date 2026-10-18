@@ -18,7 +18,7 @@ Type every secret step in your own terminal tab (runbook §1), never through the
 
 **R2. Create the two logins.** With the proxy enabled and the admin URL exported again, run the logins command as in runbook §2 step 7 (`--service-host postgres.railway.internal`). It creates only `ta_dashboard_login` and `ta_dashboard_control_login` and prints each string once. Store them in your password manager, then disable the proxy and unset the variable.
 
-**R3. Make the password hash and the session secret.** `PYTHONPATH=src .venv/bin/python -m trading_agent.dashboard --hash-password` (at least 16 characters, typed twice, never echoed) prints the hash. `openssl rand -base64 48` prints a secret. Keep both in your password manager.
+**R3. Make the password hash and the session secret.** `PYTHONPATH=src .venv/bin/python -m trading_agent.dashboard --hash-password` (at least 16 characters, typed twice, never echoed) prints the hash. `openssl rand -base64 48` prints a secret (at least 32 bytes with at least 16 distinct values; a repeated character is refused as `too_short`). Keep both in your password manager.
 
 **R4. Check.** With all four `DASHBOARD_*` values exported (the two database URLs through the public proxy with `sslmode=require` and the host override), run `PYTHONPATH=src .venv/bin/python -m trading_agent.dashboard --check`. All six lines must read `ok`. Anything else: don't deploy, and raise it.
 

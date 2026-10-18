@@ -25,7 +25,7 @@ python -m trading_agent.dashboard --hash-password  # prompt twice, print the has
 | `DASHBOARD_DATABASE_URL` | `ta_dashboard_login`'s connection string | `store`, the health check, `--check` |
 | `DASHBOARD_CONTROL_DATABASE_URL` | `ta_dashboard_control_login`'s connection string | `control` only (guard test) |
 | `DASHBOARD_PASSWORD_HASH` | `scrypt$32768$8$1$<salt>$<hash>` from `--hash-password` | `auth`, `--check` |
-| `DASHBOARD_SESSION_SECRET` | at least 32 random bytes, e.g. `openssl rand -base64 48` | `auth`, `--check` |
+| `DASHBOARD_SESSION_SECRET` | at least 32 random bytes with at least 16 distinct values, e.g. `openssl rand -base64 48` | `auth`, `--check` |
 | `PORT` | set by Railway | `__main__` |
 
 No broker, model, market-data or Telegram variable. A missing one of the four refuses start (exit 2) with the variable's name, never a value. All four are listed in `.env.example` with empty values.

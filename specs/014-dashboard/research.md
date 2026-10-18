@@ -158,7 +158,7 @@ after `SET LOCAL lock_timeout = '5s'` and `SET LOCAL statement_timeout = '10s'` 
 | `database_read` | connects with `DASHBOARD_DATABASE_URL`, runs `SELECT 1`; `current_user` is exactly `ta_dashboard_login`; `pg_has_role(current_user, r, 'MEMBER')` is true for `ta_dashboard` and false for every other role of any name (review F4); `rolsuper`, `rolcreaterole`, `rolcreatedb` and `rolbypassrls` are all false |
 | `database_control` | the same with `DASHBOARD_CONTROL_DATABASE_URL`, `ta_dashboard_control_login` and `ta_dashboard_control`; nothing is updated |
 | `password_hash` | `DASHBOARD_PASSWORD_HASH` parses as D5's format with the expected parameters |
-| `session_secret` | `DASHBOARD_SESSION_SECRET` is at least 32 bytes |
+| `session_secret` | `DASHBOARD_SESSION_SECRET` is at least 32 bytes and its bytes include at least 16 distinct values (so 32 copies of one character fail `too_short`; review F6). Serving refuses it the same way |
 | `schedule` | D14 reads a boolean |
 | `config` | `config/dashboard.yaml` loads (D17) |
 
