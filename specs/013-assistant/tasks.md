@@ -325,7 +325,7 @@ description: "Task list for the Assistant (feature 013)"
   - **`specs/010-observe-only-deployment/contracts/logins-command.md`**: the eleventh row;
   - **`docs/policy/versioning.md`**: a row for the Assistant's `PROMPT_VERSION` 0.1.
 - [x] T028 Wire the real `PostgresStore` and Telegram opener in `__main__.py` for production (the clients are T014's), and add one unit test that `main()` with fakes for every factory runs the drain, answers one question and stops on the stop flag.
-- [ ] T029 Final validation:
+- [x] T029 Final validation:
   - the full unit suite and the full integration suite, once;
   - `scripts/lint.sh`;
   - a scratchpad script that runs `loop` with `FakeTelegram`, scripted `FakeModel`s and the real `PostgresStore` against the throwaway test database seeded by `factories.py`, never production;
@@ -360,3 +360,12 @@ description: "Task list for the Assistant (feature 013)"
 - **MVP**: Phases 1–3. Portfolio and today's activity answered end to end through fakes, with the link filter and authorisation already in place.
 - **Then**: US3 (refusals, failures, the log guard), because it carries the safety criteria; then US2 (history, settings, time); then US4 and Phase 7.
 - **Review between phases** (CLAUDE.local.md): the main session reviews each phase's commits, test results and lint before sending the next. Review line by line: T004, T005, T019 and T026.
+
+---
+
+## T029 results (2026-10-18)
+
+- Full unit suite: 3036 passed, 1 warning (5 min 51 s).
+- Full integration suite against a throwaway `postgres:16` on 127.0.0.1:55432: 1709 passed.
+- `scripts/lint.sh`: clean (ruff, import contracts 1 kept 0 broken, module sizes).
+- End to end (scratchpad script, test database only): `loop.run` with `FakeTelegram`, scripted `FakeModel`s and the real `PostgresStore` as a test login in `ta_assistant`. "what do we hold?" was answered from the seeded position with the foreign link removed; "pause trading" got the fixed first line. The `model_flag` path is covered by unit tests (`test_refusal.py`), not this script.
