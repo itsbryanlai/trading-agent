@@ -178,7 +178,7 @@ def test_every_response_carries_the_security_headers(probed, method, path, statu
     assert response.status_code == status
     assert response.headers["content-security-policy"] == CSP
     assert response.headers["x-content-type-options"] == "nosniff"
-    assert response.headers["referrer-policy"] == "no-referrer"
+    assert response.headers["referrer-policy"] == "same-origin"
     assert response.headers["strict-transport-security"] == "max-age=31536000"
     if path.startswith("/static/") and status == 200:
         assert response.headers.get("cache-control") != "no-store"

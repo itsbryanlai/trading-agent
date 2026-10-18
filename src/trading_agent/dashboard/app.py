@@ -32,7 +32,10 @@ HEADERS = {
         "frame-ancestors 'none'; base-uri 'none'"
     ),
     "X-Content-Type-Options": "nosniff",
-    "Referrer-Policy": "no-referrer",
+    # Not `no-referrer`: with it, Chromium sends `Origin: null` on a same-site form POST, so the
+    # Origin check would refuse every sign-in and toggle. `same-origin` sends nothing to other
+    # sites (outside links are also `rel="noreferrer"`) and a real Origin to this one.
+    "Referrer-Policy": "same-origin",
     "Strict-Transport-Security": "max-age=31536000",
 }
 STATIC_PREFIX = "/static/"
