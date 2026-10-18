@@ -259,3 +259,32 @@ def test_a_settings_question_reads_the_config_directory_beside_the_config_file(
     assert code == 0
     sent = answer_model.calls[0]["user"]
     assert '"max_position_pct":7' in sent
+
+
+def _exiting(caplog):
+    return [r for r in caplog.records if r.getMessage().startswith("assistant: exiting:")]
+
+
+def test_a_missing_variable_logs_one_critical_exiting_line_naming_it(env, monkeypatch, caplog):
+    monkeypatch.delenv("ASSISTANT_DATABASE_URL")
+    code, *_ = run()
+    (record,) = _exiting(caplog)
+    assert code == 2 and record.levelno == logging.CRITICAL
+    assert "ASSISTANT_DATABASE_URL" in record.getMessage()
+    assert "refusing" not in caplog.text
+
+
+def test_a_bad_config_logs_one_critical_exiting_line_without_the_value(env, tmp_path, caplog):
+    path = tmp_path / "assistant.yaml"
+    path.write_text("owner_time_zone: Nowhere/Land\n")
+    code, *_ = run(config_path=path)
+    (record,) = _exiting(caplog)
+    assert code == 2 and record.levelno == logging.CRITICAL and "refusing" not in caplog.text
+
+
+def test_a_malformed_token_logs_the_exiting_line_without_the_value(env, monkeypatch, caplog):
+    monkeypatch.setenv("ASSISTANT_TELEGRAM_BOT_TOKEN", "nocolon")
+    run()
+    (record,) = _exiting(caplog)
+    assert "ASSISTANT_TELEGRAM_BOT_TOKEN" in record.getMessage()
+    assert "nocolon" not in caplog.text

@@ -212,3 +212,12 @@ def test_main_find_chat_id_refuses_a_malformed_token(env, monkeypatch):
 def test_other_argument_combinations_exit_two(env, args):
     code, _ = main(args, FakeTelegram())
     assert code == 2
+
+
+def test_find_chat_id_without_a_token_logs_one_critical_exiting_line(env, monkeypatch, caplog):
+    monkeypatch.delenv("ASSISTANT_TELEGRAM_BOT_TOKEN")
+    code, lines = main(["--find-chat-id"], FakeTelegram())
+    records = [r for r in caplog.records if r.getMessage().startswith("assistant: exiting:")]
+    assert code == 2 and lines == [] and len(records) == 1
+    assert records[0].levelno == 50 and "ASSISTANT_TELEGRAM_BOT_TOKEN" in records[0].getMessage()
+    assert "refusing" not in caplog.text

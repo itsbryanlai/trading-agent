@@ -133,7 +133,7 @@ def _main(
         cfg = load_config(config_path)
         settings = _settings(cfg)
     except (ConfigError, AssistantConfigError, ModelSettingsError) as exc:
-        log.critical("assistant: refusing to start: %s", exc)
+        log.critical("assistant: exiting: %s", exc)
         return EXIT_REFUSED
 
     zone = ZoneInfo(cfg.owner_time_zone)
@@ -196,7 +196,7 @@ def _find_chat_id(telegram_factory, out) -> int:
         if not is_valid_token(token):
             raise ConfigError(f"{TOKEN_VARIABLE} is malformed")
     except ConfigError as exc:
-        log.critical("assistant: refusing to start: %s", exc)
+        log.critical("assistant: exiting: %s", exc)
         return EXIT_REFUSED
     telegram = telegram_factory(token, timeout=check.POLL_SECONDS + HTTP_MARGIN_SECONDS)
     return check.find_chat_id(telegram, out=out)
