@@ -11,10 +11,11 @@ from trading_agent.dashboard import __main__ as runner
 from trading_agent.dashboard import auth, store
 
 PASSWORD = "correct horse battery staple"
+GOOD_HASH = auth.hash_password(PASSWORD, salt=b"0123456789abcdef")  # production cost
 SECRETS = {
     "DASHBOARD_DATABASE_URL": "postgresql://reader:MARKER-DB-PASSWORD@db.example/prod",
     "DASHBOARD_CONTROL_DATABASE_URL": "postgresql://writer:MARKER-CONTROL-PASSWORD@db.example/prod",
-    "DASHBOARD_PASSWORD_HASH": "scrypt$16$8$1$AAAA$AAAA",
+    "DASHBOARD_PASSWORD_HASH": GOOD_HASH,
     "DASHBOARD_SESSION_SECRET": "MARKER-SESSION-SECRET-0123456789abcdef0123",
     "PORT": "8123",
 }
@@ -159,3 +160,35 @@ def test_stopped_is_logged_even_if_the_server_raises(monkeypatch, caplog):
     with pytest.raises(OSError):
         runner.main([], SECRETS)
     assert caplog.records[-1].getMessage() == "dashboard stopped"
+
+
+# --- start-up refuses weak or mistyped values (review of T018) -------------------------------
+
+
+@pytest.mark.parametrize(
+    ("name", "value", "code"),
+    [
+        ("DASHBOARD_SESSION_SECRET", "x" * 31, "too_short"),
+        ("DASHBOARD_PASSWORD_HASH", "scrypt$16$8$1$AAAA$AAAA", "malformed"),
+        ("DASHBOARD_PASSWORD_HASH", "not a hash MARKER-HASH", "malformed"),
+        (
+            "DASHBOARD_PASSWORD_HASH",
+            "scrypt$1048576$8$1$MDEyMzQ1Njc4OWFiY2RlZg==$ZGRkZGRkZGRkZGRkZGRkZGRkZGRkZGRkZGRkZGRkZGQ=",
+            "malformed",
+        ),
+        (
+            "DASHBOARD_PASSWORD_HASH",
+            "scrypt$32768$32$1$MDEyMzQ1Njc4OWFiY2RlZg==$ZGRkZGRkZGRkZGRkZGRkZGRkZGRkZGRkZGRkZGRkZGQ=",
+            "malformed",
+        ),
+    ],
+)
+def test_serving_refuses_a_weak_secret_or_a_malformed_hash(name, value, code, uvicorn_run, capsys):
+    assert runner.main([], {**SECRETS, name: value}) == 2
+    err = capsys.readouterr().err
+    assert name in err and code in err and "MARKER" not in err and value not in err
+    assert uvicorn_run == []
+
+
+def test_a_thirty_two_byte_secret_is_accepted(uvicorn_run):
+    assert runner.main([], {**SECRETS, "DASHBOARD_SESSION_SECRET": "x" * 32}) == 0

@@ -12,6 +12,13 @@ from decimal import Decimal
 
 from trading_agent.dashboard.store import StoreError
 
+GOOD_LOGIN = {
+    "login": "",
+    "rolsuper": False,
+    "rolcreaterole": False,
+    "rolcreatedb": False,
+    "rolbypassrls": False,
+}
 DEFAULT_STATE = {
     "trading_paused": False,
     "trading_paused_changed_at": None,
@@ -83,6 +90,10 @@ class FakeReader:
         self._record("latest_pm_run")
         return self._store.pm_run
 
+    def memberships(self):
+        self._record("memberships")
+        return self._store.memberships_result
+
     def ping(self):
         self._record("ping")
         return self._store.ping_ok
@@ -102,6 +113,7 @@ class FakeStore:
         decision_rows: list[dict] | None = None,
         run_rows: list[dict] | None = None,
         report_times_map: dict | None = None,
+        memberships: tuple | None = None,
         journal_rows: list[dict] | None = None,
         journal_range_rows: list[dict] | None = None,
         error: Exception | None = None,
@@ -117,6 +129,10 @@ class FakeStore:
         self.decision_rows = decision_rows or []
         self.run_rows = run_rows or []
         self.report_times_map = report_times_map or {}
+        self.memberships_result = memberships or (
+            {**GOOD_LOGIN, "login": "ta_dashboard_login"},
+            ["ta_dashboard"],
+        )
         self.journal_rows = journal_rows or []
         self.journal_range_rows = journal_range_rows or []
         self.error = error
