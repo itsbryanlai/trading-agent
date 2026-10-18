@@ -42,6 +42,10 @@ All recorded in [ADR 0023](../../docs/adr/0023-assistant-runs-its-own-service-an
 - Q: Should "stop" and "close" stay action words? → A: No. They refused common questions ("Stop-loss triggers this week?", "Close price of MU?"). The default list is pause, resume, unpause, halt, buy, sell, cancel, trade, liquidate. Rejected: keeping them.
 - Q: What about action requests that don't start with an action word ("please pause trading", "get rid of everything")? → A: A second layer: the plan call flags them, and code sends the same refusal (fixed first line, then the model's explanation), reading no data. The flag can only add refusals ([ADR 0025](../../docs/adr/0025-assistant-model-flag-adds-refusals.md)). Rejected: keywords only, and scanning replies for claims of having acted.
 
+### Session 2026-10-18 (after the adversarial review)
+
+- Q: When the plan answer is invalid, should the Assistant still answer? → A: Yes, as FR-017 says: no queries run and the answer call says nothing was looked up. The answer prompt gains an explicit rule: if the question asks the Assistant to act, it says it can't and names where the controls are, and never implies anything was done. Rejected: replying with the fixed "unusable answer" text instead.
+
 ## User Scenarios & Testing *(mandatory)*
 
 The only user is **the owner**, who wants to ask, from their phone and in plain words, what the system holds, what each agent has said and decided, and how it has done, without waiting for the dashboard. This serves the system's purpose: watching each agent's performance over time with minimal intervention.
