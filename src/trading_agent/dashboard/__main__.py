@@ -1,11 +1,11 @@
-"""`python -m trading_agent.dashboard`: serve, or `--hash-password`.
+"""`python -m trading_agent.dashboard`: serve, `--check`, or `--hash-password`.
 
 Contract: specs/014-dashboard/contracts/dashboard-interface.md.
 
-Exit codes: 0 served until SIGTERM or a hash printed; 2 refused (a missing variable, a bad
-config file, an unknown flag, a short password or two entries that differ). `--check` arrives
-with its own task. The process runs one uvicorn worker: sessions and sign-in delays live in
-memory, so a second worker would split them.
+Exit codes: 0 served until SIGTERM, every check ok, or a hash printed; 1 a check failed;
+2 refused (a missing variable, a short secret or malformed hash, a bad config file, an unknown
+flag, a short password or two entries that differ). The process runs one uvicorn worker:
+sessions and sign-in delays live in memory, so a second worker would split them.
 """
 
 from __future__ import annotations
@@ -21,7 +21,7 @@ from datetime import UTC, datetime, timedelta
 
 import uvicorn
 
-from trading_agent.dashboard import auth, deployed
+from trading_agent.dashboard import auth, check, deployed
 from trading_agent.dashboard.app import create_app
 from trading_agent.dashboard.config import (
     DEFAULT_CONFIG_PATH,
@@ -37,12 +37,13 @@ from trading_agent.risk import calendar
 log = logging.getLogger("trading_agent.dashboard")
 
 MIN_PASSWORD_CHARS = 16
-REQUIRED = (
+CHECK_REQUIRED = (
     "DASHBOARD_DATABASE_URL",
     "DASHBOARD_PASSWORD_HASH",
     "DASHBOARD_SESSION_SECRET",
-    "PORT",
 )
+REQUIRED = (*CHECK_REQUIRED, "PORT")
+CHECK_TIMEOUT_SECONDS = 10
 
 
 def _fail(message: str) -> int:
@@ -85,13 +86,51 @@ def _build(config: DashboardConfig, environ: Mapping[str, str]):
     )
 
 
-def serve(environ: Mapping[str, str]) -> int:
-    missing = [name for name in REQUIRED if not environ.get(name)]
+def _missing(environ: Mapping[str, str], names: Sequence[str]) -> str | None:
+    """The first required variable that is unset or empty."""
+    absent = [name for name in names if not environ.get(name)]
     control_missing = control_login_configured(environ)
     if control_missing:
-        missing.append(control_missing)
-    if missing:
-        return _fail(f"required variable {missing[0]} is not set")
+        absent.append(control_missing)
+    return absent[0] if absent else None
+
+
+def _weak_value(environ: Mapping[str, str]) -> str | None:
+    """A message naming a variable whose value fails its check, never the value."""
+    checks = (
+        ("DASHBOARD_PASSWORD_HASH", check.password_hash_code),
+        ("DASHBOARD_SESSION_SECRET", check.session_secret_code),
+    )
+    for name, validate in checks:
+        code = validate(environ[name])
+        if code:
+            return f"{name} is not acceptable ({code})"
+    return None
+
+
+def run_check(environ: Mapping[str, str]) -> int:
+    absent = _missing(environ, CHECK_REQUIRED)
+    if absent:
+        return _fail(f"required variable {absent} is not set")
+    results = check.run(
+        store=PostgresStore(environ["DASHBOARD_DATABASE_URL"], CHECK_TIMEOUT_SECONDS),
+        control=ControlWriter.from_env(environ),
+        password_hash=environ["DASHBOARD_PASSWORD_HASH"],
+        secret=environ["DASHBOARD_SESSION_SECRET"],
+        config_dir=deployed.DEFAULT_CONFIG_DIR,
+    )
+    for result in results:
+        print(result.line())
+    return 0 if all(result.ok for result in results) else 1
+
+
+def serve(environ: Mapping[str, str]) -> int:
+    absent = _missing(environ, REQUIRED)
+    if absent:
+        return _fail(f"required variable {absent} is not set")
+    weak = _weak_value(environ)
+    if weak:
+        return _fail(weak)
     try:
         port = int(environ["PORT"])
     except ValueError:
@@ -114,6 +153,7 @@ def serve(environ: Mapping[str, str]) -> int:
 def main(argv: Sequence[str] | None = None, environ: Mapping[str, str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="python -m trading_agent.dashboard", exit_on_error=False)
     parser.add_argument("--hash-password", action="store_true")
+    parser.add_argument("--check", action="store_true")
     try:
         args = parser.parse_args(argv)
     except (argparse.ArgumentError, SystemExit):
@@ -121,6 +161,8 @@ def main(argv: Sequence[str] | None = None, environ: Mapping[str, str] | None = 
     logging.basicConfig(level=logging.INFO, format="%(message)s", stream=sys.stdout)
     if args.hash_password:
         return hash_password()
+    if args.check:
+        return run_check(os.environ if environ is None else environ)
     return serve(os.environ if environ is None else environ)
 
 

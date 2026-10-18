@@ -113,6 +113,15 @@ SELECT trading_day, equity_close, per_agent_attribution FROM journal
 WHERE trading_day >= %(since)s ORDER BY trading_day
 """
 NO_EARLIEST_DAY = date.min
+LOGIN = """
+SELECT current_user AS login, rolsuper, rolcreaterole, rolcreatedb, rolbypassrls
+FROM pg_roles WHERE rolname = current_user
+"""
+GROUP_ROLES = """
+SELECT rolname FROM pg_roles
+WHERE rolname LIKE 'ta\\_%' AND rolname NOT LIKE '%\\_login'
+  AND pg_has_role(current_user, oid, 'MEMBER')
+"""
 PING = "SELECT 1"
 
 
@@ -198,6 +207,12 @@ class Reader:
     def latest_pm_run(self) -> dict | None:
         """The orchestrator's evidence for a resume (ADR 0028)."""
         return self._one(LATEST_PM_RUN)
+
+    def memberships(self) -> tuple[dict, list[str]]:
+        """For `--check`: the login's flags, and the `ta_*` group roles it belongs to."""
+        login = self._one(LOGIN)
+        roles = [row["rolname"] for row in self._all(GROUP_ROLES)]
+        return login, sorted(roles)
 
     def ping(self) -> bool:
         return self._one(PING) is not None
