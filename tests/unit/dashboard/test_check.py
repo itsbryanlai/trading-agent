@@ -79,6 +79,9 @@ def test_nothing_is_written():
         (login(READ), ["ta_assistant"], "wrong_role:ta_dashboard"),
         (login(READ), ["ta_dashboard", "ta_dashboard_control"], "extra_role:ta_dashboard_control"),
         (login(READ), ["ta_assistant", "ta_dashboard", "ta_risk_gate"], "extra_role:ta_assistant"),
+        (login(READ), ["pg_write_all_data", "ta_dashboard"], "extra_role:pg_write_all_data"),
+        (login(READ), ["postgres", "ta_dashboard"], "extra_role:postgres"),
+        (login(READ), ["ta_dashboard", "trading_owner"], "extra_role:trading_owner"),
     ],
 )
 def test_the_read_login_rules(info, roles, code):
@@ -94,6 +97,11 @@ def test_the_read_login_rules(info, roles, code):
         (login(CONTROL, rolcreaterole=True), ["ta_dashboard_control"], "privileged"),
         (login(CONTROL), ["ta_dashboard"], "wrong_role:ta_dashboard_control"),
         (login(CONTROL), ["ta_dashboard_control", "ta_dashboard"], "extra_role:ta_dashboard"),
+        (
+            login(CONTROL),
+            ["pg_write_all_data", "ta_dashboard_control"],
+            "extra_role:pg_write_all_data",
+        ),
     ],
 )
 def test_the_control_login_rules(info, roles, code):
@@ -269,3 +277,13 @@ def test_check_builds_the_real_store_and_writer_from_the_variables(monkeypatch):
     assert isinstance(seen["store"], runner.PostgresStore)
     assert isinstance(seen["control"], runner.ControlWriter)
     assert seen["password_hash"] == GOOD_HASH and seen["secret"] == GOOD_SECRET
+
+
+def test_the_membership_queries_list_every_role_but_the_login_itself():
+    from trading_agent.dashboard import control, store
+
+    for query in (store.GROUP_ROLES, control.GROUP_ROLES):
+        text = " ".join(query.split())
+        assert "pg_has_role(current_user, oid, 'MEMBER')" in text
+        assert "rolname <> current_user" in text
+        assert "LIKE" not in text  # not only ta_* roles

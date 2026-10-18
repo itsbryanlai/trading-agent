@@ -131,6 +131,27 @@ def test_a_group_role_membership_through_another_group_counts_as_extra(world, da
     assert got["database_control"] == "database_control: FAILED extra_role:ta_assistant"
 
 
+@pytest.mark.parametrize("builtin", ["pg_write_all_data", "pg_read_all_data"])
+def test_a_login_also_granted_a_builtin_role_fails_extra_role(world, builtin):
+    read = world(READ, "ta_dashboard", builtin)
+    control = world(CONTROL, "ta_dashboard_control", builtin)
+    got = lines(run(read, control))
+    assert got["database_read"] == f"database_read: FAILED extra_role:{builtin}"
+    assert got["database_control"] == f"database_control: FAILED extra_role:{builtin}"
+
+
+def test_a_login_in_the_table_owners_role_fails_extra_role(world, database_url):
+    with psycopg.connect(database_url) as admin:
+        owner = admin.execute(
+            "SELECT tableowner FROM pg_tables WHERE tablename = 'system_state'"
+        ).fetchone()[0]
+    read = world(READ, "ta_dashboard", owner)
+    control = world(CONTROL, "ta_dashboard_control")
+    got = lines(run(read, control))
+    # Roles are reported in name order, so the first extra one (maybe pg_database_owner) shows.
+    assert got["database_read"].startswith("database_read: FAILED extra_role:")
+
+
 def test_a_wrong_password_is_unreachable_with_no_message(world):
     read = world(READ, "ta_dashboard")
     control = world(CONTROL, "ta_dashboard_control")

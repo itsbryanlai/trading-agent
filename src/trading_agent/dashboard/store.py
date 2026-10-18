@@ -119,8 +119,7 @@ FROM pg_roles WHERE rolname = current_user
 """
 GROUP_ROLES = """
 SELECT rolname FROM pg_roles
-WHERE rolname LIKE 'ta\\_%' AND rolname NOT LIKE '%\\_login'
-  AND pg_has_role(current_user, oid, 'MEMBER')
+WHERE rolname <> current_user AND pg_has_role(current_user, oid, 'MEMBER')
 """
 PING = "SELECT 1"
 
@@ -209,7 +208,7 @@ class Reader:
         return self._one(LATEST_PM_RUN)
 
     def memberships(self) -> tuple[dict, list[str]]:
-        """For `--check`: the login's flags, and the `ta_*` group roles it belongs to."""
+        """For `--check`: the login's flags, and every other role it is a member of."""
         login = self._one(LOGIN)
         roles = [row["rolname"] for row in self._all(GROUP_ROLES)]
         return login, sorted(roles)

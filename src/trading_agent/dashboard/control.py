@@ -35,8 +35,7 @@ FROM pg_roles WHERE rolname = current_user
 """
 GROUP_ROLES = """
 SELECT rolname FROM pg_roles
-WHERE rolname LIKE 'ta\\_%' AND rolname NOT LIKE '%\\_login'
-  AND pg_has_role(current_user, oid, 'MEMBER')
+WHERE rolname <> current_user AND pg_has_role(current_user, oid, 'MEMBER')
 """
 
 
@@ -90,7 +89,7 @@ class ControlWriter:
         return "written" if count == 1 else "stale"
 
     def memberships(self) -> tuple[dict, list[str]]:
-        """For `--check`: the login's flags, and the `ta_*` group roles it belongs to."""
+        """For `--check`: the login's flags, and every other role it is a member of."""
         try:
             with self._connect(self._conninfo()) as connection:
                 connection.execute("SET TRANSACTION READ ONLY")
