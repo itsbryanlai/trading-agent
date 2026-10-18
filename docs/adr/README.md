@@ -54,3 +54,4 @@ What this makes easier, harder, or locks in going forward.
 | [0024](0024-assistant-explains-refusals-and-reads-deployed-settings.md) | The Assistant's model explains code's refusals, and the Assistant reads a fixed list of deployed settings |
 | [0025](0025-assistant-model-flag-adds-refusals.md) | The Assistant's plan call can flag an action request as a second layer, and the default action words drop "stop" and "close" |
 | [0026](0026-dashboard-public-service-with-owner-sign-in.md) | The dashboard is a public web service with the owner's sign-in, two database logins, and a guarded toggle |
+| [0027](0027-pause-change-time-recorded-by-the-database.md) | The time the pause last changed is recorded by the database |
