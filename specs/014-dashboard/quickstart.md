@@ -29,7 +29,7 @@ Type every secret step in your own terminal tab (runbook §1), never through the
 - Check Overview, Orders, Activity and Journal against `observe-queries.sql` blocks 1–5.
 - Open "Resume trading": it must be refused, naming `run_while_paused: true` and runbook §5. `SELECT trading_paused FROM system_state` must still be `t`.
 - Sign out, then press Back and reload: you must be asked to sign in.
-- Address check (research D8): from your laptop, `curl -s -o /dev/null -w '%{http_code}\n' -H 'X-Forwarded-For: 203.0.113.9' -d password=wrong https://<address>/sign-in` twice, then once more with `203.0.113.10`. `railway logs -s dashboard --deployment --lines 10` must show `address_wait` growing on the third attempt (the forged header didn't make a new address). Wait 30 s, then sign in normally.
+- Address check (research D8): from your laptop, `curl -s -o /dev/null -w '%{http_code}\n' -H 'X-Forwarded-For: 203.0.113.9' -d password=wrong https://<address>/sign-in` twice, then once more with `203.0.113.10`, waiting 10 s before each repeat (an attempt inside the wait is answered "try again" and not counted). `railway logs -s dashboard --deployment --lines 10` must show `address_wait` growing on the third attempt (the forged header didn't make a new address). Wait 30 s, then sign in normally.
 - `railway logs -s dashboard --deployment --lines 20` shows `started`, `sign_in` and `toggle refused` lines, and no address, password or text.
 
 **R7. The Assistant.** In the private chat send "pause trading". The refusal must name "the dashboard's pause control" and the runbook sections, with no "(not built yet)". This needs the same release (the Assistant's text ships with it).

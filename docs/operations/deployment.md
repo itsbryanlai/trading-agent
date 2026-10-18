@@ -247,7 +247,7 @@ The `dashboard` service is always on and is the system's only public address: th
    - Check Overview, Orders, Activity and Journal against blocks 1 to 5 of [`observe-queries.sql`](observe-queries.sql).
    - Open "Resume trading": it must be refused, naming `run_while_paused: true` and section 5. `SELECT trading_paused FROM system_state` must still be `t`.
    - Sign out, press Back and reload: you must be asked to sign in.
-   - Address check: from your laptop run `curl -s -o /dev/null -w '%{http_code}\n' -H 'X-Forwarded-For: 203.0.113.9' -d password=wrong https://<address>/sign-in` twice, then once more with `203.0.113.10`. `railway logs -s dashboard --deployment --lines 10` must show `address_wait` growing on the third attempt (the forged header must not make a new address). Wait 30 s, then sign in normally.
+   - Address check: from your laptop run `curl -s -o /dev/null -w '%{http_code}\n' -H 'X-Forwarded-For: 203.0.113.9' -d password=wrong https://<address>/sign-in` twice, then once more with `203.0.113.10`, **waiting 10 s before each repeat** (an attempt inside the wait is answered "try again" and not counted). `railway logs -s dashboard --deployment --lines 10` must show `address_wait` growing on the third attempt (the forged header must not make a new address). Wait 30 s, then sign in normally.
    - `railway logs -s dashboard --deployment --lines 20` shows `started`, `sign_in` and `toggle refused` lines, and no address, password or text.
 7. **The Assistant.** In the private chat send "pause trading". The refusal must name "the dashboard's pause control" and the runbook sections, with no "(not built yet)". The Assistant's text ships in the same release.
 
