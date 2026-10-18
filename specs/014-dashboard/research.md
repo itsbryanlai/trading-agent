@@ -100,7 +100,7 @@ Fields rendered this way: `reports.rationale_md`, `decisions.reasoning_md`, `jou
 **Decision**: one middleware sets, on every response:
 - `Content-Security-Policy: default-src 'none'; style-src 'self'; img-src 'self'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'`
 - `X-Content-Type-Options: nosniff`
-- `Referrer-Policy: no-referrer` (an outside link never learns the dashboard's address)
+- `Referrer-Policy: same-origin` (an outside link never learns the dashboard's address; not `no-referrer`, under which Chromium sends `Origin: null` on the dashboard's own form posts and the Origin check refuses them: found in the browser walk, T032)
 - `Strict-Transport-Security: max-age=31536000`
 - `Cache-Control: no-store` on everything except `/static/*`.
 

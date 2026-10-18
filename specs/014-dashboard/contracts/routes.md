@@ -38,7 +38,7 @@ Query validation: an unknown `range`, `agent` or `problems` value falls back to 
 ```text
 Content-Security-Policy: default-src 'none'; style-src 'self'; img-src 'self'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'
 X-Content-Type-Options: nosniff
-Referrer-Policy: no-referrer
+Referrer-Policy: same-origin
 Strict-Transport-Security: max-age=31536000
 Cache-Control: no-store          (except /static/*)
 ```
