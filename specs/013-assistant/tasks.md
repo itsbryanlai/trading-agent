@@ -60,7 +60,7 @@ description: "Task list for the Assistant (feature 013)"
 - **Module size**: no module over 600 lines (`scripts/check_module_size.py`). If `service.py` nears 400, move the refusal flow into `actions_flow.py`, still in the top layer of the package.
 - **Quality gate**: no `# noqa`, and no raised limits.
 - **Commits**: one per task or tight task group, in the style `Assistant (feature 013): what changed (Tnnn)`, staged by explicit path. Never stage `src/trading_agent/risk/__main__.py` or `job_*.csv`, which belong to the owner.
-- **Not edited**: any other component's package, any migration, any grant, `config/risk.yaml`, `config/schedule.yaml`.
+- **Not edited**: any other component's package (except one row in `src/trading_agent/storage/logins.py`, T024), `storage/db.py`, any migration, any grant, `config/risk.yaml`, `config/schedule.yaml`.
 
 ---
 
@@ -92,7 +92,7 @@ description: "Task list for the Assistant (feature 013)"
   - Errors raise typed exceptions: `TokenRejected` (401 or 404), `Conflict` (409), `FloodControl(retry_after)` (429, `parameters.retry_after`), `TelegramUnavailable` (network, timeout, 5xx, or `ok: false` otherwise). None of them holds or formats the URL or the response body. A test asserts that `str()` and `repr()` of every exception, and of the client, don't contain the token.
 - [ ] T004 [P] `src/trading_agent/assistant/inbox.py` and `actions.py` (research A5, A6, A7), test first in `tests/unit/assistant/test_inbox.py` and `test_actions.py`:
   - `inbox.authorised(update, chat_id) -> bool`: true only for a `message` or an `edited_message` whose `chat.type == "private"` and whose `chat.id == chat_id`;
-  - `inbox.classify(update, action_words) -> TextOnly | Command | ActionRequest(matched_word) | Question(text)`, in A6's order;
+  - `inbox.classify(update, action_words) -> TextOnly | Command | ActionRequest(matched_word) | Question(text)`, in A6's order. An edited message, a message with `forward_origin`, and one without `text` are all `TextOnly`;
   - `inbox.count_skippable(updates, chat_id) -> int`: the `message`s from the authorised chat (A4);
   - `actions.match(text, action_words) -> str | None`: strip leading whitespace and punctuation, take the first run of letters, compare case-insensitively;
   - `actions.refusal_document(text, word, action_words, controls) -> str`: JSON with exactly `message`, `matched_word`, `action_words` and `controls` (contracts/model-io.md).
@@ -103,13 +103,18 @@ description: "Task list for the Assistant (feature 013)"
 - [ ] T005 [P] `src/trading_agent/assistant/links.py` (research A12), test first in `tests/unit/assistant/test_links.py`: `filter_links(reply, allowed_urls) -> (text, removed_count)`.
   - Allowed URLs are protected as exact substrings.
   - Any other `scheme://…`, `www.…`, bare host name (last label of 2+ letters), `t.me/…` or `@username` (5–32 word characters) is replaced with `[link removed]`.
-  - Kept as they are: `BRK.B`, `3.5%`, `U.S.`, `e.g.`, `NVDA`, an allowed URL inside a sentence.
-  - Removed: `evil.com`, `https://evil.example/x`, `www.evil.io`, `t.me/x`, `@phish_bot`, a lookalike of an allowed URL with one character changed.
+  - Allowed URLs are protected only up to a boundary: whitespace, the end, or `.,;:!?)]}"'` followed by whitespace or the end.
+  - Kept as they are: `BRK.B`, `3.5%`, `U.S.`, `e.g.`, `NVDA`, `Asia/Singapore`, an allowed URL inside a sentence or followed by `.` or `)`.
+  - Removed: `evil.com`, `https://evil.example/x`, `www.evil.io`, `t.me/x`, `@phish_bot`, a lookalike of an allowed URL with one character changed, an allowed URL followed by `.evil.com` or `@evil.com` (the whole run goes), `deployment.md`, an IDN host `пример.рф`, a punycode host `x.xn--p1ai`.
 
   Hypothesis property: the output contains no host-name match except the allowed URLs.
+
+  Fixed-reply guard (analyze H1): every reply function in `replies.py` (T006), with sample arguments including the default `action_words` and `CONTROLS`, passes `filter_links(text, [])` unchanged with 0 removed.
+
+  **Mutation-check**: add `deployment.md` back to `CONTROLS`; the guard must fail.
 - [ ] T006 [P] `src/trading_agent/assistant/replies.py` (contracts/replies.md, research A14), test first in `tests/unit/assistant/test_replies.py`:
   - each fixed reply as a function returning text: `help_text(action_words, time_zone)`, `text_only()`, `refused_line()`, `refused_fallback(word, action_words, controls)`, `skipped(n)`, `too_much()`, `database()`, `model_failed(category)`;
-  - the `CONTROLS` constant;
+  - the `CONTROLS` constant, exactly the two strings in contracts/model-io.md (no file name, analyze H1);
   - `cap(text, max_chars)`, which appends "…(cut)";
   - `split(text, limit_units=4000) -> list[str]`: UTF-16 code units, split at the last newline or space before the limit, otherwise hard-split.
 
@@ -117,19 +122,21 @@ description: "Task list for the Assistant (feature 013)"
 - [ ] T007 [P] `src/trading_agent/assistant/memory.py` (research A13), test first in `tests/unit/assistant/test_memory.py`: `Memory(max_exchanges, idle_minutes)` with `add(asked_at, question, reply)` and `recent(now) -> list[Exchange]`. It keeps the newest N and clears everything when the newest is older than the idle period. Covers the 07:00/07:31 case and `max_exchanges=0`.
 - [ ] T008 [P] `src/trading_agent/assistant/answer.py` (contracts/model-io.md), test first in `tests/unit/assistant/test_answer.py`:
   - `PLAN_SCHEMA` and `ANSWER_SCHEMA` (strict: every property required, `additionalProperties: false`, nullable parameters);
-  - `parse_plan(text) -> list[RawChoice] | None` (`None` when invalid);
+  - `parse_plan(text) -> list[RawChoice] | None` (`None` when invalid). Every parameter is a plain string, `""` meaning not given; there are no nullable types in either schema (analyze M11);
   - `parse_answer(text) -> str | None` (`None` when invalid or empty).
 
   Invalid cases: not JSON, wrong types, extra keys, missing keys, an empty `reply`.
 - [ ] T009 `src/trading_agent/assistant/menu.py` (contracts/query-menu.md, research A10), test first in `tests/unit/assistant/test_menu.py`:
   - `ENTRIES`: the 10 names, each with its accepted parameters, agent list, default dates and a one-line `returns` for the plan document;
-  - `validate(raw_choices, *, known_symbols, today_local, zone, max_span_days, max_queries) -> (list[ValidChoice], list[Dropped])`, with A10's reasons in order: `unknown_query`, `unexpected_parameter`, `unknown_symbol`, `unknown_agent`, `bad_dates`, `unknown_section`, `duplicate`, `too_many`;
+  - `validate(raw_choices, *, known_symbols, today_local, zone, max_span_days, max_queries) -> (list[ValidChoice], list[Dropped])`, with A10's reasons in order: `unknown_query`, `unexpected_parameter`, `missing_parameter` (`universe` without a symbol), `unknown_symbol`, `unknown_agent`, `bad_dates`, `unknown_section`, `duplicate`, `too_many`;
   - `ValidChoice` carries UTC `start` and `end`, computed in the owner's zone from the start of `from_date` to the start of the day after `to_date`.
 
   SC-007 property (Hypothesis): for arbitrary raw choices, every `ValidChoice` has a known name, only its accepted parameters, a known symbol and a span within the limit.
 - [ ] T010 `src/trading_agent/assistant/store.py` (research A15, contracts/query-menu.md):
-  - `PostgresStore(connect, url, statement_timeout_seconds, max_rows, text_field_chars)` with `known_symbols() -> set[str]` and `run(choices) -> list[QueryResult]`;
-  - everything inside one `REPEATABLE READ READ ONLY` transaction with `SET LOCAL statement_timeout`, and a fresh connection per question with `connect_timeout=10`;
+  - `PostgresStore(connect, url, zone, statement_timeout_seconds, max_rows, text_field_chars)`, where `connect` defaults to `psycopg.connect(url, connect_timeout=10, row_factory=dict_row)` (not `storage.db.connect`, which takes no timeout) and `zone` is the owner's `ZoneInfo`, with `known_symbols() -> set[str]` and `run(choices) -> list[QueryResult]`;
+  - everything inside one `REPEATABLE READ READ ONLY` transaction with `SET LOCAL statement_timeout`, and a fresh connection per question;
+  - each entry filters on the column in contracts/query-menu.md "Filters on"; `trading_day` entries use the ET dates of the span;
+  - `decisions` returns `quote_time`; `portfolio_now` reads `system_state_effective`'s real columns plus `system_state.halt_triggered_on` and `baseline_trading_day`; `execution_refusals.details` is serialised to compact JSON, then cut;
   - every query is a module-level constant with `%s` placeholders and `LIMIT max_rows + 1`, which sets `cut`;
   - every timestamp is returned as both the owner-zone and the ET ISO string;
   - untrusted fields are cut to `text_field_chars`;
@@ -177,10 +184,11 @@ description: "Task list for the Assistant (feature 013)"
   - "what do we hold?" with two positions and today's snapshot: the answer document carries both, and the reply passes through;
   - a paused `system_state`;
   - three decisions with verdicts;
-  - a price carries its recorded time in both zones.
+  - a decision's price carries its `quote_time` (not `generated_at`) in both zones (analyze H2).
 - [ ] T013 [US1] `src/trading_agent/assistant/loop.py` (research A2–A5), test first in `tests/unit/assistant/test_loop.py`, with `FakeTelegram`, an injected `sleep`, and a `stop` flag:
   - **The drain at start**: confirm every waiting update, answer none, send R-SKIPPED once with the count if it is above 0 (FR-004a), or nothing.
   - **The poll loop**: `allowed_updates=["message", "edited_message"]`. Updates from other chats are ignored, with a count log line and no reply (SC-003). Authorised updates are handled one at a time, in order. The offset confirms what was handled.
+  - **Sending** (research A2): parts in order; a 429 waits `retry_after` (capped at 60) and retries the part once; a 5xx or network failure retries once after 2 s; a part that still fails abandons the rest and logs `send abandoned at part k/n`; the update is still confirmed. Test: no part is ever sent twice.
   - **Errors**: 409 waits 10 s and retries; 429 waits `retry_after`, capped at 300; unavailable backs off 1, 2, 4 … 60; `TokenRejected` raises to `__main__`.
   - **SIGTERM**: sets `stop`, the current message finishes, then the loop returns.
   - **The database**: after `max_consecutive_failures` R-DATABASE outcomes in a row, it raises `DatabaseLost`.
@@ -191,7 +199,7 @@ description: "Task list for the Assistant (feature 013)"
   - installs the SIGTERM handler and logs the start line;
   - exits 0 on stop, 2 for `TokenRejected` at start, 3 for `DatabaseLost`, and 4 on a crash.
 
-  Tests: each missing variable, a non-integer chat ID, an `http://` endpoint, unknown arguments.
+  Tests: each missing variable, a non-integer chat ID, a bot token not matching `^\d+:[A-Za-z0-9_-]+$` (exit 2, named, never echoed), an `http://` endpoint, unknown arguments.
 
 **Checkpoint**: US1 is demonstrable through fakes end to end.
 
@@ -204,7 +212,8 @@ description: "Task list for the Assistant (feature 013)"
 **Independent test**: with a week of reports, decisions, journal rows and runs in the fake store, each US2 question reads only the asked period, symbol or agent, and settings come from the allowlist.
 
 - [ ] T015 [P] [US2] `src/trading_agent/assistant/settings_view.py` (research A16, contracts/query-menu.md "`settings` allowlist"), test first in `tests/unit/assistant/test_settings_view.py`, with a temporary config directory: `read(config_dir, section | None) -> dict`, through `yaml.safe_load`, copying only the allowlisted paths. A missing file or key gives `"unavailable"`. Tests:
-  - the repository's real `config/` files load, and the `risk` section shows `max_position_pct: 8`;
+  - the repository's real `config/` files load and every allowlisted section is present (no assertion on live values);
+  - a temporary `risk.yaml` with `max_position_pct: 8` shows that value;
   - a planted `env:` list and an unlisted `secret_like_key: x` in a temporary schedule file never appear in the output;
   - a malformed YAML file gives `"unavailable"` for its section.
 
@@ -263,7 +272,7 @@ description: "Task list for the Assistant (feature 013)"
   - every variable's value (`MARKER-SECRET`);
   - the chat ID (`987654321`).
 
-  Then run, through the loop with `caplog` at DEBUG: an answered question, a refusal, a fixed reply, a model failure, a database failure, a Telegram error, an ignored chat and a drain. Assert that no log record contains any marker. Also assert the documented line shapes (`answered queries=…`, `refused action word=…`).
+  Then run, through the loop with `caplog` at DEBUG: an answered question, a refusal, a fixed reply, a model failure, a database failure, a Telegram error, an ignored chat and a drain. Assert that no log record contains any marker. Also assert that `MARKER-SECRET` and `987654321` appear in no `FakeModel.calls[*]` system or user text (FR-015, analyze M8). Also assert the documented line shapes (`answered prompt_version=0.1 queries=…`, `refused prompt_version=0.1 action word=…`).
 
   **Mutation-check**: log `str(exc)` in the Telegram error path; the test must fail.
 
@@ -284,7 +293,7 @@ description: "Task list for the Assistant (feature 013)"
     - `settings: ok` (all sections load).
 
     A failure prints the check's name and the exception type, and exits 1. Nothing is ever sent to the chat: `FakeTelegram` records no `send_message`.
-  - **`--find-chat-id`** needs only the token. It polls with `timeout` until 120 s total (injected clock), prints `chat.id=<id> chat.type=<type>` per message, sends nothing and never advances the offset past what it read. These lines go to stdout, not the log; that's acceptable for the owner's own terminal.
+  - **`--find-chat-id`** needs only the token. It polls with `timeout` until 120 s total (injected clock), prints `chat.id=<id> chat.type=<type>` per message, sends nothing, and advances its offset as it reads so nothing prints twice (research A18). These lines go to stdout, not the log; that's acceptable for the owner's own terminal.
 
 ---
 
@@ -310,7 +319,7 @@ description: "Task list for the Assistant (feature 013)"
   - **`docs/operations/deployment.md`**: new §9 "Adding the assistant service" (quickstart steps 2–5), and the release checklist mentions `--check`;
   - **`specs/010-observe-only-deployment/contracts/logins-command.md`**: the eleventh row;
   - **`docs/policy/versioning.md`**: a row for the Assistant's `PROMPT_VERSION` 0.1.
-- [ ] T028 Wire the real store and clients in `__main__.py` for production, and add one unit test that `main()` with fakes for every factory runs the drain, answers one question and stops on the stop flag.
+- [ ] T028 Wire the real `PostgresStore` and Telegram opener in `__main__.py` for production (the clients are T014's), and add one unit test that `main()` with fakes for every factory runs the drain, answers one question and stops on the stop flag.
 - [ ] T029 Final validation:
   - the full unit suite and the full integration suite, once;
   - `scripts/lint.sh`;

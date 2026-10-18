@@ -8,7 +8,7 @@ An always-on process on the `assistant` Railway service (ADR 0023), or one owner
 |---|---|---|
 | (no arguments) | skips the waiting messages (A4), then polls and answers until SIGTERM | every variable below |
 | `--check` | checks the bot token, the database login, the model key, the time zone and the settings files; one line each; sends nothing to the chat | every variable |
-| `--find-chat-id` | for up to 120 s, prints `chat.id` and `chat.type` for each message received; replies to nothing and confirms nothing | `ASSISTANT_TELEGRAM_BOT_TOKEN` only |
+| `--find-chat-id` | for up to 120 s, prints `chat.id` and `chat.type` for each message received; replies to nothing; advances its offset so nothing prints twice (run it before deploying) | `ASSISTANT_TELEGRAM_BOT_TOKEN` only |
 
 Any other arguments exit 2.
 
@@ -67,8 +67,9 @@ One line per event, at INFO unless noted. The prefix is `assistant:`.
 - **Skipped at start**: `assistant: skipped N waiting message(s)`. Only if N > 0.
 - **Ignored**: `assistant: ignored N update(s) from other chats`. One line per poll batch.
 - **Fixed reply**: `assistant: replied fixed=<R-id>`
-- **Refusal**: `assistant: refused action word=<word> tokens=<in>/<out> outcome=explained|fallback`. The word is one from the configured list, never the message.
-- **Question**: `assistant: answered queries=<name,…|none> dropped=<name:reason,…|none> cut=<name,…|none> tokens=<plan in>/<out>,<answer in>/<out> links_removed=<n> messages=<n> outcome=<answered|too_much|model_failed:<category>|database>`
+- **Refusal**: `assistant: refused prompt_version=<v> action word=<word> tokens=<in>/<out> outcome=explained|fallback`. The word is one from the configured list, never the message.
+- **Question**: `assistant: answered prompt_version=<v> queries=<name,…|none> dropped=<name:reason,…|none> cut=<name,…|none> tokens=<plan in>/<out>,<answer in>/<out> links_removed=<n> messages=<n> outcome=<answered|too_much|model_failed:<category>|database>`
+- **Send abandoned**: `assistant: send abandoned at part <k>/<n>` (WARNING).
 - **Telegram**: `assistant: telegram <method> failed: <status or exception type>` (WARNING), with `retry in <s>s` where it applies.
 - **Database**: `assistant: database failed: <exception type> (consecutive <n>/<max>)` (ERROR).
 - **Stop**: `assistant: stopping (SIGTERM)`, or `assistant: exiting: <reason>` (CRITICAL).

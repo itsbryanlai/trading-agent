@@ -41,7 +41,7 @@ No new dependency.
 
 **Project Type**: a long-running bot process in the existing `trading_agent` package.
 
-**Performance Goals**: a typical question answered within 60 s (SC-006). That is two model calls of at most 45 s each, but typical calls are seconds, plus a few bounded queries with a 10 s statement timeout.
+**Performance Goals**: a typical question answered within 60 s (SC-006). That is two model calls of at most 45 s each, but typical calls are seconds, plus a few bounded queries with a 10 s statement timeout. The worst case, with the Anthropic client's one retry, is about 3 minutes (owner, analyze L9: accepted).
 
 **Constraints**:
 - **Read-only**: no write, no broker key, no market-data key.

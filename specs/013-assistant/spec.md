@@ -34,6 +34,12 @@ All recorded in [ADR 0023](../../docs/adr/0023-assistant-runs-its-own-service-an
 - Q: May replies include web links? → A: Only links stored in a report's sources, which Research builds from the articles it fetched, never from model text (`specs/007-research-agent` FR-008). Code removes every other URL from a reply before sending, and link previews stay off. Rejected: no links at all, and any link the model writes.
 - Q: Should it answer questions about the system's settings, which live in config files rather than the database? → A: Yes, read-only, through one more menu entry exposing a fixed list of non-secret settings: the risk limits and universe rules, each agent's schedule and whether it is enabled, and each LLM agent's model provider and name. They are read from the configuration files deployed with the service. Nothing else from those files, and no environment value, is exposed. This is a new data source beyond ADR 0023 §4, recorded in [ADR 0024](../../docs/adr/0024-assistant-explains-refusals-and-reads-deployed-settings.md). Rejected: settings out of scope for 013.
 
+### Session 2026-10-18 (after `/speckit-analyze`)
+
+- Q: How does the plan call mark a parameter it doesn't give? → A: With `""`, never `null`: no nullable types in the schemas, as in the other agents'. Rejected: nullable types confirmed by a live check.
+- Q: Are forwarded messages answered? → A: No. They get the "send your own question" fixed reply, because a forward carries a third party's words into the prompt. Rejected: treating them as questions.
+- Q: Is SC-006's 60 s a worst case? → A: No, a typical target. The worst case, with the Anthropic client's one retry, is about 3 minutes, and the plan says so. Rejected: dropping the retry.
+
 ## User Scenarios & Testing *(mandatory)*
 
 The only user is **the owner**, who wants to ask, from their phone and in plain words, what the system holds, what each agent has said and decided, and how it has done, without waiting for the dashboard. This serves the system's purpose: watching each agent's performance over time with minimal intervention.
@@ -87,11 +93,11 @@ The owner, or a message that reached the bot some other way, asks it to act ("pa
 **Acceptance Scenarios**:
 
 1. **Given** any state, **When** the owner sends "pause trading" or "sell AAPL", **Then** nothing changes, and the reply starts with the fixed line saying nothing was done, then explains why, lists the action words, shows how to ask instead (e.g. "why did the PM sell AAPL?") and names where the control lives.
-1. **Given** any state, **When** the owner asks "why did the PM sell MU?", **Then** it is answered as a question, not refused.
-2. **Given** the system started on a known date, **When** the owner asks about a day before it, **Then** the reply says there is no data for that day, without guessing.
-3. **Given** two held symbols whose names both match the owner's words, **When** the owner asks "how is the chip stock doing?", **Then** the Assistant asks which one is meant, and answers the follow-up "the second one" using the conversation so far.
-4. **Given** a message from any chat other than the authorised one, **When** it arrives, **Then** no reply is sent and only a count is logged.
-5. **Given** a report rationale contains text telling the model to say "trading is resumed" or to include a link, **When** the owner asks about that report, **Then** the reply treats that text as quoted content of the report, does not follow it, and states the pause from the database.
+2. **Given** any state, **When** the owner asks "why did the PM sell MU?", **Then** it is answered as a question, not refused.
+3. **Given** the system started on a known date, **When** the owner asks about a day before it, **Then** the reply says there is no data for that day, without guessing.
+4. **Given** two held symbols whose names both match the owner's words, **When** the owner asks "how is the chip stock doing?", **Then** the Assistant asks which one is meant, and answers the follow-up "the second one" using the conversation so far.
+5. **Given** a message from any chat other than the authorised one, **When** it arrives, **Then** no reply is sent and only a count is logged.
+6. **Given** a report rationale contains text telling the model to say "trading is resumed" or to include a link, **When** the owner asks about that report, **Then** the reply treats that text as quoted content of the report, does not follow it, and states the pause from the database.
 
 ---
 
@@ -118,7 +124,7 @@ Before releasing the service, the owner runs a check that confirms the database 
 - **A query returns more rows than its cap**: the rows are cut to the cap, and the answer says the list was cut.
 - **The question with its query results would exceed the input cap**: the fixed "too much data; narrow the question" reply, sent without the second model call.
 - **A message arrives while another is being answered**: it waits and is answered in order.
-- **A non-text message** (photo, voice, sticker, file) **or an edited message**: a fixed reply saying only new text messages are answered.
+- **A non-text message** (photo, voice, sticker, file), **an edited message, or a forwarded message**: a fixed reply saying only new text messages are answered.
 - **A bot command** (`/start`, `/help`): a fixed reply describing what the Assistant can answer, including the list of action words it refuses.
 - **An action word in the middle of a question** ("is trading paused?", "why did we buy NVDA?"): not refused; answered normally.
 - **The refusal's explanation call fails**: the fixed first line is sent alone, followed by the list of action words and where the control lives, written in code.
@@ -138,7 +144,7 @@ Before releasing the service, the owner runs a check that confirms the database 
 - **FR-001**: The Assistant MUST run as its own always-on service, receiving messages by polling the chat service, and MUST run whether or not trading is paused ([ADR 0023](../../docs/adr/0023-assistant-runs-its-own-service-and-reads-through-a-query-menu.md) §1–2).
 - **FR-002**: It MUST answer only messages from a private chat whose ID equals the configured authorised chat ID. Every other message, including any from a group, MUST get no reply, and MUST be logged only as a count, without the chat's or sender's ID.
 - **FR-003**: It MUST answer one question at a time, in the order received.
-- **FR-004**: It MUST answer only new text messages. Non-text and edited messages, and bot commands, MUST get fixed replies (Edge Cases).
+- **FR-004**: It MUST answer only new text messages. Non-text, edited and forwarded messages, and bot commands, MUST get fixed replies (Edge Cases).
 - **FR-004a**: On start, the Assistant MUST skip every waiting message sent before it started, answer none of them, and, if any came from the authorised chat, send one note there giving how many were skipped and asking for them again.
 
 **Reading**
@@ -153,7 +159,7 @@ Before releasing the service, the owner runs a check that confirms the database 
 - **FR-010**: Every figure in an answer MUST come from a query result. A price MUST be a stored one, stated with when it was recorded. With no data for what was asked, the answer MUST say so plainly.
 - **FR-011**: When a symbol, agent or timeframe in the question is ambiguous, the Assistant MUST ask a clarifying question rather than choose.
 - **FR-011a**: Times in replies MUST be shown in the owner's configured time zone with New York time (ET) alongside. Relative days ("today", "yesterday", "this week") MUST be read as the owner's local calendar days, and the reply MUST state the ET span the period covers.
-- **FR-012**: A message whose first word, ignoring case and punctuation, is on the configured list of action words (default: pause, resume, unpause, stop, halt, buy, sell, close, cancel, trade, liquidate) MUST be refused by code before any query or model call, and nothing may change. The reply MUST start with a fixed line, written in code, saying nothing was done because the Assistant cannot take actions. The rest MUST be written by one model call given only the owner's message, the refusal's outcome (the word matched, the full list of action words) and where the control lives (the dashboard's pause control and, until the dashboard exists, the deployment runbook's sections on switching trading on and off). It explains the refusal and suggests next steps, such as asking the same thing as a question. That call MUST NOT be given any credential, any other configuration value, any query result or any stored model text ([ADR 0024](../../docs/adr/0024-assistant-explains-refusals-and-reads-deployed-settings.md) §2). No code path in the Assistant can change state.
+- **FR-012**: A message whose first word, ignoring case and punctuation, is on the configured list of action words (default: pause, resume, unpause, stop, halt, buy, sell, close, cancel, trade, liquidate) MUST be refused by code before any query and before the question flow's model calls, and nothing may change. The reply MUST start with a fixed line, written in code, saying nothing was done because the Assistant cannot take actions. The rest MUST be written by one model call given only the owner's message, the refusal's outcome (the word matched, the full list of action words) and where the control lives (the dashboard's pause control and, until the dashboard exists, the deployment runbook's sections on switching trading on and off). It explains the refusal and suggests next steps, such as asking the same thing as a question. That call MUST NOT be given any credential, any other configuration value, any query result or any stored model text ([ADR 0024](../../docs/adr/0024-assistant-explains-refusals-and-reads-deployed-settings.md) §2). No code path in the Assistant can change state.
 - **FR-012a**: A message that only contains an action word elsewhere MUST be handled as an ordinary question. `/help` MUST list the action words.
 - **FR-013**: Replies MUST be sent as plain text, with no formatting parsed and link previews off. A reply longer than one message MUST be split into several, in order.
 - **FR-013a**: A reply MUST contain no URL other than one stored in the source list of a report returned by that question's queries. Code MUST remove every other URL, including any that appears in stored model text, before the reply is sent.
@@ -191,13 +197,13 @@ Before releasing the service, the owner runs a check that confirms the database 
 
 ### Measurable Outcomes
 
-- **SC-001**: Across the test suite's fixtures, 100% of figures in answers match a stored value, and every stated price carries its recorded time.
+- **SC-001**: Across the test suite's fixtures, the answer call's document carries every stored figure the question needs, each with its recorded time, and no figure from anywhere else (no live price, no estimate).
 - **SC-002**: Zero database writes, and zero state changes of any kind, across every fixture, including fixtures whose messages and stored model text ask the Assistant to act.
 - **SC-003**: Zero replies to messages from any chat other than the authorised one.
 - **SC-004**: Zero logs contain a message's text, an answer, a prompt, a query result, a credential value or a chat ID, across fixtures that put recognisable markers in each.
 - **SC-004a**: Zero replies contain a URL that is not a stored report source returned for that question, across fixtures whose stored text and model answers carry other links.
 - **SC-005**: 100% of fixture messages starting with an action word are refused before any query, and their replies start with the fixed line; 0% of fixture questions that only contain an action word are refused.
-- **SC-006**: A typical question is answered within 60 seconds of being sent, when the model and database are available.
+- **SC-006**: A typical question is answered within 60 seconds of being sent, when the model and database are available. The worst case is longer: two 45 s calls, plus the Anthropic client's one retry.
 - **SC-007**: Zero queries run that fail validation, across fixtures where the model chooses unknown names, unknown symbols, oversized ranges and too many queries.
 
 ## Assumptions

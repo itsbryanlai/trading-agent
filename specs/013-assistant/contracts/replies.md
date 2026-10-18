@@ -5,7 +5,7 @@ These replies are written in code, with no model call (spec Key Entities). They 
 | Id | When | Text |
 |---|---|---|
 | R-HELP | `/start`, `/help`, any other `/command` | I answer questions about this paper-trading system: positions and cash, the PM's decisions and the Risk Gate's verdicts, orders and fills, the analysts' reports, the journal and each agent's book, agent runs, and the system's settings. I can't take any action. Messages starting with these words are refused: {action_words}. To ask about one, phrase it as a question, e.g. "why did the PM sell MU?". Times are shown in {time_zone} with New York time (ET). |
-| R-TEXT-ONLY | an edited message, or one without text | I only answer new text messages. Please send your question again as a new message. |
+| R-TEXT-ONLY | an edited message, a forwarded message, or one without text | I only answer new text messages you write yourself. Please send your question again as a new message. |
 | R-REFUSED-LINE | the first line of every action refusal | Nothing was done: I can't take actions. |
 | R-REFUSED-FALLBACK | the refusal's model call failed | R-REFUSED-LINE, then: Messages starting with {matched_word} are refused, as are: {action_words}. To pause or resume trading use {controls}. To ask about it, phrase it as a question, e.g. "why did the PM sell MU?". |
 | R-SKIPPED | at start, when messages from the authorised chat were waiting (A4) | I was offline and skipped {n} message(s) you sent meanwhile. Please send again anything you still want answered. |
@@ -13,4 +13,4 @@ These replies are written in code, with no model call (spec Key Entities). They 
 | R-DATABASE | the database could not be read (A15) | I can't read the data right now. Please try again in a few minutes. |
 | R-MODEL-FAILED | a model call raised, or its answer failed validation | I couldn't answer that: the model {category}. Please try again. `{category}` is one of: was unavailable, refused, rejected the request, was cut off, gave an unusable answer. |
 
-`{controls}` is the same fixed list as the refusal call's `controls` (contracts/model-io.md). It changes when the dashboard ships.
+`{controls}` is the same fixed list as the refusal call's `controls` (contracts/model-io.md). It changes when the dashboard ships. Every fixed reply must pass the link filter (A12) unchanged with no allowed URLs, so none contains a file name, domain or `@name`; a test pins this.

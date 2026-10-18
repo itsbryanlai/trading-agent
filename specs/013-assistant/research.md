@@ -18,7 +18,8 @@ Decisions for `specs/013-assistant`. Each states the decision, why, and what els
 **The token is in the URL** (`https://api.telegram.org/bot<token>/<method>`), so:
 - no URL, request or exception text is ever logged, only the method name, the HTTP status and the exception type;
 - `HTTPError` objects are never formatted, because they carry the URL;
-- the client's `repr` hides the token, as `AnthropicClient`'s does.
+- the client's `repr` hides the token, as `AnthropicClient`'s does;
+- the token is checked against `^\d+:[A-Za-z0-9_-]+$` at start, and a malformed one refuses to start (exit 2), naming the variable. A stray `ValueError` or `http.client.InvalidURL` from the opener is mapped to `TelegramUnavailable` and never formatted (analyze M9).
 
 **Alternatives**: `python-telegram-bot` or `aiogram`. Both are a large async dependency for three calls, and both log request URLs at debug level.
 
@@ -38,6 +39,8 @@ Decisions for `specs/013-assistant`. Each states the decision, why, and what els
 | 409 (another poller, A3) | wait 10 s, then retry; log the count |
 | 429 | wait `retry_after` (capped at 300 s), then retry |
 | network failure, timeout or 5xx | back off 1, 2, 4 … 60 s, then retry; never exit |
+
+**Sending** (analyze M10): each part of a reply is sent in order. A 429 waits `retry_after` (capped at 60 s) and retries that part once; a network failure or 5xx retries that part once after 2 s. If a part still fails, the remaining parts are abandoned, logged as `send abandoned at part k/n`, and the update is confirmed anyway: a part already sent is never sent again, and nothing is re-answered.
 
 **Alternatives**: a webhook (rejected in ADR 0023). Threads per message: rejected by FR-003, and not needed for one user.
 
@@ -83,7 +86,7 @@ This is pure code, in `inbox.py` and `actions.py`, applied in this order:
 
 | Order | The message is | Outcome |
 |---|---|---|
-| 1 | an `edited_message`, or has no `text` (photo, voice, sticker, file) | R-TEXT-ONLY |
+| 1 | an `edited_message`, a forwarded message (it has `forward_origin`), or one without `text` (photo, voice, sticker, file) | R-TEXT-ONLY. A forward carries a third party's words, so it is never a question (analyze L6) |
 | 2 | text starting with `/` | `/start` and `/help` get R-HELP; any other command gets R-HELP too |
 | 3 | text whose first word is an action word (A7) | the action refusal (A8) |
 | 4 | anything else | a question (A9) |
@@ -115,7 +118,7 @@ This is pure code, in `inbox.py` and `actions.py`, applied in this order:
    - the recent exchanges (A13);
    - the query menu: names, what each returns and its parameters (contracts/query-menu.md).
 
-   The model returns `{"queries": [{"name", "symbol", "agent", "from_date", "to_date", "section"}]}`. Every parameter is present and nullable, as strict JSON Schema needs.
+   The model returns `{"queries": [{"name", "symbol", "agent", "from_date", "to_date", "section"}]}`. Every parameter is present as a plain string, with `""` for "not given", as strict JSON Schema needs. No nullable types: the other agents' schemas use none, so Qwen's strict mode is only relied on for plain types (analyze M11).
 2. **Validation** in code (`menu.py`, A10). Valid choices run in one read-only transaction. Invalid ones are recorded with a reason.
 3. **Answer call** (`ANSWER_SYSTEM`, schema `assistant_answer`). The document holds:
    - the question, `now` and the exchanges;
@@ -146,7 +149,8 @@ Each choice is checked, and any failure drops it with a reason:
 | Check | Reason when it fails |
 |---|---|
 | `name` is on the menu | `unknown_query` |
-| only the parameters that query takes are non-null | `unexpected_parameter` |
+| only the parameters that query takes are non-empty | `unexpected_parameter` |
+| every parameter the query requires is given (`universe` needs `symbol`) | `missing_parameter` |
 | `symbol` matches `^[A-Z][A-Z0-9.\-]{0,9}$` and is in the known-symbol set: positions, reports, decisions, stop-loss triggers and `instrument_reference`, read by a fixed query at the start of each question | `unknown_symbol` |
 | `agent` is in the query's own list | `unknown_agent` |
 | dates parse as ISO dates, `from_date` ≤ `to_date`, and the span is ≤ `max_span_days` | `bad_dates` |
@@ -166,7 +170,7 @@ Both model documents are JSON, sent as the user message after a fixed system pro
 - `decisions.reasoning_md`;
 - `journal.summary_md`;
 - `orders.broker_reason`;
-- `execution_refusals.details`;
+- `execution_refusals.details` (jsonb, serialised to compact JSON, then cut);
 - `orchestrator_runs.detail`;
 - earlier replies in the exchanges.
 
@@ -177,16 +181,16 @@ The prompt only lowers the odds of a bad reply. The enforcement is that nothing 
 ## A12. The link filter (FR-013a)
 
 **Decision**: after every model reply, and before splitting:
-- **Allowed**: the exact `url` strings in the `sources` of the report rows this question returned. They are matched as substrings and protected first.
+- **Allowed**: the exact `url` strings in the `sources` of the report rows this question returned. They are protected first, and only where the match ends at whitespace, the end of the text, or one of `.,;:!?)]}"'` followed by whitespace or the end. So `https://source.example/a.evil.com` or `https://source.example/a@evil.com` is not protected and is filtered (analyze H3).
 - **Replaced by `[link removed]`**:
   - any other `scheme://…` or `www.…` run;
-  - any bare host name (`label.label…tld`, with a TLD of 2 or more letters, case-insensitive);
+  - any bare host name (`label.label…tld`, with a last label of 2 or more Unicode letters, or an `xn--` punycode label, case-insensitive), so IDN hosts such as `пример.рф` and `x.xn--p1ai` are caught;
   - `t.me/…`;
   - any `@username` (5–32 word characters).
 
   Telegram clients turn all of these into links even in plain text.
 
-Tickers such as `BRK.B`, decimals, `U.S.` and `e.g.` don't match, because their last label has fewer than 2 letters or digits come first. A refusal reply has no allowed links, since its document has no reports.
+Tickers such as `BRK.B`, decimals, `U.S.` and `e.g.` don't match, because their last label has fewer than 2 letters or digits come first. A refusal reply has no allowed links, since its document has no reports. File names such as `deployment.md` do match (`.md` is a TLD), which is why no fixed reply or control name contains one (analyze H1).
 
 **Alternative**: removing every link. The owner chose to keep source links (clarify Q4).
 
@@ -196,16 +200,14 @@ Tickers such as `BRK.B`, decimals, `U.S.` and `e.g.` don't match, because their 
 
 ## A14. Limits (FR-019)
 
-- **Input cap**: `max_input_chars`, measured on the finished answer document. If the document is over the cap, code sends R-TOO-MUCH and makes no answer call.
-
-  The plan document is bounded by the message limit plus the capped exchanges. If it is still over the cap, the oldest exchanges are dropped first.
+- **Input cap**: `max_input_chars`, on both documents. For each, the oldest exchanges are dropped first until it fits. If the answer document still doesn't fit with no exchanges, code sends R-TOO-MUCH and makes no answer call. The plan document always fits once exchanges are dropped, since one message is at most 4,096 characters (analyze L1).
 - **Output**: `model.max_output_tokens` (2,000). A truncated reply gets R-MODEL-FAILED (`ModelTruncated`).
 - **Reply length**: `max_reply_chars` (12,000) after the filter, cut with "…(cut)". It is then split into messages of at most 4,000 UTF-16 code units, at the last newline or space before the limit.
 - **No daily cap** (owner).
 
 ## A15. The database (FR-009, ADR 0013 §5)
 
-- A fresh connection per question, as `ta_assistant_login`, with `connect_timeout=10`.
+- A fresh connection per question, as `ta_assistant_login`, through the store's own `connect` callable, `psycopg.connect(url, connect_timeout=10, row_factory=dict_row, autocommit=False)`, injected for tests. `storage.db.connect` takes no timeout, and `storage/db.py` is not changed (analyze M3).
 - One `REPEATABLE READ READ ONLY` transaction, so all of a question's results come from one snapshot, with `SET LOCAL statement_timeout` from config.
 - A connection or query failure gets R-DATABASE.
 - After `max_consecutive_failures` (3) failed questions in a row, the process exits 3 and Railway restarts it.
@@ -228,7 +230,7 @@ Strict, like every other config: every key required, unknown keys refused (exit 
 |---|---|---|
 | (none) | runs the service | every variable |
 | `--check` | `getMe`; connects as the login and runs the known-symbol query; makes one minimal model call; loads the time zone and the settings files. Prints one line per check; sends nothing to the chat | every variable |
-| `--find-chat-id` | polls for up to 120 s and prints the `chat.id` and `chat.type` of each message received; replies to nothing and confirms nothing | the bot token only |
+| `--find-chat-id` | polls for up to 120 s and prints the `chat.id` and `chat.type` of each message received; replies to nothing, and advances its offset as it reads so nothing is printed twice. That confirms those updates, which is harmless because it runs before the service is deployed | the bot token only |
 
 `--find-chat-id` is for setup, while the service is not deployed, since a running service would take the updates (A3).
 

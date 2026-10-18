@@ -5,7 +5,7 @@ Three calls exist (research A8, A9). Each is one `ModelClient.complete(system, u
 - the user message is one JSON document;
 - the answer is strict JSON validated in code before use (FR-017).
 
-`PROMPT_VERSION` (starting at `0.1`) is logged with every call and bumped whenever a prompt or schema changes (`docs/policy/versioning.md`).
+`PROMPT_VERSION` (starting at `0.1`) is logged on the start line, and every per-message line carries `prompt_version`. It is bumped whenever a prompt or schema changes (`docs/policy/versioning.md`).
 
 ## Plan call: schema `assistant_plan`
 
@@ -21,11 +21,11 @@ The document:
 The answer:
 
 ```text
-{"queries": [{"name": str, "symbol": str|null, "agent": str|null,
-              "from_date": str|null, "to_date": str|null, "section": str|null}]}
+{"queries": [{"name": str, "symbol": str, "agent": str,
+              "from_date": str, "to_date": str, "section": str}]}
 ```
 
-All keys are required and no others are allowed. `queries` may be empty, for example for a greeting or a follow-up that the exchanges already answer.
+All keys are required, all are plain strings, and no others are allowed. `""` means "not given" (no nullable types, as in the other agents' schemas). `queries` may be empty, for example for a greeting or a follow-up that the exchanges already answer.
 
 ## Answer call: schema `assistant_answer`
 
@@ -53,10 +53,12 @@ The document:
 ```text
 {"message": "...", "matched_word": "...", "action_words": [...],
  "controls": ["the dashboard's pause control (not built yet)",
-              "docs/operations/deployment.md §5 Switching trading on and §6 Switching trading off"]}
+              "the deployment runbook, section 5 Switching trading on and section 6 Switching trading off"]}
 ```
 
 The answer has the same shape as the answer call's. The reply is sent after R-REFUSED-LINE (contracts/replies.md).
+
+The control names contain no file name or anything else the link filter (A12) would treat as a host.
 
 ## What the system prompts must say
 
