@@ -9,7 +9,7 @@ from __future__ import annotations
 from collections.abc import Sequence
 
 CONTROLS: tuple[str, str] = (
-    "the dashboard's pause control (not built yet)",
+    "the dashboard's pause control",
     "the deployment runbook, section 5 Switching trading on and section 6 Switching trading off",
 )
 

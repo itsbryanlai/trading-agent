@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+{% block title %}Orders{% endblock %}
+{% macro note(t) %}{% if t.summary %}<details><summary>{{ t.summary }}</summary>{{ t.full }}</details>{% else %}{{ t.full }}{% endif %}{% endmacro %}
+{% block content %}
+<h1>Order history</h1>
+<form method="get" action="/orders" class="stack">
+  <label for="symbol">Symbol</label>
+  <input id="symbol" type="text" name="symbol" value="{{ view.symbol_value }}" maxlength="10">
+  <label for="from">From</label>
+  <input id="from" type="date" name="from" value="{{ view.from_value }}">
+  <label for="to">To</label>
+  <input id="to" type="date" name="to" value="{{ view.to_value }}">
+  <button type="submit">Filter</button>
+</form>
+{% if view.empty_text %}
+<p>{{ view.empty_text }}</p>
+{% else %}
+<table>
+  <thead><tr><th>Evaluated</th><th>Cause</th><th>Verdict</th><th>Outcome</th></tr></thead>
+  <tbody>
+  {% for row in view.rows %}
+  <tr id="verdict-{{ row.verdict_id }}">
+    <td>{{ row.evaluated_at }}</td>
+    <td>{{ row.cause }}<br><span class="muted">{{ row.cause_detail }}</span></td>
+    <td>{{ row.verdict }}{% if row.rule %}<br>{{ row.rule }}{% endif %}{% if row.approved %}<br><span class="muted">{{ row.approved }}</span>{% endif %}</td>
+    <td>{% for line in row.outcome %}{{ note(line) }}{% if not loop.last %}<br>{% endif %}{% endfor %}</td>
+  </tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% endif %}
+<p>
+  {% if view.prev_url %}<a href="{{ view.prev_url }}">Newer</a>{% endif %}
+  {% if view.next_url %}<a href="{{ view.next_url }}">Older</a>{% endif %}
+</p>
+{% endblock %}

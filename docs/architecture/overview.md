@@ -110,14 +110,24 @@ default, write access is scoped to the table(s) that component owns
 ## Deployment shape (borrowed pattern, not shared code, from `trading-bot`)
 
 - Described as infrastructure as code in `.railway/railway.ts`, applied by the owner; built with Railpack (Python 3.12); services deploy only from the `release/prod` branch ([ADR 0021](../adr/0021-railway-deployment-as-code-observe-only-first.md))
-- One Railway worker service per process, each holding only its own variables: `orchestrator` (with Research and the Portfolio Manager), `risk-gate`, `reference-data`, `execution`, `journal` (a cron job, not a loop) and `assistant` (always on, answering Telegram)
+- One Railway worker service per process, each holding only its own variables: `orchestrator` (with Research and the Portfolio Manager), `risk-gate`, `reference-data`, `execution`, `journal` (a cron job, not a loop), `assistant` (always on, answering Telegram) and `dashboard` (always on, the only public address)
 - Railway Postgres service for the shared knowledge base
 - The first deployment is observe-only: Execution is deployed, trading is paused before any service starts, and the paper account is flat before Execution first starts. The Portfolio Manager runs while paused (`portfolio_manager.run_while_paused`), and the gate approves no buy while paused. Trading is switched on only after the close ([ADR 0021](../adr/0021-railway-deployment-as-code-observe-only-first.md))
 - A separate Railway web service for the dashboard UI (FastAPI + Jinja2,
   matching `trading-bot`'s own status-view deployment —
-  [ADR 0008](../adr/0008-dashboard-stack-and-research-provider.md)), granted
-  a read-only DB role like the Assistant's, plus write access to the single
-  `trading_paused` toggle
+  [ADR 0008](../adr/0008-dashboard-stack-and-research-provider.md)), built
+  (feature 014, `specs/014-dashboard`). It is the system's only public address,
+  behind one owner password and a revocable session
+  ([ADR 0026](../adr/0026-dashboard-public-service-with-owner-sign-in.md)). It reads
+  through a read-only login like the Assistant's and makes one write through a
+  separate login: the pause toggle. Pausing is always allowed. Resuming is refused
+  unless the deployed `run_while_paused` is `false` and the orchestrator has skipped a
+  Portfolio Manager run for the pause
+  ([ADR 0028](../adr/0028-dashboard-resume-needs-the-orchestrator-to-have-skipped-a-pm-run.md));
+  the pause's start time is recorded by the database
+  ([ADR 0027](../adr/0027-pause-change-time-recorded-by-the-database.md)). It renders
+  model-written text as restricted Markdown, runs no script and calls no model, broker
+  or market-data API
 - Alpaca paper endpoint for order execution and Execution's own market data; no agent holds an Alpaca credential, and the agents' quotes come from read-only Finnhub keys ([ADR 0016](../adr/0016-market-data-for-the-llm-agents.md))
 - Credentials never committed: Alpaca keys, model-provider keys (Anthropic or Qwen, per agent — [ADR 0018](../adr/0018-qwen-as-a-model-provider.md)), Finnhub keys, Telegram bot
   token/chat ID, each scoped to the one component that needs them

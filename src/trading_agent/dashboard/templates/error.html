@@ -1,0 +1,6 @@
+{% extends "base.html" %}
+{% block title %}{{ message }}{% endblock %}
+{% block content %}
+<h1>{{ message }}</h1>
+{% if pause_link %}<p><a class="button" href="/toggle">Pause trading</a></p>{% endif %}
+{% endblock %}

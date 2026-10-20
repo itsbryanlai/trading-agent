@@ -57,7 +57,7 @@ The document:
 
 ```text
 {"message": "...", "trigger": "keyword|model_flag", "matched_word": "...", "action_words": [...],
- "controls": ["the dashboard's pause control (not built yet)",
+ "controls": ["the dashboard's pause control",
               "the deployment runbook, section 5 Switching trading on and section 6 Switching trading off"]}
 ```
 

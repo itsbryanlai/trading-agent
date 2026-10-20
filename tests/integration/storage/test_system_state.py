@@ -104,3 +104,64 @@ def test_non_positive_baseline_rejected(conn):
     assert sqlstate_of(conn, "UPDATE system_state SET daily_starting_equity = 0") == (
         CHECK_VIOLATION
     )
+
+
+# --- Migration 0015 (feature 014, ADR 0027): when the pause last changed ---------------------
+
+_CHANGED_AT = "SELECT trading_paused_changed_at AS at, now() AS now FROM system_state"
+_LONG_AGO = "2020-01-01 00:00:00+00"
+
+
+def _set_pause_as_owner(conn, paused: bool, changed_at: str | None):
+    """Put the row in a known state. The connection's role is a superuser and sets the stamp
+    in a second statement, since an update that flips the flag has the trigger stamp it."""
+    conn.execute("UPDATE system_state SET trading_paused = %s", (paused,))
+    conn.execute("UPDATE system_state SET trading_paused_changed_at = %s", (changed_at,))
+
+
+def test_the_column_is_null_on_a_fresh_database(conn):
+    assert conn.execute(_CHANGED_AT).fetchone()["at"] is None
+
+
+@pytest.mark.parametrize(("before", "after"), [(False, True), (True, False)])
+def test_a_change_of_the_flag_by_the_control_login_stamps_the_transaction_time(conn, before, after):
+    _set_pause_as_owner(conn, before, _LONG_AGO)
+    with as_role(conn, "ta_dashboard_control"):
+        conn.execute("UPDATE system_state SET trading_paused = %s, updated_at = now()", (after,))
+    row = conn.execute(_CHANGED_AT).fetchone()
+    assert row["at"] == row["now"]
+
+
+def test_an_update_that_leaves_the_flag_alone_leaves_the_column_alone(conn):
+    _set_pause_as_owner(conn, True, _LONG_AGO)
+    with as_role(conn, "ta_dashboard_control"):
+        conn.execute("UPDATE system_state SET trading_paused = true, updated_at = now()")
+    row = conn.execute(_CHANGED_AT).fetchone()
+    assert row["at"].isoformat().startswith("2020-01-01")
+
+
+def test_the_risk_gates_baseline_and_halt_updates_succeed_and_leave_the_column_alone(conn):
+    _set_pause_as_owner(conn, True, _LONG_AGO)
+    with as_role(conn, "ta_risk_gate"):
+        conn.execute(
+            "UPDATE system_state SET baseline_trading_day = current_date, "
+            "daily_starting_equity = 100000, updated_at = now()"
+        )
+        conn.execute("UPDATE system_state SET halt_triggered_on = current_date, updated_at = now()")
+    row = conn.execute(_CHANGED_AT).fetchone()
+    assert row["at"].isoformat().startswith("2020-01-01")
+
+
+@pytest.mark.parametrize(
+    "role", ["ta_dashboard_control", "ta_risk_gate", "ta_dashboard", "ta_assistant"]
+)
+def test_no_role_may_set_the_column_directly(conn, role):
+    statement = "UPDATE system_state SET trading_paused_changed_at = now()"
+    assert attempt(conn, role, statement) == "denied"
+
+
+def test_the_orchestrator_cannot_read_the_column_but_the_dashboard_and_assistant_can(conn):
+    select = "SELECT trading_paused_changed_at FROM system_state"
+    assert attempt(conn, "ta_orchestrator", select) == "denied"
+    assert attempt(conn, "ta_dashboard", select) == "allowed"
+    assert attempt(conn, "ta_assistant", select) == "allowed"

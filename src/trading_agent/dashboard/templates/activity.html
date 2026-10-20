@@ -1,0 +1,56 @@
+{% extends "base.html" %}
+{% block title %}Activity{% endblock %}
+{% macro body(b) %}{% if b.summary %}<details><summary>{{ b.summary }}</summary>{{ b.html }}</details>{% else %}{{ b.html }}{% endif %}{% endmacro %}
+{% block content %}
+<h1>Agent activity</h1>
+<form method="get" action="/activity" class="stack">
+  <label for="agent">Agent</label>
+  <select id="agent" name="agent">
+    {% for value, label in view.agents %}<option value="{{ value }}"{% if value == (view.filters.agent or "") %} selected{% endif %}>{{ label }}</option>{% endfor %}
+  </select>
+  <label for="problems"><input id="problems" type="checkbox" name="problems" value="1"{% if view.filters.problems %} checked{% endif %}> Problem runs only</label>
+  <label for="symbol">Symbol</label>
+  <input id="symbol" type="text" name="symbol" value="{{ view.symbol_value }}" maxlength="10">
+  <label for="from">From</label>
+  <input id="from" type="date" name="from" value="{{ view.from_value }}">
+  <label for="to">To</label>
+  <input id="to" type="date" name="to" value="{{ view.to_value }}">
+  <button type="submit">Filter</button>
+</form>
+{% if view.empty_text %}<p>{{ view.empty_text }}</p>{% endif %}
+{% for row in view.rows %}
+{% if row.kind == "report" %}
+{% set r = row.report %}
+<article id="{{ r.anchor }}">
+  <h2>Report: {{ r.agent }}{% if r.symbol %} · {{ r.symbol }}{% endif %} · {{ r.direction }}</h2>
+  <p class="muted">{{ r.at }}{% if r.conviction %} · conviction {{ r.conviction }}{% endif %}{% if r.size %} · suggested size {{ r.size }}{% endif %}</p>
+  {{ body(r.rationale) }}
+  {% if r.sources %}
+  <ul>
+    {% for s in r.sources %}<li>{{ s.title }}{% if s.publisher %}, {{ s.publisher }}{% endif %}{% if s.published_at %}, {{ s.published_at }}{% endif %}{% if s.relevance %} <span class="muted">({{ s.relevance }})</span>{% endif %}</li>{% endfor %}
+  </ul>
+  {% endif %}
+</article>
+{% elif row.kind == "decision" %}
+{% set d = row.decision %}
+<article id="{{ d.anchor }}">
+  <h2>Decision: {{ d.direction }} {{ d.symbol }}, target {{ d.size }}</h2>
+  <p class="muted">{{ d.at }} · quote {{ d.quote }}</p>
+  {{ body(d.reasoning) }}
+  {% if d.cited %}<p>Drew on: {% for c in d.cited %}{% if c.href %}<a href="{{ c.href }}">{{ c.label }}</a>{% else %}{{ c.label }}{% endif %}{% if not loop.last %}, {% endif %}{% endfor %}</p>{% endif %}
+</article>
+{% else %}
+{% set u = row.run %}
+<article{% if u.problem %} class="problem"{% endif %}>
+  <h2>Run: {{ u.agent }}</h2>
+  <p>{% if u.problem %}<strong>{{ u.outcome }}</strong>{% else %}{{ u.outcome }}{% endif %} · {{ u.reason }}{% if u.slot %} · slot {{ u.slot }}{% endif %}</p>
+  <p class="muted">{% if u.slot_at %}Due {{ u.slot_at }}{% endif %}{% if u.started %} · started {{ u.started }}{% endif %}{% if u.finished %} · finished {{ u.finished }}{% endif %}</p>
+  {% if u.detail %}<p>{% if u.detail.summary %}<details><summary>{{ u.detail.summary }}</summary>{{ u.detail.full }}</details>{% else %}{{ u.detail.full }}{% endif %}</p>{% endif %}
+</article>
+{% endif %}
+{% endfor %}
+<p>
+  {% if view.prev_url %}<a href="{{ view.prev_url }}">Newer</a>{% endif %}
+  {% if view.next_url %}<a href="{{ view.next_url }}">Older</a>{% endif %}
+</p>
+{% endblock %}

@@ -123,5 +123,14 @@ def test_every_fixed_reply_passes_unchanged():
         assert filter_links(text, []) == (text, 0)
 
 
+def test_neither_control_names_a_host_a_path_or_an_address():
+    # The dashboard is named, never linked (ADR 0026 section 10): no dot-joined host-like
+    # text, no slash path, no "@".
+    for control in replies.CONTROLS:
+        assert "/" not in control and "@" not in control
+        assert not HOST.search(control) and not re.search(r"\w\.\w", control)
+        assert filter_links(control, []) == (control, 0)
+
+
 def test_host_after_dots_is_removed():
     assert filter_links("see ...evil.com now", []) == (f"see ...{REMOVED} now", 1)

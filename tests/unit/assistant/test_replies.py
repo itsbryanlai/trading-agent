@@ -17,7 +17,7 @@ def _units(text: str) -> int:
 
 def test_controls_are_exactly_the_two_strings():
     assert replies.CONTROLS == (
-        "the dashboard's pause control (not built yet)",
+        "the dashboard's pause control",
         "the deployment runbook, section 5 Switching trading on and "
         "section 6 Switching trading off",
     )

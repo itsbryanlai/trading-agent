@@ -86,7 +86,23 @@ CONTRACT: dict[str, tuple[str, set[str]]] = {
             "ASSISTANT_ANTHROPIC_API_KEY",
         },
     ),
+    # ADR 0026: always on, the only public service, its own DASHBOARD_* names only.
+    "dashboard": (
+        "python -m trading_agent.dashboard",
+        {
+            "DASHBOARD_DATABASE_URL",
+            "DASHBOARD_CONTROL_DATABASE_URL",
+            "DASHBOARD_PASSWORD_HASH",
+            "DASHBOARD_SESSION_SECRET",
+        },
+    ),
 }
+
+# Keys only the dashboard may carry: the health check and anything that exposes a service
+# to the internet (ADR 0026). The dashboard sets only the health check, to exactly /healthz;
+# the public domain is generated in Railway after apply, not declared here.
+HEALTHCHECK = 'healthcheckPath: "/healthz"'
+PUBLIC_ONLY = ("healthcheckPath", "domains", "networking", "tcp", "tcpProxies")
 
 _QUOTES = "\"'`"
 
@@ -217,6 +233,9 @@ def _whole_file(text: str, blocks: dict[str, str]) -> list[str]:
     assistant = blocks.get("assistant")
     if "ASSISTANT_" in (text.replace(assistant, "") if assistant else text):
         found.append("ASSISTANT_* appears outside the assistant service (ADR 0023)")
+    dashboard = blocks.get("dashboard")
+    if "DASHBOARD_" in (text.replace(dashboard, "") if dashboard else text):
+        found.append("DASHBOARD_* appears outside the dashboard service (ADR 0026)")
     if len(re.findall(r"\bgithub\(", text)) != len(re.findall(re.escape(SOURCE), text)):
         found.append('every github() source must be exactly branch: "release/prod"')
     if len(re.findall(r"\bcronSchedule\b", text)) != 1:
@@ -266,7 +285,20 @@ def _one_service(name: str, block: str) -> tuple[list[str], set[str]]:
     if not re.search(r"\breplicas\s*:\s*1\b", block):
         found.append(f"{name}: must run one replica")
     found += _schedule_rules(name, block)
+    found += _public_rules(name, block)
     return found, set(entries)
+
+
+def _public_rules(name: str, block: str) -> list[str]:
+    """Only the dashboard has a health check; only it may be exposed (ADR 0026)."""
+    squashed = re.sub(r"\s+", " ", block)
+    if name == "dashboard":
+        return [] if HEALTHCHECK in squashed else [f"{name}: healthcheck is not {HEALTHCHECK}"]
+    return [
+        f"{name}: {word} is for the dashboard only"
+        for word in PUBLIC_ONLY
+        if re.search(rf"\b{word}\s*:", block)
+    ]
 
 
 def _schedule_rules(name: str, block: str) -> list[str]:
@@ -529,3 +561,101 @@ def test_a_cron_schedule_on_the_assistant_is_caught(shipped):
 def test_a_restart_policy_on_the_assistant_is_caught(shipped):
     start = 'start: "python -m trading_agent.assistant",'
     assert _broken(shipped, start, start + '\n    deploy: { restartPolicyType: "NEVER" },')
+
+
+# --- the dashboard (feature 014, ADR 0026) --------------------------------------------------
+
+DASHBOARD_START = 'start: "python -m trading_agent.dashboard",'
+
+
+def test_the_dashboard_is_in_the_shipped_file_with_its_four_names_and_a_health_check(shipped):
+    blocks = service_blocks(strip_comments(shipped[0]))
+    block = blocks["dashboard"]
+    assert set(env_entries(block)[0]) == CONTRACT["dashboard"][1]
+    assert HEALTHCHECK in re.sub(r"\s+", " ", block)
+    assert [n for n, b in blocks.items() if "healthcheckPath" in b] == ["dashboard"]
+    resources = (
+        "db, orchestrator, riskGate, referenceData, execution, journal, assistant, dashboard"
+    )
+    assert f"resources: [{resources}]" in shipped[0]
+
+
+def test_a_dashboard_variable_on_another_service_is_caught(shipped):
+    assert _broken(
+        shipped,
+        "RISK_GATE_DATABASE_URL: preserve(),",
+        "RISK_GATE_DATABASE_URL: preserve(),\n      DASHBOARD_SESSION_SECRET: preserve(),",
+    )
+
+
+@pytest.mark.parametrize(
+    "name", ["ALPACA_API_KEY_ID", "ASSISTANT_TELEGRAM_BOT_TOKEN", "RESEARCH_DASHSCOPE_API_KEY"]
+)
+def test_another_components_variable_on_the_dashboard_is_caught(shipped, name):
+    assert _broken(
+        shipped,
+        "DASHBOARD_DATABASE_URL: preserve(),",
+        f"DASHBOARD_DATABASE_URL: preserve(),\n      {name}: preserve(),",
+    )
+
+
+@pytest.mark.parametrize("name", sorted(CONTRACT["dashboard"][1]))
+def test_a_dashboard_without_one_of_its_names_is_caught(shipped, name):
+    assert _broken(shipped, f"      {name}: preserve(),\n", "")
+
+
+def test_a_literal_dashboard_value_is_caught(shipped):
+    assert _broken(shipped, "DASHBOARD_PASSWORD_HASH: preserve(),", 'DASHBOARD_PASSWORD_HASH: "x",')
+
+
+@pytest.mark.parametrize(
+    "new",
+    [
+        "",
+        'healthcheckPath: "/",',
+        'healthcheckPath: "/healthz/",',
+        'healthcheckPath: "/health",',
+    ],
+    ids=["missing", "root", "trailing slash", "other path"],
+)
+def test_a_dashboard_without_exactly_the_health_check_is_caught(shipped, new):
+    assert _broken(shipped, HEALTHCHECK + ",", new)
+
+
+@pytest.mark.parametrize("other", ["risk", "reference", "execution", "journal", "assistant"])
+def test_a_health_check_on_another_service_is_caught(shipped, other):
+    start = f'start: "python -m trading_agent.{other}",'
+    assert _broken(shipped, start, start + "\n    " + HEALTHCHECK + ",")
+
+
+@pytest.mark.parametrize("key", ["domains", "networking", "tcp", "tcpProxies"])
+@pytest.mark.parametrize("other", ["risk", "assistant", "execution", "orchestrator"])
+def test_a_public_key_on_any_other_service_is_caught(shipped, key, other):
+    start = f'start: "python -m trading_agent.{other}",'
+    assert _broken(shipped, start, start + f"\n    {key}: {{}},")
+
+
+def test_a_second_health_check_or_a_second_replica_on_the_dashboard_is_caught(shipped):
+    assert _broken(shipped, HEALTHCHECK + ",", HEALTHCHECK + ",\n    " + HEALTHCHECK + ",")
+    assert _broken(
+        shipped,
+        "replicas: 1,\n    env: {\n      DASHBOARD",
+        "replicas: 2,\n    env: {\n      DASHBOARD",
+    )
+
+
+def test_a_cron_schedule_or_restart_policy_on_the_dashboard_is_caught(shipped):
+    assert _broken(shipped, DASHBOARD_START, DASHBOARD_START + "\n    " + JOURNAL_DEPLOY + ",")
+    assert _broken(
+        shipped, DASHBOARD_START, DASHBOARD_START + '\n    deploy: { restartPolicyType: "NEVER" },'
+    )
+
+
+def test_a_dashboard_name_missing_from_env_example_is_caught(shipped):
+    raw, env_example, schedule = shipped
+    assert violations(raw, env_example.replace("DASHBOARD_SESSION_SECRET=", ""), schedule)
+
+
+def test_the_env_example_lists_the_four_dashboard_names_empty(shipped):
+    for name in CONTRACT["dashboard"][1]:
+        assert re.search(rf"^{name}=$", shipped[1], re.MULTILINE), name

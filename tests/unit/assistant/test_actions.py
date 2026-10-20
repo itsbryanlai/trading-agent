@@ -72,7 +72,7 @@ def test_a_listed_word_after_punctuation_always_matches(word, lead, tail):
 
 
 def test_the_refusal_document_has_exactly_five_keys():
-    controls = ["the dashboard's pause control (not built yet)", "the runbook"]
+    controls = ["the dashboard's pause control", "the runbook"]
     doc = json.loads(refusal_document("Pause!", "keyword", "pause", WORDS, controls))
     assert list(doc) == ["message", "trigger", "matched_word", "action_words", "controls"]
     assert doc == {

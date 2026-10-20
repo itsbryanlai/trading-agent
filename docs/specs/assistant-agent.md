@@ -40,7 +40,12 @@ write grants at all
   (a reply would confirm the bot exists to an unauthorized sender).
 - **Question implies an action** ("pause trading", "sell my AAPL position"):
   explain that it can't take actions, and point to the dashboard's
-  pause/resume control — never attempt to satisfy the request itself. This is
+  pause control (named, never linked) and the deployment runbook's sections on
+  switching trading on and off — never attempt to satisfy the request itself.
+  The dashboard exists now, so the first control reads "the dashboard's pause
+  control", with "(not built yet)" dropped
+  ([ADR 0026](../adr/0026-dashboard-public-service-with-owner-sign-in.md) §10,
+  `specs/014-dashboard`). This is
   a hard boundary, decided in code first: a message whose first word is on a
   configured list of action words is refused before any query or model call
   ([ADR 0024](../adr/0024-assistant-explains-refusals-and-reads-deployed-settings.md) §1). The reply opens with a fixed line saying nothing was done, then

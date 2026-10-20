@@ -1,0 +1,26 @@
+# Settings for the dashboard (python -m trading_agent.dashboard).
+#
+# Schema: specs/014-dashboard/contracts/dashboard-interface.md ("Configuration").
+# Every key is required and unknown keys are rejected; a bad file means the service
+# refuses to start (exit 2). Changed only through code review.
+
+# The owner's time zone, for the times shown on every page (each also shows New York time).
+owner_time_zone: Asia/Singapore
+# How long a sign-in lasts, in hours (absolute, not sliding).
+session_hours: 12
+# Rows per page on the order, activity and journal lists.
+page_size: 50
+# Most sessions kept in memory; a new one beyond this drops the oldest.
+max_sessions: 20
+
+sign_in_delay:
+  # Seconds before the next sign-in attempt is accepted after one failure.
+  first_seconds: 1
+  # The delay doubles with each failure up to this many seconds.
+  cap_seconds: 30
+  # Most client addresses whose delay is tracked; the oldest is dropped beyond this.
+  tracked_addresses: 1000
+
+database:
+  # Seconds before one read query is abandoned.
+  statement_timeout_seconds: 10
